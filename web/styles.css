@@ -368,6 +368,9 @@ input { font: inherit; }
 
 .page {
   flex: 1;
+  width: 100%;
+  max-width: 1560px;
+  margin: 0 auto;
   min-width: 0;
   padding: clamp(16px, 2.4vw, 30px) clamp(16px, 3vw, 34px) calc(var(--player-h) + env(safe-area-inset-bottom) + 34px);
   outline: none;
@@ -504,7 +507,7 @@ input { font: inherit; }
   border-color: rgba(108, 140, 255, 0.4);
 }
 
-.track-index { font-size: 12.5px; color: var(--muted-2); font-variant-numeric: tabular-nums; text-align: center; }
+.track-index { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
 
 .track .cover {
   position: relative; width: 52px; height: 52px; border-radius: 12px; overflow: hidden;
@@ -518,7 +521,7 @@ input { font: inherit; }
 .track-title { display: block; font-weight: 650; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .track-sub { display: block; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .track-sub a:hover { color: #C9D2FF; text-decoration: underline; }
-.track-dur { font-size: 12.5px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+.track-dur { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .track-play {
   width: 38px; height: 38px; border-radius: 50%;
@@ -990,6 +993,10 @@ input { font: inherit; }
   :root { --player-h: 84px; }
 
   .searchbar input { font-size: 16px; }
+  /* на телефоне поиск идёт по вводу и Enter — кнопка только занимает место */
+  .search-go { display: none; }
+  .searchbar { padding-right: 8px; }
+  .ambient-glow { opacity: 0.5; }
 
   .hero { border-radius: 24px; padding: 22px 18px; }
   .hero p { font-size: 14px; }

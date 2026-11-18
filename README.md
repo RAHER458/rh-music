@@ -107,6 +107,14 @@ wrangler secret put ZVUK_TOKEN
   мягкая смена обложки, анимированный эквалайзер. Всё уважает `prefers-reduced-motion`.
 * **Данные главной страницы — реальные ответы Zvuk** (поиск по популярным запросам), без выдуманных треков.
 
+## Скриншоты
+
+| Desktop | iPhone (Now Playing) |
+|---|---|
+| ![Desktop](docs/screenshot-desktop.jpg) | ![iPhone](docs/screenshot-iphone-nowplaying.jpg) |
+
+Ещё: [мобильная главная](docs/screenshot-iphone-home.jpg), [поиск на десктопе](docs/screenshot-desktop-search.jpg).
+
 ## Лицензии референсов
 
 Изучались как источники идей (код не переносился):
