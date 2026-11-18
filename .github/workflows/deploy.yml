@@ -1,0 +1,45 @@
+name: Deploy RH—MUSIC
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'worker/**'
+      - 'scripts/**'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  worker:
+    name: Cloudflare Worker rh-music-api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Deploy worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Секрет нужен только при первой установке. Если он уже задан,
+          # deploy-worker.mjs не перезапишет существующее значение.
+          ZVUK_TOKEN: ${{ secrets.ZVUK_TOKEN }}
+        run: node scripts/deploy-worker.mjs
+
+  pages:
+    name: Cloudflare Pages
+    runs-on: ubuntu-latest
+    needs: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Deploy static site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_PROJECT: rh-music
+        run: node scripts/deploy-pages.mjs

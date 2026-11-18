@@ -1,0 +1,8 @@
+name = "rh-music-api"
+main = "src/index.js"
+compatibility_date = "2025-01-15"
+workers_dev = true
+
+# Секрет ZVUK_TOKEN НЕ хранится в этом файле.
+# Задаётся командой:  wrangler secret put ZVUK_TOKEN
+# или через API:      node scripts/deploy-worker.mjs

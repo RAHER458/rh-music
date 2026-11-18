@@ -1,0 +1,114 @@
+#!/usr/bin/env node
+/**
+ * Деплой Cloudflare Worker rh-music-api без wrangler.
+ *
+ * Переменные окружения:
+ *   CLOUDFLARE_API_TOKEN   — токен Cloudflare (Workers Scripts:Edit, Account Settings:Read)
+ *   CLOUDFLARE_ACCOUNT_ID  — id аккаунта
+ *   ZVUK_TOKEN             — токен Zvuk (нужен только при первой установке секрета)
+ *
+ * Секрет не логируется и не пишется на диск.
+ *
+ * Запуск:
+ *   CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... ZVUK_TOKEN=... \
+ *     node scripts/deploy-worker.mjs
+ */
+
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, '..');
+
+const API = 'https://api.cloudflare.com/client/v4';
+const SCRIPT_NAME = process.env.WORKER_NAME || 'rh-music-api';
+
+const token = process.env.CLOUDFLARE_API_TOKEN;
+const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+
+if (!token || !accountId) {
+  console.error('Нужны CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID');
+  process.exit(1);
+}
+
+async function cf(path, init = {}) {
+  const response = await fetch(API + path, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(init.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = { raw: text.slice(0, 500) };
+  }
+  if (!response.ok || payload.success === false) {
+    const details = (payload.errors || []).map((e) => `${e.code}: ${e.message}`).join('; ');
+    throw new Error(`Cloudflare ${path} → HTTP ${response.status} ${details || ''}`);
+  }
+  return payload.result;
+}
+
+const workerSource = await readFile(join(root, 'worker/src/index.js'), 'utf8');
+
+const metadata = {
+  main_module: 'index.js',
+  compatibility_date: '2025-01-15',
+  bindings: [
+    { type: 'plain_text', name: 'SERVICE_NAME', text: 'rh-music-api' },
+  ],
+  observability: { enabled: true },
+};
+
+const form = new FormData();
+form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json');
+form.append(
+  'index.js',
+  new Blob([workerSource], { type: 'application/javascript+module' }),
+  'index.js',
+);
+
+const deployed = await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}`, {
+  method: 'PUT',
+  body: form,
+});
+console.log(`Worker загружен: ${SCRIPT_NAME}`);
+
+// Публичный адрес *.workers.dev
+try {
+  await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/subdomain`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled: true }),
+  });
+  console.log('workers.dev маршрут включён');
+} catch (error) {
+  console.warn('Не удалось включить workers.dev:', error.message);
+}
+
+// Секрет ZVUK_TOKEN — только если передан явно и ещё не задан.
+if (process.env.ZVUK_TOKEN) {
+  const secret = process.env.ZVUK_TOKEN.trim();
+  const existing = await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/secrets`);
+  const already = (existing || []).some((item) => item.name === 'ZVUK_TOKEN');
+  if (already && process.env.REPLACE_SECRET !== '1') {
+    console.log('Секрет ZVUK_TOKEN уже существует — значение не изменялось.');
+  } else {
+    await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/secrets`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'ZVUK_TOKEN', text: secret, type: 'secret_text' }),
+    });
+    console.log('Секрет ZVUK_TOKEN сохранён (значение не выводится).');
+  }
+}
+
+const subdomain = await cf(`/accounts/${accountId}/workers/subdomain`);
+console.log(`Готово: https://${SCRIPT_NAME}.${subdomain.subdomain}.workers.dev`);
+if (deployed && deployed.modified_on) {
+  console.log(`modified_on: ${deployed.modified_on}`);
+}
