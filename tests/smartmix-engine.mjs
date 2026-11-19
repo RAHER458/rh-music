@@ -88,7 +88,7 @@ class FakeAudio {
 }
 
 const store = {
-  rh_smartmix_v1: JSON.stringify({ enabled: true, bars: 8 }),
+  rh_smartmix_v1: JSON.stringify({ enabled: true, bars: 8, preload: false }),
   rh_smartmix_cache_v1: JSON.stringify({
     a: { v: 1, analysis: { bpm: 120, confidence: 0.8, period: 0.5, offset: 0, downbeatOffset: 1, downbeatConfidence: 0.7 } },
     b: { v: 1, analysis: { bpm: 122, confidence: 0.8, period: 60 / 122, offset: 0, downbeatOffset: 2, downbeatConfidence: 0.7 } },

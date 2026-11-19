@@ -1756,3 +1756,5 @@ html[data-ui="mobile"] .lyrics-word { padding: 1px 5px; margin: -1px -5px; }
 .smartmix-presets .chip { padding: 6px 12px; font-size: 12px; }
 .smartmix-btn.is-on { color: #fff; background: rgba(108, 140, 255, 0.18); border-color: rgba(139, 92, 246, 0.4); }
 html[data-ui="mobile"] .smartmix-card { padding: 12px; }
+.smartmix-subrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.smartmix-subrow .chip { padding: 6px 12px; font-size: 12px; }

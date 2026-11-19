@@ -24,7 +24,7 @@
   const MAX_RATE_DELTA = 0.04;
   const MAX_CACHE = 160;
 
-  const DEFAULTS = { enabled: false, bars: 8 };
+  const DEFAULTS = { enabled: false, bars: 8, preload: true };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -33,7 +33,7 @@
   function sanitizeSettings(raw) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const bars = [4, 8, 16].includes(Number(source.bars)) ? Number(source.bars) : DEFAULTS.bars;
-    return { enabled: source.enabled === true, bars };
+    return { enabled: source.enabled === true, bars, preload: source.preload !== false };
   }
 
   function loadSettings() {
@@ -347,6 +347,10 @@
     generation: 0,
     analysisController: null,
     failedTrack: null,
+    preload: null,
+    preloadGen: 0,
+    retired: [],
+    mixBound: false,
   };
 
   const internal = {
@@ -464,7 +468,223 @@
     el.setAttribute('aria-hidden', 'true');
     global.document.body.appendChild(el);
     engine.mix = el;
+    bindMixElement(el);
     return el;
+  }
+
+  /* ───────────────────────── предзагрузка следующего трека ───────────────────────── */
+
+  function networkProfile() {
+    const nav = global.navigator || {};
+    const connection = nav.connection || nav.mozConnection || nav.webkitConnection;
+    if (connection && connection.saveData) return { name: 'saver', target: 4, retries: 0 };
+    const type = connection && connection.effectiveType;
+    if (type === 'slow-2g' || type === '2g') return { name: 'slow', target: 4, retries: 1 };
+    if (type === '3g') return { name: 'medium', target: 6, retries: 1 };
+    if (connection && Number(connection.downlink) && Number(connection.downlink) < 0.7) {
+      return { name: 'slow', target: 4, retries: 1 };
+    }
+    if (connection && Number(connection.rtt) > 700) return { name: 'slow', target: 4, retries: 1 };
+    if (nav.deviceMemory && Number(nav.deviceMemory) <= 2) return { name: 'medium', target: 6, retries: 1 };
+    if (!connection) return { name: 'balanced', target: 7, retries: 1 };
+    return { name: 'fast', target: 10, retries: 2 };
+  }
+
+  /** Сколько секунд аудио реально доступно начиная с позиции from. */
+  function bufferAhead(element, from) {
+    if (!element || !element.buffered) return 0;
+    const start = Math.max(0, Number(from) || 0);
+    let best = 0;
+    for (let i = 0; i < element.buffered.length; i += 1) {
+      const rangeStart = Number(element.buffered.start(i));
+      const rangeEnd = Number(element.buffered.end(i));
+      if (!Number.isFinite(rangeStart) || !Number.isFinite(rangeEnd)) continue;
+      if (rangeEnd <= start + 0.1 || rangeStart > start + 0.35) continue;
+      best = Math.max(best, rangeEnd - start);
+    }
+    return best;
+  }
+
+  function checkPreload() {
+    const preload = engine.preload;
+    if (!preload) return;
+    const el = preload.element;
+    if (el.error) {
+      if (preload.state !== 'failed' && preload.retries < preload.maxRetries && Date.now() - preload.startedAt < 25000) {
+        preload.retries += 1;
+        preload.state = 'retrying';
+        preload.retryTimer = setTimeout(() => {
+          if (engine.preload !== preload) return;
+          try { el.load(); } catch { /* ignore */ }
+        }, 1500);
+        emit();
+      } else if (preload.state !== 'failed') {
+        preload.state = 'failed';
+        preload.ready = false;
+        preload.error = el.error ? el.error.code : 'error';
+        emit();
+      }
+      return;
+    }
+    if (preload.srcUrl && el.currentSrc && el.currentSrc !== preload.srcUrl) return;
+    const ahead = bufferAhead(el, preload.from);
+    preload.ahead = ahead;
+    const enough = Math.min(preload.target, 5);
+    if (el.readyState >= 3 && ahead >= enough && ahead >= 2.5) {
+      if (!preload.ready) {
+        preload.ready = true;
+        preload.state = 'ready';
+        try { el.preload = 'metadata'; } catch { /* ignore */ }
+        emit();
+      }
+    } else if (preload.ready && ahead < 1.5) {
+      preload.ready = false;
+      preload.state = 'loading';
+      emit();
+    }
+    if (ahead > 45 && !preload.capped) {
+      preload.capped = true;
+      try { el.preload = 'metadata'; } catch { /* ignore */ }
+    }
+  }
+
+  function updatePreloadStart(preload) {
+    if (!preload || engine.preload !== preload) return;
+    const analysis = engine.analyses.get(String(preload.trackId));
+    const from = analysis && Number.isFinite(analysis.downbeatOffset) ? analysis.downbeatOffset : 0;
+    if (Math.abs(from - preload.from) > 0.05) {
+      preload.from = from;
+      if (preload.element.readyState >= 1) {
+        try { preload.element.preload = 'auto'; } catch { /* ignore */ }
+        try { preload.element.currentTime = from; } catch { /* ignore */ }
+      }
+    }
+    checkPreload();
+  }
+
+  function bindMixElement(element) {
+    if (engine.mixBound) return;
+    engine.mixBound = true;
+    const onChange = () => {
+      const preload = engine.preload;
+      if (!preload || preload.element !== element) return;
+      if (preload.srcUrl && element.currentSrc && element.currentSrc !== preload.srcUrl) return;
+      if (element.readyState >= 1 && Math.abs(element.currentTime - preload.from) > 0.4) {
+        try { element.currentTime = preload.from; } catch { /* ignore */ }
+      }
+      checkPreload();
+    };
+    ['loadedmetadata', 'progress', 'canplay', 'canplaythrough', 'seeked', 'suspend'].forEach((type) => {
+      element.addEventListener(type, onChange);
+    });
+    element.addEventListener('stalled', () => {
+      const preload = engine.preload;
+      if (preload && preload.element === element) preload.stalled = true;
+    });
+    element.addEventListener('error', checkPreload);
+  }
+
+  function cancelPreload(reason, keepSource) {
+    const preload = engine.preload;
+    engine.preload = null;
+    if (!preload) return;
+    if (preload.retryTimer) { clearTimeout(preload.retryTimer); preload.retryTimer = null; }
+    if (preload.element) {
+      try { preload.element.pause(); } catch { /* ignore */ }
+      if (!keepSource) {
+        try { preload.element.removeAttribute('src'); preload.element.load(); } catch { /* ignore */ }
+      }
+    }
+    emit();
+  }
+
+  function retirePreload(preload) {
+    if (!preload) return;
+    preload.retiredAt = Date.now();
+    engine.retired.push(preload);
+    while (engine.retired.length > 6) {
+      const old = engine.retired.shift();
+      if (old && old.retryTimer) clearTimeout(old.retryTimer);
+    }
+    preload.cleanupTimer = setTimeout(() => {
+      const index = engine.retired.indexOf(preload);
+      if (index >= 0) engine.retired.splice(index, 1);
+      if (preload.retryTimer) clearTimeout(preload.retryTimer);
+      const el = preload.element;
+      if (el && engine.preload && engine.preload.element === el) return;
+      if (el && engine.mix === el) {
+        try { el.pause(); } catch { /* ignore */ }
+        try { el.removeAttribute('src'); el.load(); } catch { /* ignore */ }
+      }
+      preload.element = null;
+      emit();
+    }, 15000);
+  }
+
+  function prepareNext(state) {
+    if (!engine.settings.enabled || !engine.settings.preload) {
+      cancelPreload('off');
+      return;
+    }
+    if (engine.phase !== 'idle') return;
+    if (!state || !state.current || state.paused) {
+      cancelPreload('paused');
+      return;
+    }
+    const next = nextTrackFor(state);
+    if (!next) { cancelPreload('none'); return; }
+    const current = engine.preload;
+    if (current && String(current.trackId) === String(next.track.id) && current.index === next.index) {
+      updatePreloadStart(current);
+      return;
+    }
+    const el = ensureMixElement();
+    bindMixElement(el);
+    cancelPreload('replace', true);
+    const profile = networkProfile();
+    const preload = {
+      element: el,
+      trackId: String(next.track.id),
+      index: next.index,
+      track: next.track,
+      srcUrl: '',
+      generation: ++engine.preloadGen,
+      target: profile.target,
+      profile: profile.name,
+      maxRetries: profile.retries,
+      retries: 0,
+      from: 0,
+      ahead: 0,
+      ready: false,
+      state: 'loading',
+      startedAt: Date.now(),
+      error: null,
+    };
+    engine.preload = preload;
+    try { el.pause(); } catch { /* ignore */ }
+    el.preload = 'auto';
+    el.volume = 0;
+    el.muted = false;
+    el.playbackRate = 1;
+    try { el.preservesPitch = true; } catch { /* ignore */ }
+    el.src = engine.host.streamUrl(next.track);
+    preload.srcUrl = el.src || el.currentSrc || '';
+    el.load();
+    const analysis = engine.analyses.get(String(next.track.id));
+    if (analysis && Number.isFinite(analysis.downbeatOffset)) preload.from = analysis.downbeatOffset;
+    checkPreload();
+    emit();
+  }
+
+  function isPreloadReady(plan) {
+    const preload = engine.preload;
+    if (!preload || !plan || !plan.nextTrack) return false;
+    if (String(preload.trackId) !== String(plan.nextTrack.id) || preload.index !== plan.nextIndex) return false;
+    const el = preload.element;
+    if (!el || el.error || el.readyState < 3) return false;
+    const ahead = bufferAhead(el, plan.incomingStart || 0);
+    preload.ahead = ahead;
+    return ahead >= Math.min(preload.target, 5) && ahead >= 2.5;
   }
 
   function connectMixSource() {
@@ -535,8 +755,15 @@
   }
 
   function cancel(reason) {
-    if (engine.phase === 'idle' || engine.phase === 'handoff') return;
+    if (engine.phase === 'handoff') return;
+    if (engine.phase === 'idle') {
+      if (engine.timer) { clearTimeout(engine.timer); engine.timer = null; }
+      engine.plan = null;
+      if (engine.preload) cancelPreload(reason || 'cancel');
+      return;
+    }
     engine.phase = 'idle';
+    cancelPreload(reason || 'cancel');
     engine.plan = null;
     cleanupMix(true);
     if (engine.graph) {
@@ -563,6 +790,7 @@
   function failStart(plan) {
     engine.plan = null;
     engine.phase = 'idle';
+    cancelPreload('failed');
     if (plan && plan.currentId) engine.failedTrack = plan.currentId;
     emit();
   }
@@ -574,26 +802,53 @@
       engine.plan = null;
       return;
     }
+    const preload = engine.preload;
+    const matches = preload
+      && String(preload.trackId) === String(plan.nextTrack.id)
+      && preload.index === plan.nextIndex;
+    const prepared = matches && isPreloadReady(plan);
+    if (engine.settings.preload && !prepared) {
+      // Буфера недостаточно — не начинаем переход, остаётся обычная смена.
+      failStart(plan);
+      return;
+    }
     engine.phase = 'starting';
-    const mix = ensureMixElement();
-    mix.src = engine.host.streamUrl(plan.nextTrack);
+    let mix;
+    if (prepared) {
+      mix = preload.element;
+    } else {
+      mix = ensureMixElement();
+      mix.src = engine.host.streamUrl(plan.nextTrack);
+      mix.volume = state.muted ? 0 : state.volume;
+      mix.playbackRate = plan.rate || 1;
+      try { mix.preservesPitch = true; } catch { /* ignore */ }
+      try { mix.webkitPreservesPitch = true; } catch { /* ignore */ }
+      const ready = await new Promise((resolve) => {
+        const done = () => { mix.removeEventListener('loadedmetadata', done); resolve(true); };
+        mix.addEventListener('loadedmetadata', done, { once: true });
+        setTimeout(() => { mix.removeEventListener('loadedmetadata', done); resolve(false); }, 2500);
+        mix.load();
+      });
+      if (engine.phase !== 'starting') return;
+      if (!ready) { failStart(plan); return; }
+      try {
+        const limit = Number.isFinite(mix.duration) && mix.duration > 2 ? mix.duration - 1 : Infinity;
+        mix.currentTime = Math.min(Math.max(0, plan.incomingStart || 0), limit);
+      } catch { /* ignore */ }
+    }
+
     mix.volume = state.muted ? 0 : state.volume;
     mix.playbackRate = plan.rate || 1;
     try { mix.preservesPitch = true; } catch { /* ignore */ }
     try { mix.webkitPreservesPitch = true; } catch { /* ignore */ }
-
-    const ready = await new Promise((resolve) => {
-      const done = () => { mix.removeEventListener('loadedmetadata', done); resolve(true); };
-      mix.addEventListener('loadedmetadata', done, { once: true });
-      setTimeout(() => { mix.removeEventListener('loadedmetadata', done); resolve(false); }, 2500);
-      mix.load();
-    });
-    if (engine.phase !== 'starting') return;
-    if (!ready) { failStart(plan); return; }
-    try {
-      const limit = Number.isFinite(mix.duration) && mix.duration > 2 ? mix.duration - 1 : Infinity;
-      mix.currentTime = Math.min(Math.max(0, plan.incomingStart || 0), limit);
-    } catch { /* ignore */ }
+    if (prepared) {
+      try {
+        if (Math.abs(mix.currentTime - (plan.incomingStart || 0)) > 0.15) {
+          mix.currentTime = Math.max(0, plan.incomingStart || 0);
+        }
+      } catch { /* ignore */ }
+      if (!isPreloadReady(plan)) { failStart(plan); return; }
+    }
 
     const graphOk = await ensureGraph();
     if (engine.phase !== 'starting') return;
@@ -652,11 +907,15 @@
       cleanupMix(true);
       engine.phase = 'idle';
       engine.plan = null;
+      cancelPreload('failed');
       if (plan && plan.currentId) engine.failedTrack = plan.currentId;
       emit();
       if (engine.host.toast) engine.host.toast('Не удалось завершить переход', 'info');
       return;
     }
+    const retiredPreload = engine.preload;
+    engine.preload = null;
+    retirePreload(retiredPreload);
     if (engine.graph && engine.mixGain) {
       try {
         const ctx = engine.graph.ctx;
@@ -823,6 +1082,7 @@
       start(engine.plan);
       return;
     }
+    if (engine.phase === 'idle') prepareNext(state);
     if (engine.phase === 'idle') schedulePlan();
     if (!engine.plan && state.duration && state.currentTime > state.duration - 7) {
       const next = nextTrackFor(state);
@@ -842,13 +1102,19 @@
     if (!engine.settings.enabled) return;
     emit();
     if (!state || !state.current) return;
+    // Предзагрузка не ждёт анализа: буфер начинается сразу, а когда BPM
+    // будет готов, позиция входа уточняется на downbeat.
+    prepareNext(state);
     const signal = engine.analysisController ? engine.analysisController.signal : undefined;
     await analyze(state.current, signal);
     if (generation !== engine.generation) return;
     const next = nextTrackFor(state);
     if (next) await analyze(next.track, signal);
     if (generation !== engine.generation) return;
-    if (state.current) schedulePlan();
+    if (state.current) {
+      prepareNext(state);
+      schedulePlan();
+    }
   }
 
   function onQueue() {
@@ -858,7 +1124,12 @@
     const state = engine.host && engine.host.getState();
     if (state) {
       const next = nextTrackFor(state);
-      if (next) analyze(next.track).then(() => schedulePlan());
+      if (next) {
+        analyze(next.track).then(() => {
+          prepareNext(state);
+          schedulePlan();
+        });
+      }
     }
   }
 
@@ -867,6 +1138,8 @@
     saveSettings(engine.settings);
     if (!engine.settings.enabled) cancel('disabled');
     else ensureGraph();
+    if (!engine.settings.enabled || !engine.settings.preload) cancelPreload('settings');
+    else if (engine.host && engine.host.getState) prepareNext(engine.host.getState());
     emit();
     return engine.settings;
   }
@@ -889,7 +1162,13 @@
     },
     onQueue,
     onTime: (state) => onTime(state || (engine.host && engine.host.getState())),
-    warm: () => { if (engine.settings.enabled) return ensureGraph(); return Promise.resolve(false); },
+    warm: () => {
+      if (!engine.settings.enabled) return Promise.resolve(false);
+      if (engine.settings.preload && engine.host && engine.host.getState) {
+        prepareNext(engine.host.getState());
+      }
+      return ensureGraph();
+    },
     cancel,
     getSettings: () => ({ ...engine.settings }),
     setVolume: (volume) => {
@@ -909,6 +1188,16 @@
       settings: { ...engine.settings },
       supported: engine.supported,
       phase: engine.phase,
+      preload: engine.preload ? {
+        trackId: engine.preload.trackId,
+        state: engine.preload.state,
+        ready: engine.preload.ready,
+        ahead: Math.round(engine.preload.ahead * 10) / 10,
+        target: engine.preload.target,
+        profile: engine.preload.profile,
+        retries: engine.preload.retries,
+      } : null,
+      retired: engine.retired.length,
       plan: engine.plan ? {
         mode: engine.plan.mode,
         startAt: engine.plan.startAt,
@@ -920,7 +1209,10 @@
       } : null,
     }),
     isPlaying: () => engine.phase === 'running' || engine.phase === 'handoff',
-    _internal: { detectTempo, analyzeAudioBuffer, planTransition, barsToSeconds, sanitizeSettings, clamp },
+    _internal: {
+      detectTempo, analyzeAudioBuffer, planTransition, barsToSeconds,
+      sanitizeSettings, clamp, bufferAhead, networkProfile,
+    },
   };
 
   global.RH_SMARTMIX = api;

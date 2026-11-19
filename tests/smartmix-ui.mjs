@@ -40,7 +40,7 @@ check('движок создаёт второй элемент только дл
 check('второй элемент не добавляется в HTML',
   !/id="mixAudio"/.test(html));
 check('по умолчанию Smart Mix выключен',
-  /const DEFAULTS = \{ enabled: false, bars: 8 \}/.test(mix));
+  /const DEFAULTS = \{ enabled: false, bars: 8, preload: true \}/.test(mix));
 check('есть пресеты 4/8/16 тактов',
   /\[4, 8, 16\]/.test(mix) && /\[4, 8, 16\]/.test(app));
 check('настройка встроена в страницу настроек',
@@ -94,6 +94,29 @@ check('ошибка play не оставляет висящий переход',
 
 check('lyrics engine не знает о втором аудио',
   !/smartmix|mixAudio|RH_SMARTMIX/i.test(lyrics));
+
+check('предзагрузка встроена в карточку Smart Mix',
+  /data-action="smartmix-preload"/.test(app) && /data-smartmix-preload/.test(app));
+check('настройки хранят preload', /preload: source\.preload !== false/.test(mix));
+check('предзагрузка использует Range-поток и фактический buffered',
+  /bufferAhead\(/.test(mix) && /element\.buffered/.test(mix) && /readyState >= 3/.test(mix));
+check('готовность требует минимальный буфер, а не только play/preload',
+  /ahead >= Math\.min\(preload\.target, 5\) && ahead >= 2\.5/.test(mix));
+check('адаптивность учитывает saveData/2G/3G и отсутствие Network API',
+  /connection\.saveData/.test(mix) && /effectiveType/.test(mix) && /name: 'balanced'/.test(mix));
+check('предзагрузка не запускает второй трек заранее',
+  /el\.volume = 0/.test(mix) && /el\.paused/.test(mix) === false);
+check('переход использует подготовленный элемент',
+  /prepared = matches && isPreloadReady\(plan\)/.test(mix) && /mix = preload\.element/.test(mix));
+check('при неготовом буфере переход не стартует',
+  /if \(engine\.settings\.preload && !prepared\)/.test(mix));
+check('15-секундная очистка реализована',
+  /\}, 15000\);/.test(mix) && /retirePreload/.test(mix) && /engine\.retired/.test(mix));
+check('после перехода готовится следующий трек',
+  /retirePreload\(retiredPreload\)/.test(mix) && /prepareNext\(state\)/.test(mix));
+check('старая предзагрузка отменяется при смене очереди',
+  /function onQueue[\s\S]{0,200}cancel\('queue'\)/.test(mix));
+
 check('CSS для карточки и пресетов добавлен',
   /\.smartmix-card \{/.test(css) && /\.smartmix-presets \{/.test(css));
 check('стили не меняют размеры плеера',

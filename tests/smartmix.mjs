@@ -188,6 +188,8 @@ function next(bpm = 124, confidence = 0.8) {
 {
   check('настройки: по умолчанию выключено', sanitizeSettings(null).enabled === false);
   check('настройки: по умолчанию 8 тактов', sanitizeSettings({}).bars === 8);
+  check('настройки: предзагрузка по умолчанию включена', sanitizeSettings({}).preload === true);
+  check('настройки: предзагрузку можно выключить', sanitizeSettings({ preload: false }).preload === false);
   check('настройки: допустимые пресеты', [4, 8, 16].every((bars) => sanitizeSettings({ bars }).bars === bars));
   check('настройки: недопустимый пресет сбрасывается', sanitizeSettings({ bars: 7 }).bars === 8);
   check('настройки: включение сохраняется', sanitizeSettings({ enabled: true }).enabled === true);

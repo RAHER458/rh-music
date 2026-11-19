@@ -1948,6 +1948,10 @@ function smartMixControlsHTML() {
               aria-pressed="${settings.enabled ? 'true' : 'false'}">${settings.enabled ? 'Выключить' : 'Включить'}</button>
     </div>
     <div class="smartmix-presets" role="group" aria-label="Длина перехода">${presets}</div>
+    <div class="smartmix-subrow">
+      <button class="chip${settings.preload ? ' is-active' : ''}" type="button"
+              data-action="smartmix-preload" data-smartmix-preload aria-pressed="${settings.preload ? 'true' : 'false'}">Предзагрузка: ${settings.preload ? 'вкл' : 'выкл'}</button>
+    </div>
     <p class="hint" data-smartmix-hint>Сведение по битам и фразам: следующий трек входит заранее, бас меняется в музыкальный момент.</p>`;
 }
 
@@ -1976,6 +1980,12 @@ function refreshSmartMixUI() {
   });
   document.querySelectorAll('[data-smartmix-state]').forEach((el) => {
     el.textContent = settings.enabled ? `Включены · ${smartMixBarsLabel(settings.bars)}` : 'Выключены';
+  });
+  document.querySelectorAll('[data-smartmix-preload]').forEach((el) => {
+    const on = settings.preload !== false;
+    el.textContent = `Предзагрузка: ${on ? 'вкл' : 'выкл'}`;
+    el.classList.toggle('is-active', on);
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
   document.querySelectorAll('[data-smartmix-preset]').forEach((el) => {
     const active = Number(el.dataset.smartmixPreset) === Number(settings.bars);
@@ -2025,6 +2035,13 @@ function toggleSmartMix() {
 function setSmartMixBars(bars) {
   if (!window.RH_SMARTMIX) return;
   window.RH_SMARTMIX.setSettings({ bars: Number(bars) });
+  refreshSmartMixUI();
+}
+
+function toggleSmartMixPreload() {
+  if (!window.RH_SMARTMIX) return;
+  const settings = window.RH_SMARTMIX.getSettings();
+  window.RH_SMARTMIX.setSettings({ preload: !settings.preload });
   refreshSmartMixUI();
 }
 
@@ -2927,6 +2944,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'smartmix-open') { openSmartMixSheet(); return; }
   if (action === 'smartmix-toggle') { toggleSmartMix(); return; }
   if (action === 'smartmix-bars') { setSmartMixBars(target.dataset.bars); return; }
+  if (action === 'smartmix-preload') { toggleSmartMixPreload(); return; }
   if (action === 'lyrics-toggle') { toggleLyrics(); return; }
   if (action === 'lyrics-open') { openLyricsSheet(true); return; }
   if (action === 'lyrics-close') { openLyricsSheet(false); return; }
