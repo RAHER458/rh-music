@@ -447,7 +447,7 @@ function linesPayload(trackId, lines, extra = {}) {
 }
 
 {
-  const { api, audio } = makeEngineSandbox();
+  const { api, audio, registry } = makeEngineSandbox();
   let resolveFirst;
   let resolveSecond;
   globalThis.fetch = async (url) => {
@@ -457,6 +457,8 @@ function linesPayload(trackId, lines, extra = {}) {
   const first = api.setTrack(trackA);
   const second = api.setTrack(trackB);
   await Promise.resolve();
+  check('движок: при смене трека старый текст убирается сразу',
+    !registry.lyricsScrollDesktop.children.some((child) => child.classList.contains('lyrics-line')));
   resolveSecond(linesPayload('B2', [{ t: 500, text: 'Б' }]));
   await second;
   resolveFirst(linesPayload('A1', [{ t: 100, text: 'А' }]));
