@@ -22,9 +22,14 @@
     status: 'idle', // idle | loading | ready | error
     error: null,
     active: -1,
+    activeWord: -1,
     seq: 0,
     controller: null,
     cache: new Map(),
+    wordsState: 'idle', // idle | loading | ready | none | error
+    wordsWanted: false,
+    wordsController: null,
+    wordCache: new Map(),
   };
 
   const views = [];
@@ -49,6 +54,20 @@
     return found;
   }
 
+  /** Бинарный поиск последнего слова с t <= ms внутри строки. */
+  function wordIndexAt(words, ms) {
+    if (!Array.isArray(words) || !words.length) return -1;
+    let low = 0;
+    let high = words.length - 1;
+    let found = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (words[mid].t <= ms) { found = mid; low = mid + 1; }
+      else high = mid - 1;
+    }
+    return found;
+  }
+
   function trimCache() {
     while (state.cache.size > CACHE_LIMIT) {
       state.cache.delete(state.cache.keys().next().value);
@@ -67,21 +86,33 @@
         if (Array.isArray(line.words)) {
           const words = line.words
             .filter((word) => word && Number.isFinite(Number(word.t)) && typeof word.text === 'string' && word.text.trim())
-            .map((word) => ({ t: Math.max(0, Number(word.t)), text: String(word.text).trim() }));
+            .map((word) => {
+              const item = { t: Math.max(0, Number(word.t)), text: String(word.text).trim() };
+              if (Number.isFinite(Number(word.end))) item.end = Math.max(item.t, Number(word.end));
+              return item;
+            })
+            .sort((a, b) => a.t - b.t);
+          for (let i = 0; i < words.length; i += 1) {
+            if (!Number.isFinite(words[i].end)) {
+              words[i].end = i + 1 < words.length ? words[i + 1].t : words[i].t + 1;
+            }
+          }
           if (words.length > 1) entry.words = words;
         }
         return entry;
       })
-      .sort((a, b) => a.t - b.t)
       : [];
+    const hasWords = lines.some((line) => Array.isArray(line.words) && line.words.length);
+    const resolved = level === 'word' && !hasWords ? 'line' : level;
     return {
-      syncLevel: level === 'line' || level === 'word' ? (lines.length ? level : 'none') : level,
+      syncLevel: resolved === 'line' || resolved === 'word' ? (lines.length ? resolved : 'none') : resolved,
       offsetMs: Number(body.offsetMs) || 0,
       lines,
       plain: typeof body.plain === 'string' ? body.plain : null,
       source: body.source || null,
       sourceLabel: body.sourceLabel || '',
       attribution: body.attribution || '',
+      wordSourceLabel: body.wordSourceLabel || '',
       instrumental: body.instrumental === true || level === 'instrumental',
     };
   }
@@ -138,6 +169,7 @@
     view.scroll.textContent = '';
     view.nodes = [];
     view.activeNode = null;
+    view.activeWordNode = null;
     view.activeIndex = -1;
     view.userScroll = false;
     if (view.returnEl) view.returnEl.hidden = true;
@@ -174,16 +206,30 @@
 
       const fragment = document.createDocumentFragment();
       data.lines.forEach((line, index) => {
-        const node = createElement('p', 'lyrics-line', line.text);
+        const hasWords = Array.isArray(line.words) && line.words.length > 0;
+        const node = hasWords ? createElement('p', 'lyrics-line has-words') : createElement('p', 'lyrics-line', line.text);
         node.dataset.index = String(index);
         node.dataset.time = String(line.t);
         node.setAttribute('role', 'button');
         node.setAttribute('tabindex', '0');
+        if (hasWords) {
+          // Слова разделяются текстовыми узлами: пунктуация и пробелы остаются
+          // исходными, а подсветка не меняет геометрию строки.
+          node._wordNodes = line.words.map((word, wordIndex) => {
+            const span = createElement('span', 'lyrics-word', word.text);
+            span.dataset.word = String(wordIndex);
+            node.appendChild(span);
+            if (wordIndex + 1 < line.words.length) node.appendChild(document.createTextNode(' '));
+            return span;
+          });
+        }
         fragment.appendChild(node);
         view.nodes.push(node);
       });
       view.scroll.appendChild(fragment);
-      setMeta(view, '', data.sourceLabel);
+      setMeta(view, '', data.wordSourceLabel
+        ? `${data.sourceLabel} · слова ${data.wordSourceLabel}`
+        : data.sourceLabel);
       return;
     }
 
@@ -193,8 +239,9 @@
 
   function renderAll() {
     for (const view of views) renderView(view);
+    state.active = -1;
+    state.activeWord = -1;
     if (state.status === 'ready' && state.data && (state.data.syncLevel === 'line' || state.data.syncLevel === 'word')) {
-      state.active = -1;
       syncNow(true);
     }
   }
@@ -213,10 +260,14 @@
     const mode = behavior === 'smooth' && reducedMotion() ? 'auto' : behavior;
     const before = view.scroll.scrollTop;
     view.programmatic = true;
-    try {
-      view.scroll.scrollTo({ top: target, behavior: mode });
-    } catch {
+    if (mode === 'auto') {
       view.scroll.scrollTop = target;
+    } else {
+      try {
+        view.scroll.scrollTo({ top: target, behavior: mode });
+      } catch {
+        view.scroll.scrollTop = target;
+      }
     }
     // В WebKit без поддержки плавного scrollTo позиция может не измениться —
     // тогда доводим её вручную, чтобы автопрокрутка и возврат работали всегда.
@@ -235,8 +286,27 @@
     if (view.returnEl) view.returnEl.hidden = !value;
   }
 
+  function applyWord(index, wordIndex) {
+    state.activeWord = wordIndex;
+    for (const view of views) {
+      if (view.activeWordNode) view.activeWordNode.classList.remove('is-active');
+      const lineNode = view.nodes && view.nodes[index];
+      const nodes = lineNode && lineNode._wordNodes;
+      const node = nodes && nodes[wordIndex] ? nodes[wordIndex] : null;
+      view.activeWordNode = node;
+      if (node) node.classList.add('is-active');
+    }
+  }
+
+  function wordIndexFor(index, ms) {
+    const line = state.data && state.data.lines[index];
+    if (!line || !Array.isArray(line.words) || !line.words.length) return -1;
+    return wordIndexAt(line.words, ms);
+  }
+
   function applyActive(index, forceScroll) {
     state.active = index;
+    const ms = audio ? (audio.currentTime || 0) * 1000 - (Number(state.data && state.data.offsetMs) || 0) : 0;
     for (const view of views) {
       if (view.activeIndex === index && !forceScroll) continue;
       if (view.activeNode) view.activeNode.classList.remove('is-active');
@@ -248,6 +318,7 @@
         scrollToActive(view, forceScroll ? 'auto' : 'smooth');
       }
     }
+    applyWord(index, wordIndexFor(index, ms));
   }
 
   function syncNow(forceScroll) {
@@ -255,8 +326,12 @@
     if (state.data.syncLevel !== 'line' && state.data.syncLevel !== 'word') return;
     const ms = (audio.currentTime || 0) * 1000 - (Number(state.data.offsetMs) || 0);
     const index = indexAt(state.data.lines, ms);
-    if (index !== state.active) applyActive(index, false);
-    else if (forceScroll) applyActive(index, true);
+    if (index !== state.active || forceScroll) {
+      applyActive(index, forceScroll);
+      return;
+    }
+    const wordIndex = wordIndexFor(index, ms);
+    if (wordIndex !== state.activeWord) applyWord(index, wordIndex);
   }
 
   /* ───────────────────────────── загрузка ───────────────────────────── */
@@ -271,9 +346,12 @@
     const seq = state.seq;
     if (state.controller) state.controller.abort();
 
+    if (state.wordsController) state.wordsController.abort();
+    state.wordsState = 'idle';
     state.track = track;
     state.data = null;
     state.active = -1;
+    state.activeWord = -1;
     state.error = null;
     state.status = 'loading';
     renderAll();
@@ -283,6 +361,7 @@
       state.data = cached;
       state.status = 'ready';
       renderAll();
+      maybeLoadWords();
       return;
     }
 
@@ -309,6 +388,7 @@
       state.data = data;
       state.status = 'ready';
       renderAll();
+      maybeLoadWords();
     } catch (error) {
       if (error && error.name === 'AbortError') return;
       if (seq !== state.seq) return;
@@ -321,11 +401,74 @@
   function clear() {
     state.seq += 1;
     if (state.controller) state.controller.abort();
+    if (state.wordsController) state.wordsController.abort();
+    state.wordsState = 'idle';
     state.track = null;
     state.data = null;
     state.status = 'idle';
     state.active = -1;
+    state.activeWord = -1;
     renderAll();
+  }
+
+  /* ───────────────────────────── слова (word-level) ───────────────────────────── */
+
+  function maybeLoadWords() {
+    if (!state.wordsWanted) return;
+    if (state.wordsState !== 'idle') return;
+    if (!state.data || (state.data.syncLevel !== 'line' && state.data.syncLevel !== 'plain')) return;
+    loadWords();
+  }
+
+  function applyWordData(data, body) {
+    state.data = data;
+    state.data.wordSourceLabel = body.wordSourceLabel || '';
+    state.wordsState = 'ready';
+    renderAll();
+  }
+
+  async function loadWords() {
+    const track = state.track;
+    if (!track || !track.id) return;
+    const id = String(track.id);
+    const cached = state.wordCache.get(id);
+    if (cached === 'none') { state.wordsState = 'none'; return; }
+    if (cached && cached.data) { applyWordData(cached.data, cached.body); return; }
+
+    state.wordsState = 'loading';
+    const seq = state.seq;
+    if (state.wordsController) state.wordsController.abort();
+    const controller = new AbortController();
+    state.wordsController = controller;
+    try {
+      const response = await fetch(`${API}/api/lyrics/${encodeURIComponent(id)}/words`, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+        signal: controller.signal,
+      });
+      let body = null;
+      try { body = await response.json(); } catch { body = null; }
+      if (seq !== state.seq || !state.track || String(state.track.id) !== id) return;
+      if (!response.ok || !body || body.ok === false || body.syncLevel !== 'word' || !Array.isArray(body.lines)) {
+        state.wordsState = 'none';
+        state.wordCache.set(id, 'none');
+        return;
+      }
+      const data = normalizeResponse({ ...state.data, syncLevel: 'word', lines: body.lines, plain: null, offsetMs: 0 });
+      if (data.syncLevel !== 'word' || !data.lines.some((line) => line.words)) {
+        state.wordsState = 'none';
+        state.wordCache.set(id, 'none');
+        return;
+      }
+      data.wordSourceLabel = body.wordSourceLabel || '';
+      state.wordCache.set(id, { data, body });
+      while (state.wordCache.size > CACHE_LIMIT) state.wordCache.delete(state.wordCache.keys().next().value);
+      applyWordData(data, body);
+    } catch (error) {
+      if (error && error.name === 'AbortError') return;
+      if (seq !== state.seq) return;
+      state.wordsState = 'error';
+    }
   }
 
   /* ───────────────────────────── события ───────────────────────────── */
@@ -373,9 +516,14 @@
       const index = Number(node.dataset.index);
       const line = state.data && state.data.lines[index];
       if (!line) return;
-      // Переход по строке: перематываем существующий плеер, ничего не дублируя.
+      // Клик по слову перематывает к слову, по остальной строке — к строке.
+      const wordNode = event.target.closest('.lyrics-word');
+      const word = wordNode && Array.isArray(line.words)
+        ? line.words[Number(wordNode.dataset.word)]
+        : null;
+      const target = word && Number.isFinite(word.t) ? word.t : line.t;
       try {
-        audio.currentTime = Math.max(0, (line.t + (Number(state.data.offsetMs) || 0)) / 1000);
+        audio.currentTime = Math.max(0, (target + (Number(state.data.offsetMs) || 0)) / 1000);
       } catch { /* ignore */ }
       setUserScroll(view, false);
       applyActive(index, true);
@@ -419,7 +567,11 @@
   window.RH_LYRICS = {
     setTrack(track) { return load(track, false); },
     ensure() {
-      if (state.status === 'idle' && state.track) return load(state.track, false);
+      state.wordsWanted = true;
+      if (state.status === 'idle' && state.track) {
+        return load(state.track, false).then(() => { maybeLoadWords(); });
+      }
+      maybeLoadWords();
       return Promise.resolve();
     },
     retry() { if (state.track) return load(state.track, true); return Promise.resolve(); },
@@ -442,6 +594,8 @@
         trackId: state.track ? String(state.track.id) : null,
         status: state.status,
         active: state.active,
+        activeWord: state.activeWord,
+        wordsState: state.wordsState,
         syncLevel: state.data ? state.data.syncLevel : null,
         lines: state.data ? state.data.lines.length : 0,
       };

@@ -141,6 +141,40 @@ check('движок не прокручивает при ручном чтени
 check('есть кнопка возврата к текущей строке',
   /view\.returnEl\.addEventListener\('click'/.test(engine));
 
+/* ───────────────────────────── word-level ───────────────────────────── */
+
+check('движок запрашивает слова отдельным маршрутом',
+  /\/api\/lyrics\/\$\{encodeURIComponent\(id\)\}\/words/.test(engine));
+check('слова загружаются лениво — при открытии текста',
+  /state\.wordsWanted = true/.test(engine) && /ensure\(\)/.test(engine));
+check('word-ответ сливается с текстом без замены источника',
+  /syncLevel: 'word', lines: body\.lines, plain: null, offsetMs: 0/.test(engine));
+check('каждое слово — отдельный span',
+  /createElement\('span', 'lyrics-word'/.test(engine));
+check('активное слово ровно одно: прежнее снимается',
+  /view\.activeWordNode\.classList\.remove\('is-active'\)/.test(engine));
+check('слова ищутся бинарным поиском',
+  /function wordIndexAt\(words, ms\)/.test(engine) && /words\[mid\]\.t <= ms/.test(engine));
+check('при смене трека word-запрос отменяется',
+  /state\.wordsController\.abort\(\)/.test(engine));
+check('устаревший word-ответ игнорируется',
+  /seq !== state\.seq/.test(engine) && /String\(state\.track\.id\) !== id/.test(engine));
+check('при отсутствии слов остаётся построчный режим',
+  /syncLevel !== 'word'/.test(engine) && /state\.wordsState = 'none'/.test(engine));
+check('клик по слову перематывает к слову',
+  /event\.target\.closest\('\.lyrics-word'\)/.test(engine));
+
+check('CSS: активное слово выделено градиентом сайта',
+  /\.lyrics-word\.is-active \{[\s\S]{0,160}linear-gradient\(135deg, rgba\(108, 140, 255/.test(css));
+check('CSS: в word-режиме строка не заливается фоном',
+  /\.lyrics-line\.has-words\.is-active \{[\s\S]{0,80}background: none;/.test(css));
+check('CSS: отступы слова не меняют геометрию строки',
+  /\.lyrics-word \{[\s\S]{0,80}padding: 1px 4px;[\s\S]{0,40}margin: -1px -4px;/.test(css));
+check('CSS: анимация слова отключается при reduced-motion',
+  /@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,80}\.lyrics-word \{ transition: none; \}/.test(css));
+check('CSS: word-стили не меняют размеры панели и плеера',
+  !/\.lyrics-word[^{]*\{[^}]*position: fixed/.test(css));
+
 console.log(`\nПройдено: ${passed}, провалено: ${failures.length}`);
 if (failures.length) {
   console.log('Провалы:');

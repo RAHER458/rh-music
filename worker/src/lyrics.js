@@ -515,7 +515,7 @@ query lyricsTrack($ids: [ID!]!) {
   }
 }`;
 
-async function loadTrackMeta(env, trackId) {
+export async function loadTrackMeta(env, trackId) {
   const data = await gql(env, TRACK_META_QUERY, 'lyricsTrack', { ids: [trackId] });
   const found = (data.getTracks || []).find((item) => item && item.id);
   if (!found) return null;
@@ -531,23 +531,16 @@ async function loadTrackMeta(env, trackId) {
 }
 
 /**
- * GET /api/lyrics/:trackId
- *
- * Всегда отвечает единым форматом. Если источники недоступны (сеть, 429,
- * 5xx), возвращается 502 — клиент показывает состояние ошибки и может
- * повторить запрос; такие ответы не кешируются.
+ * Разрешает текст трека и возвращает нормализованный payload вместе с
+ * метаданными каталога (они нужны word-level модулю для запроса к LiriQo).
+ * Кеш хранит пару { payload, meta }, поэтому повторный запрос не ходит
+ * в каталог и источники.
  */
-export async function handleLyrics(request, env, trackId) {
-  const url = new URL(request.url);
-  const cacheKey = `${url.origin}/__lyrics-cache/v1/${trackId}`;
+export async function resolveLyrics(env, trackId, origin) {
+  const cacheKey = `${origin}/__lyrics-cache/v2/${trackId}`;
 
   const cached = await cacheRead(cacheKey);
-  if (cached) {
-    return json({ ...cached, cached: true }, 200, {
-      'Cache-Control': `public, max-age=${CLIENT_MAX_AGE}, stale-while-revalidate=86400`,
-      'X-Lyrics-Cache': 'hit',
-    });
-  }
+  if (cached && cached.payload) return { payload: cached.payload, meta: cached.meta || null, cached: true };
 
   let meta;
   try {
@@ -555,8 +548,7 @@ export async function handleLyrics(request, env, trackId) {
   } catch (error) {
     const status = error instanceof ApiError ? error.status : 502;
     if (status === 401 || status === 403) {
-      // Каталог недоступен — синхронизированный текст получить не из чего.
-      return json({ ok: false, error: { code: 'CATALOG_UNAVAILABLE', message: 'Каталог временно недоступен.' } }, 502);
+      throw new ApiError(502, 'CATALOG_UNAVAILABLE', 'Каталог временно недоступен.');
     }
     throw error;
   }
@@ -588,22 +580,27 @@ export async function handleLyrics(request, env, trackId) {
   }
 
   if (data.status === 'error') {
-    return json({
-      ok: false,
-      error: {
-        code: 'LYRICS_UNAVAILABLE',
-        message: 'Источники текста временно недоступны.',
-        reason: data.reason || null,
-      },
-    }, 502, { 'Cache-Control': 'no-store' });
+    throw new ApiError(502, 'LYRICS_UNAVAILABLE', 'Источники текста временно недоступны.', data.reason || null);
   }
 
   const payload = payloadFor(trackId, data.status === 'ok' ? source : null, data.status === 'ok' ? data : { syncLevel: 'none' }, false);
   const ttl = payload.syncLevel === 'none' ? TTL_MISS_SECONDS : TTL_FOUND_SECONDS;
-  await cacheWrite(cacheKey, payload, ttl);
+  await cacheWrite(cacheKey, { payload, meta }, ttl);
+  return { payload, meta, cached: false };
+}
 
-  return json(payload, 200, {
+/**
+ * GET /api/lyrics/:trackId
+ *
+ * Всегда отвечает единым форматом. Если источники недоступны (сеть, 429,
+ * 5xx), возвращается 502 — клиент показывает состояние ошибки и может
+ * повторить запрос; такие ответы не кешируются.
+ */
+export async function handleLyrics(request, env, trackId) {
+  const url = new URL(request.url);
+  const { payload, cached } = await resolveLyrics(env, trackId, url.origin);
+  return json({ ...payload, cached }, 200, {
     'Cache-Control': `public, max-age=${CLIENT_MAX_AGE}, stale-while-revalidate=86400`,
-    'X-Lyrics-Cache': 'miss',
+    'X-Lyrics-Cache': cached ? 'hit' : 'miss',
   });
 }

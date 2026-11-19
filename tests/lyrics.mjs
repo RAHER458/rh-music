@@ -136,9 +136,18 @@ function jsonResponse(data, status = 200, headers = {}) {
 
 async function callRoute(id) {
   const request = new Request(`https://rh-music.test/api/lyrics/${id}`);
-  const response = await handleLyrics(request, { ZVUK_TOKEN: 'fixture-token-value' }, id);
-  const body = await response.json();
-  return { status: response.status, body, headers: response.headers };
+  try {
+    const response = await handleLyrics(request, { ZVUK_TOKEN: 'fixture-token-value' }, id);
+    const body = await response.json();
+    return { status: response.status, body, headers: response.headers };
+  } catch (error) {
+    // resolveLyrics бросает ApiError, а маршрутизатор превращает его в JSON.
+    return {
+      status: error.status || 500,
+      body: { ok: false, error: { code: error.code, message: error.message } },
+      headers: new Headers(),
+    };
+  }
 }
 
 {

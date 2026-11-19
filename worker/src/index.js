@@ -25,6 +25,7 @@ import {
 import { handleRecommendations } from './recommend.js';
 import { handleHome, handleCatalogPlaylist } from './home.js';
 import { handleLyrics } from './lyrics.js';
+import { handleLyricsWords } from './words.js';
 import {
   handleProviders, handleIdentities, handleUnlink, handleGoogleNonce, handleGoogleLogin,
 } from './oauth.js';
@@ -291,8 +292,8 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.3.0',
-      features: ['catalog', 'accounts', 'oauth', 'library', 'playlists', 'history', 'recommendations', 'home', 'lyrics'],
+      version: '2.4.0',
+      features: ['catalog', 'accounts', 'oauth', 'library', 'playlists', 'history', 'recommendations', 'home', 'lyrics', 'lyrics-words'],
     });
   }
 
@@ -318,7 +319,7 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.3.0',
+      version: '2.4.0',
       tokenConfigured: !!env.ZVUK_TOKEN,
       database,
       upstream,
@@ -392,6 +393,7 @@ async function route(request, env) {
   if (path === '/api/search/artists' && method === 'GET') return handleSearch(env, url, 'artists');
   if (path === '/api/search/albums' && method === 'GET') return handleSearch(env, url, 'albums');
 
+  if ((m = path.match(/^\/api\/lyrics\/([^/]+)\/words$/)) && method === 'GET') return handleLyricsWords(request, env, validId(m[1]));
   if ((m = path.match(/^\/api\/lyrics\/([^/]+)$/)) && method === 'GET') return handleLyrics(request, env, validId(m[1]));
   if ((m = path.match(/^\/api\/track\/([^/]+)\/stream$/)) && method === 'GET') return handleStreamInfo(env, validId(m[1]), url);
   if ((m = path.match(/^\/api\/track\/([^/]+)$/)) && method === 'GET') return handleTrack(env, validId(m[1]));
