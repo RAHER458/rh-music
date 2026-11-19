@@ -14,7 +14,7 @@
  *     node scripts/deploy-worker.mjs
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -23,6 +23,7 @@ const root = join(here, '..');
 
 const API = 'https://api.cloudflare.com/client/v4';
 const SCRIPT_NAME = process.env.WORKER_NAME || 'rh-music-api';
+const D1_DATABASE_ID = process.env.D1_DATABASE_ID || '164c51cd-2899-4daf-a669-a837f7a460b1';
 
 const token = process.env.CLOUDFLARE_API_TOKEN;
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -55,24 +56,28 @@ async function cf(path, init = {}) {
   return payload.result;
 }
 
-const workerSource = await readFile(join(root, 'worker/src/index.js'), 'utf8');
+const srcDir = join(root, 'worker/src');
+const modules = (await readdir(srcDir)).filter((name) => name.endsWith('.js')).sort();
 
 const metadata = {
   main_module: 'index.js',
   compatibility_date: '2025-01-15',
   bindings: [
     { type: 'plain_text', name: 'SERVICE_NAME', text: 'rh-music-api' },
+    { type: 'd1', name: 'DB', id: D1_DATABASE_ID },
   ],
+  // Секрет ZVUK_TOKEN не перезаписывается при обновлении кода.
+  keep_bindings: ['secret_text'],
   observability: { enabled: true },
 };
 
 const form = new FormData();
 form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json');
-form.append(
-  'index.js',
-  new Blob([workerSource], { type: 'application/javascript+module' }),
-  'index.js',
-);
+for (const name of modules) {
+  const source = await readFile(join(srcDir, name), 'utf8');
+  form.append(name, new Blob([source], { type: 'application/javascript+module' }), name);
+}
+console.log('Модули:', modules.join(', '));
 
 const deployed = await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}`, {
   method: 'PUT',
@@ -94,8 +99,13 @@ try {
 // Секрет ZVUK_TOKEN — только если передан явно и ещё не задан.
 if (process.env.ZVUK_TOKEN) {
   const secret = process.env.ZVUK_TOKEN.trim();
-  const existing = await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/secrets`);
-  const already = (existing || []).some((item) => item.name === 'ZVUK_TOKEN');
+  let already = false;
+  try {
+    const existing = await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/secrets`);
+    already = (existing || []).some((item) => item.name === 'ZVUK_TOKEN');
+  } catch {
+    already = true; // список секретов через API недоступен — не перезаписываем существующий
+  }
   if (already && process.env.REPLACE_SECRET !== '1') {
     console.log('Секрет ZVUK_TOKEN уже существует — значение не изменялось.');
   } else {

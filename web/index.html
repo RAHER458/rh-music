@@ -9,7 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="RH—MUSIC">
-<meta name="description" content="RH—MUSIC — премиальный плеер с поиском и воспроизведением музыки из каталога Zvuk.">
+<meta name="description" content="RH—MUSIC — музыкальный сервис: поиск, личная библиотека, плейлисты и персональные рекомендации.">
+<meta name="format-detection" content="telephone=no">
 <title>RH—MUSIC</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%236C8CFF'/><text x='32' y='43' font-family='system-ui' font-size='26' font-weight='800' fill='white' text-anchor='middle'>RH</text></svg>">
@@ -19,99 +20,87 @@
 <div class="ambient" id="ambient" aria-hidden="true">
   <span class="ambient-glow ambient-a"></span>
   <span class="ambient-glow ambient-b"></span>
-  <span class="ambient-glow ambient-c"></span>
 </div>
 
-<div class="app-shell">
+<div class="app">
 
-  <!-- ─────────────── Sidebar (desktop) ─────────────── -->
-  <aside class="sidebar" id="sidebar">
-    <a class="side-brand" href="#/home" data-action="link">
+  <!-- ─────────── Sidebar (desktop) ─────────── -->
+  <aside class="sidebar" id="sidebar" aria-label="Навигация">
+    <a class="side-brand" href="#/home" data-link>
       <span class="logo">RH</span>
       <span class="side-brand-text">
         <span class="side-brand-title">RH<span class="dash">—</span>MUSIC</span>
-        <span class="side-brand-sub">каталог Zvuk</span>
+        <span class="side-brand-sub">музыкальный сервис</span>
       </span>
     </a>
 
-    <nav class="side-nav" aria-label="Основная навигация">
-      <a class="side-item" data-nav="home" href="#/home" data-action="link">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.3 3.3a1 1 0 0 1 1.4 0l7.5 7.2a1 1 0 0 1 .3.7V19a2 2 0 0 1-2 2h-4a1 1 0 0 1-1-1v-4h-2v4a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2v-7.8a1 1 0 0 1 .3-.7l7-6.5Z"/></svg>
+    <nav class="side-nav">
+      <a class="side-item" data-nav="home" href="#/home" data-link>
+        <svg viewBox="0 0 24 24"><path d="M11.3 3.3a1 1 0 0 1 1.4 0l7.5 7.2a1 1 0 0 1 .3.7V19a2 2 0 0 1-2 2h-4a1 1 0 0 1-1-1v-4h-2v4a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2v-7.8a1 1 0 0 1 .3-.7l7-6.5Z"/></svg>
         <span>Главная</span>
       </a>
-      <a class="side-item" data-nav="search" href="#/search" data-action="link">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 1 1-4.6 13.4l-3.2 3.2a1 1 0 1 1-1.4-1.4l3.2-3.2A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+      <a class="side-item" data-nav="search" href="#/search" data-link>
+        <svg viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1-4.6 13.4l-3.2 3.2a1 1 0 1 1-1.4-1.4l3.2-3.2A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
         <span>Поиск</span>
       </a>
-      <a class="side-item" data-nav="tracks" href="#/tracks" data-action="link">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18.5a3.5 3.5 0 1 1-2-3.16V6.4a1 1 0 0 1 .76-.97l9-2.25A1 1 0 0 1 18 4.15v10.1a3.5 3.5 0 1 1-2-3.16V8.3l-7 1.75v8.45Z"/></svg>
-        <span>Треки</span>
-      </a>
-      <a class="side-item" data-nav="artists" href="#/artists" data-action="link">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-7.5 2.3-7.5 5.1 0 .5.4.9.9.9h13.2c.5 0 .9-.4.9-.9 0-2.8-3.4-5.1-7.5-5.1Z"/></svg>
-        <span>Исполнители</span>
-      </a>
-      <a class="side-item" data-nav="albums" href="#/albums" data-action="link">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 13.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0-2a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
-        <span>Альбомы</span>
-      </a>
-      <a class="side-item" data-nav="library" href="#/library" data-action="link">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.6 5.2 5.2 0 0 1 21.3 12c-1.8 4.4-9.3 9-9.3 9Z"/></svg>
+      <a class="side-item" data-nav="library" href="#/library" data-link>
+        <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.6 5.2 5.2 0 0 1 21.3 12c-1.8 4.4-9.3 9-9.3 9Z"/></svg>
         <span>Моя музыка</span>
+      </a>
+      <a class="side-item" data-nav="playlists" href="#/playlists" data-link>
+        <svg viewBox="0 0 24 24"><path d="M4 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm12.5-9.6a1 1 0 0 1 1.5.9v8.2a2.6 2.6 0 1 1-2-2.5V6.4l.5.9Z"/></svg>
+        <span>Плейлисты</span>
+      </a>
+      <a class="side-item" data-nav="recent" href="#/recent" data-link>
+        <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 1 1 0 1 0-2 0 7 7 0 1 1-7-7 7 7 0 0 1 5.2 2.4l-1.5.2a1 1 0 0 0 .2 2l3.6-.5a1 1 0 0 0 .85-1.1l-.5-3.6a1 1 0 0 0-2 .3l.2 1.4A9 9 0 0 0 12 3Zm.75 4.5a1 1 0 0 0-2 0V12c0 .3.14.6.38.78l3.25 2.5a1 1 0 1 0 1.24-1.56l-2.87-2.2V7.5Z"/></svg>
+        <span>Недавние</span>
       </a>
     </nav>
 
     <div class="side-block">
-      <div class="side-block-title">Недавние</div>
-      <div class="recent-list" id="recentList"></div>
+      <div class="side-block-title">Мои плейлисты</div>
+      <div class="side-playlists" id="sidePlaylists"></div>
     </div>
 
-    <div class="side-foot">
-      <span class="dot-live"></span>
-      <span>Zvuk GraphQL · Worker</span>
-    </div>
+    <a class="side-account" id="sideAccount" href="#/account" data-link>
+      <span class="avatar" id="sideAvatar">?</span>
+      <span class="side-account-text">
+        <span class="side-account-name" id="sideName">Гость</span>
+        <span class="side-account-sub" id="sideSub">Войти или создать аккаунт</span>
+      </span>
+    </a>
   </aside>
 
-  <!-- ─────────────── Main column ─────────────── -->
+  <!-- ─────────── Main ─────────── -->
   <div class="app-main">
     <header class="topbar" id="topbar">
-      <a class="mobile-brand" href="#/home" data-action="link">
+      <a class="brand-mobile" href="#/home" data-link>
         <span class="logo small">RH</span>
-        <span class="mobile-brand-text">RH—MUSIC</span>
+        <span class="brand-mobile-text">RH—MUSIC</span>
       </a>
 
-      <form class="searchbar" id="searchForm" autocomplete="off" role="search">
-        <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 1 1-4.6 13.4l-3.2 3.2a1 1 0 1 1-1.4-1.4l3.2-3.2A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
-        <input id="q" type="search" name="q" placeholder="Треки, исполнители, альбомы"
-               enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Поиск музыки">
+      <form class="searchbar" id="searchForm" role="search" autocomplete="off">
+        <svg class="search-ico" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1-4.6 13.4l-3.2 3.2a1 1 0 1 1-1.4-1.4l3.2-3.2A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+        <input id="q" type="search" name="q" placeholder="Что послушать?" enterkeyhint="search"
+               autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Поиск музыки">
         <button class="search-clear" id="searchClear" type="button" aria-label="Очистить">✕</button>
-        <button class="search-go" type="submit">Найти</button>
       </form>
 
-      <button class="icon-btn" id="topQueue" type="button" aria-label="Очередь воспроизведения">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm13.5-7.6a1 1 0 0 1 1.5.9v6.2a2.6 2.6 0 1 1-2-2.5V9.6l.5.8Z"/></svg>
+      <button class="icon-btn account-btn" id="accountBtn" type="button" aria-label="Аккаунт">
+        <span class="avatar" id="topAvatar">?</span>
       </button>
     </header>
-
-    <nav class="mobile-nav" id="mobileNav" aria-label="Навигация">
-      <a class="mnav" data-nav="home" href="#/home" data-action="link">Главная</a>
-      <a class="mnav" data-nav="tracks" href="#/tracks" data-action="link">Треки</a>
-      <a class="mnav" data-nav="artists" href="#/artists" data-action="link">Исполнители</a>
-      <a class="mnav" data-nav="albums" href="#/albums" data-action="link">Альбомы</a>
-      <a class="mnav" data-nav="library" href="#/library" data-action="link">Моя музыка</a>
-    </nav>
 
     <main class="page" id="main" tabindex="-1"></main>
   </div>
 </div>
 
-<!-- ─────────────── Player (desktop bar / mobile mini) ─────────────── -->
+<!-- ─────────── Плеер ─────────── -->
 <footer class="player" id="player" aria-label="Плеер">
-  <div class="player-progress" id="playerProgress">
-    <input id="seekMini" class="seek seek-mini" type="range" min="0" max="1000" value="0" step="1" aria-label="Позиция воспроизведения">
+  <div class="player-progress">
+    <input id="seekMini" class="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Позиция воспроизведения" disabled>
   </div>
-
-  <div class="player-grid">
+  <div class="player-row">
     <button class="np-open" id="npOpen" type="button" aria-label="Открыть плеер">
       <span class="np-cover">
         <img id="npCover" alt="" decoding="async">
@@ -123,55 +112,62 @@
       </span>
     </button>
 
-    <div class="player-center">
-      <div class="transport">
-        <button class="ctrl ghost" id="shuffle" type="button" aria-label="Перемешать" title="Перемешать">
-          <svg viewBox="0 0 24 24"><path d="M17 3.3a1 1 0 0 1 1.4 0l2.3 2.3a1 1 0 0 1 0 1.4L18.4 9.3a1 1 0 0 1-1.4-1.4l.6-.6h-1.3c-.9 0-1.4.3-1.9 1l-1.4 2-1.2-1.7 1.1-1.5c.8-1.2 1.9-1.8 3.4-1.8h1.3l-.6-.6a1 1 0 0 1 0-1.4ZM3 7a1 1 0 0 1 1-1h1.6c1.5 0 2.6.6 3.4 1.8l4.6 6.9c.5.7 1 1 1.9 1h1.3l-.6-.6a1 1 0 0 1 1.4-1.4l2.3 2.3a1 1 0 0 1 0 1.4l-2.3 2.3a1 1 0 0 1-1.4-1.4l.6-.6h-1.3c-1.5 0-2.6-.6-3.4-1.8L6.6 8.9c-.5-.7-1-1-1.9-1H4a1 1 0 0 1-1-1Zm0 10a1 1 0 0 1 1-1h1.6c.9 0 1.4-.3 1.9-1l.7-1 1.2 1.8-.6.9c-.8 1.2-1.9 1.8-3.4 1.8H4a1 1 0 0 1-1-1Z"/></svg>
-        </button>
-        <button class="ctrl" id="prev" type="button" aria-label="Предыдущий трек" disabled>
-          <svg viewBox="0 0 24 24"><path d="M6 5a1 1 0 0 1 2 0v5.2l8.4-5.6A1.2 1.2 0 0 1 18 5.6v12.8a1.2 1.2 0 0 1-1.6 1L8 13.8V19a1 1 0 1 1-2 0V5Z"/></svg>
-        </button>
-        <button class="ctrl play" id="play" type="button" aria-label="Воспроизвести" disabled>
-          <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.2c0-1 1.1-1.6 2-1.1l9.4 6.3a1.3 1.3 0 0 1 0 2.2L10 19c-.9.5-2-.1-2-1.1V5.2Z"/></svg>
-          <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Zm7 0a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Z"/></svg>
-          <span class="spinner"></span>
-        </button>
-        <button class="ctrl" id="next" type="button" aria-label="Следующий трек" disabled>
-          <svg viewBox="0 0 24 24"><path d="M18 5a1 1 0 0 0-2 0v5.2L7.6 4.6A1.2 1.2 0 0 0 6 5.6v12.8a1.2 1.2 0 0 0 1.6 1L16 13.8V19a1 1 0 1 0 2 0V5Z"/></svg>
-        </button>
-        <button class="ctrl ghost" id="repeat" type="button" aria-label="Повтор" title="Повтор">
-          <svg viewBox="0 0 24 24"><path d="M7 7h9.6l-.8-.8a1 1 0 1 1 1.4-1.4l2.5 2.5a1 1 0 0 1 0 1.4l-2.5 2.5a1 1 0 0 1-1.4-1.4l.8-.8H7a1 1 0 0 0-1 1v1a1 1 0 1 1-2 0V10a3 3 0 0 1 3-3Zm10 10H7.4l.8.8a1 1 0 1 1-1.4 1.4l-2.5-2.5a1 1 0 0 1 0-1.4l2.5-2.5a1 1 0 0 1 1.4 1.4l-.8.8H17a1 1 0 0 0 1-1v-1a1 1 0 1 1 2 0v1a3 3 0 0 1-3 3Z"/></svg>
-          <span class="repeat-one">1</span>
-        </button>
-      </div>
-      <div class="bar">
-        <span class="time" id="tCur">0:00</span>
-        <input id="seek" class="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Позиция воспроизведения" disabled>
-        <span class="time" id="tDur">0:00</span>
-      </div>
-    </div>
-
-    <div class="player-right">
-      <button class="ctrl play player-mini-play" id="playMini" type="button" aria-label="Воспроизвести" disabled>
+    <div class="player-desktop-controls">
+      <button class="ctrl ghost" id="shuffle" type="button" aria-label="Перемешать">
+        <svg viewBox="0 0 24 24"><path d="M17 3.3a1 1 0 0 1 1.4 0l2.3 2.3a1 1 0 0 1 0 1.4L18.4 9.3a1 1 0 0 1-1.4-1.4l.6-.6h-1.3c-.9 0-1.4.3-1.9 1l-1.4 2-1.2-1.7 1.1-1.5c.8-1.2 1.9-1.8 3.4-1.8h1.3l-.6-.6a1 1 0 0 1 0-1.4ZM3 7a1 1 0 0 1 1-1h1.6c1.5 0 2.6.6 3.4 1.8l4.6 6.9c.5.7 1 1 1.9 1h1.3l-.6-.6a1 1 0 0 1 1.4-1.4l2.3 2.3a1 1 0 0 1 0 1.4l-2.3 2.3a1 1 0 0 1-1.4-1.4l.6-.6h-1.3c-1.5 0-2.6-.6-3.4-1.8L6.6 8.9c-.5-.7-1-1-1.9-1H4a1 1 0 0 1-1-1Zm0 10a1 1 0 0 1 1-1h1.6c.9 0 1.4-.3 1.9-1l.7-1 1.2 1.8-.6.9c-.8 1.2-1.9 1.8-3.4 1.8H4a1 1 0 0 1-1-1Z"/></svg>
+      </button>
+      <button class="ctrl" id="prev" type="button" aria-label="Предыдущий трек" disabled>
+        <svg viewBox="0 0 24 24"><path d="M6 5a1 1 0 0 1 2 0v5.2l8.4-5.6A1.2 1.2 0 0 1 18 5.6v12.8a1.2 1.2 0 0 1-1.6 1L8 13.8V19a1 1 0 1 1-2 0V5Z"/></svg>
+      </button>
+      <button class="ctrl play" id="play" type="button" aria-label="Воспроизвести" disabled>
         <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.2c0-1 1.1-1.6 2-1.1l9.4 6.3a1.3 1.3 0 0 1 0 2.2L10 19c-.9.5-2-.1-2-1.1V5.2Z"/></svg>
         <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Zm7 0a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Z"/></svg>
         <span class="spinner"></span>
       </button>
-      <button class="pill" id="quality" type="button" aria-label="Качество звука">MID<span>128</span></button>
-      <div class="volume">
-        <button class="icon-btn tiny" id="mute" type="button" aria-label="Звук">
-          <svg viewBox="0 0 24 24"><path d="M11 5.6 7.4 8.2A2 2 0 0 1 6.2 8.6H5a1 1 0 0 0-1 1v4.8a1 1 0 0 0 1 1h1.2c.4 0 .9.1 1.2.4l3.6 2.6c.7.5 1.6 0 1.6-.8V6.4c0-.8-1-1.3-1.6-.8Z"/></svg>
-        </button>
-        <input id="volume" class="volume-slider" type="range" min="0" max="100" value="100" aria-label="Громкость">
-      </div>
-      <button class="icon-btn" id="queueBtn" type="button" aria-label="Очередь воспроизведения">
-        <svg viewBox="0 0 24 24"><path d="M4 6a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm13.5-7.6a1 1 0 0 1 1.5.9v6.2a2.6 2.6 0 1 1-2-2.5V9.6l.5.8Z"/></svg>
+      <button class="ctrl" id="next" type="button" aria-label="Следующий трек" disabled>
+        <svg viewBox="0 0 24 24"><path d="M18 5a1 1 0 0 0-2 0v5.2L7.6 4.6A1.2 1.2 0 0 0 6 5.6v12.8a1.2 1.2 0 0 0 1.6 1L16 13.8V19a1 1 0 1 0 2 0V5Z"/></svg>
+      </button>
+      <button class="ctrl ghost" id="repeat" type="button" aria-label="Повтор">
+        <svg viewBox="0 0 24 24"><path d="M7 7h9.6l-.8-.8a1 1 0 1 1 1.4-1.4l2.5 2.5a1 1 0 0 1 0 1.4l-2.5 2.5a1 1 0 0 1-1.4-1.4l.8-.8H7a1 1 0 0 0-1 1v1a1 1 0 1 1-2 0V10a3 3 0 0 1 3-3Zm10 10H7.4l.8.8a1 1 0 1 1-1.4 1.4l-2.5-2.5a1 1 0 0 1 0-1.4l2.5-2.5a1 1 0 0 1 1.4 1.4l-.8.8H17a1 1 0 0 0 1-1v-1a1 1 0 1 1 2 0v1a3 3 0 0 1-3 3Z"/></svg>
+        <span class="repeat-one">1</span>
       </button>
     </div>
+
+    <div class="player-time" id="playerTime">0:00 / 0:00</div>
+
+    <button class="play-mobile ctrl play" id="playMini" type="button" aria-label="Воспроизвести" disabled>
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.2c0-1 1.1-1.6 2-1.1l9.4 6.3a1.3 1.3 0 0 1 0 2.2L10 19c-.9.5-2-.1-2-1.1V5.2Z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Zm7 0a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Z"/></svg>
+      <span class="spinner"></span>
+    </button>
   </div>
 </footer>
 
-<!-- ─────────────── Full-screen Now Playing ─────────────── -->
+<!-- ─────────── Нижняя навигация (телефон) ─────────── -->
+<nav class="tabbar" id="tabbar" aria-label="Навигация">
+  <a class="tab" data-nav="home" href="#/home" data-link>
+    <svg viewBox="0 0 24 24"><path d="M11.3 3.3a1 1 0 0 1 1.4 0l7.5 7.2a1 1 0 0 1 .3.7V19a2 2 0 0 1-2 2h-4a1 1 0 0 1-1-1v-4h-2v4a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2v-7.8a1 1 0 0 1 .3-.7l7-6.5Z"/></svg>
+    <span>Главная</span>
+  </a>
+  <a class="tab" data-nav="search" href="#/search" data-link>
+    <svg viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1-4.6 13.4l-3.2 3.2a1 1 0 1 1-1.4-1.4l3.2-3.2A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+    <span>Поиск</span>
+  </a>
+  <a class="tab" data-nav="library" href="#/library" data-link>
+    <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.6 5.2 5.2 0 0 1 21.3 12c-1.8 4.4-9.3 9-9.3 9Z"/></svg>
+    <span>Моя музыка</span>
+  </a>
+  <a class="tab" data-nav="playlists" href="#/playlists" data-link>
+    <svg viewBox="0 0 24 24"><path d="M4 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm12.5-9.6a1 1 0 0 1 1.5.9v8.2a2.6 2.6 0 1 1-2-2.5V6.4l.5.9Z"/></svg>
+    <span>Плейлисты</span>
+  </a>
+  <a class="tab" data-nav="recent" href="#/recent" data-link>
+    <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 1 1 0 1 0-2 0 7 7 0 1 1-7-7 7 7 0 0 1 5.2 2.4l-1.5.2a1 1 0 0 0 .2 2l3.6-.5a1 1 0 0 0 .85-1.1l-.5-3.6a1 1 0 0 0-2 .3l.2 1.4A9 9 0 0 0 12 3Zm.75 4.5a1 1 0 0 0-2 0V12c0 .3.14.6.38.78l3.25 2.5a1 1 0 1 0 1.24-1.56l-2.87-2.2V7.5Z"/></svg>
+    <span>Недавние</span>
+  </a>
+</nav>
+
+<!-- ─────────── Полноэкранный Now Playing ─────────── -->
 <section class="now-playing" id="nowPlaying" aria-hidden="true" aria-label="Сейчас играет">
   <div class="np-bg" id="npBg" aria-hidden="true"></div>
   <div class="np-inner">
@@ -179,7 +175,7 @@
       <button class="icon-btn round" id="npClose" type="button" aria-label="Свернуть">
         <svg viewBox="0 0 24 24"><path d="M12 16.5 5.6 10a1.2 1.2 0 0 1 1.7-1.7l4.7 4.7 4.7-4.7A1.2 1.2 0 0 1 18.4 10L12 16.5Z"/></svg>
       </button>
-      <span class="np-kicker" id="npKicker">Сейчас играет</span>
+      <span class="np-kicker">Сейчас играет</span>
       <button class="icon-btn round" id="npQueue" type="button" aria-label="Очередь">
         <svg viewBox="0 0 24 24"><path d="M4 6a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm13.5-7.6a1 1 0 0 1 1.5.9v6.2a2.6 2.6 0 1 1-2-2.5V9.6l.5.8Z"/></svg>
       </button>
@@ -191,48 +187,40 @@
     </div>
 
     <div class="np-info">
-      <a class="np-song" id="npSong" href="#/home" data-action="link">Ничего не играет</a>
-      <a class="np-singer" id="npSinger" href="#/home" data-action="link">Выберите трек</a>
+      <span class="np-song" id="npSong">Ничего не играет</span>
+      <span class="np-singer" id="npSinger">Выберите трек</span>
     </div>
 
     <div class="np-progress">
-      <input id="seekBig" class="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Позиция воспроизведения">
+      <input id="seekBig" class="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Позиция воспроизведения" disabled>
       <div class="np-times"><span id="npCur">0:00</span><span id="npDur">0:00</span></div>
     </div>
 
     <div class="np-controls">
-      <button class="ctrl ghost" id="npShuffle" type="button" aria-label="Перемешать">
-        <svg viewBox="0 0 24 24"><path d="M17 3.3a1 1 0 0 1 1.4 0l2.3 2.3a1 1 0 0 1 0 1.4L18.4 9.3a1 1 0 0 1-1.4-1.4l.6-.6h-1.3c-.9 0-1.4.3-1.9 1l-1.4 2-1.2-1.7 1.1-1.5c.8-1.2 1.9-1.8 3.4-1.8h1.3l-.6-.6a1 1 0 0 1 0-1.4ZM3 7a1 1 0 0 1 1-1h1.6c1.5 0 2.6.6 3.4 1.8l4.6 6.9c.5.7 1 1 1.9 1h1.3l-.6-.6a1 1 0 0 1 1.4-1.4l2.3 2.3a1 1 0 0 1 0 1.4l-2.3 2.3a1 1 0 0 1-1.4-1.4l.6-.6h-1.3c-1.5 0-2.6-.6-3.4-1.8L6.6 8.9c-.5-.7-1-1-1.9-1H4a1 1 0 0 1-1-1Zm0 10a1 1 0 0 1 1-1h1.6c.9 0 1.4-.3 1.9-1l.7-1 1.2 1.8-.6.9c-.8 1.2-1.9 1.8-3.4 1.8H4a1 1 0 0 1-1-1Z"/></svg>
-      </button>
-      <button class="ctrl big" id="npPrev" type="button" aria-label="Предыдущий трек">
+      <button class="ctrl" id="npPrev" type="button" aria-label="Предыдущий трек" disabled>
         <svg viewBox="0 0 24 24"><path d="M6 5a1 1 0 0 1 2 0v5.2l8.4-5.6A1.2 1.2 0 0 1 18 5.6v12.8a1.2 1.2 0 0 1-1.6 1L8 13.8V19a1 1 0 1 1-2 0V5Z"/></svg>
       </button>
-      <button class="ctrl play xl" id="npPlay" type="button" aria-label="Воспроизвести">
+      <button class="ctrl play xl" id="npPlay" type="button" aria-label="Воспроизвести" disabled>
         <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.2c0-1 1.1-1.6 2-1.1l9.4 6.3a1.3 1.3 0 0 1 0 2.2L10 19c-.9.5-2-.1-2-1.1V5.2Z"/></svg>
         <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Zm7 0a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Z"/></svg>
         <span class="spinner"></span>
       </button>
-      <button class="ctrl big" id="npNext" type="button" aria-label="Следующий трек">
+      <button class="ctrl" id="npNext" type="button" aria-label="Следующий трек" disabled>
         <svg viewBox="0 0 24 24"><path d="M18 5a1 1 0 0 0-2 0v5.2L7.6 4.6A1.2 1.2 0 0 0 6 5.6v12.8a1.2 1.2 0 0 0 1.6 1L16 13.8V19a1 1 0 1 0 2 0V5Z"/></svg>
-      </button>
-      <button class="ctrl ghost" id="npRepeat" type="button" aria-label="Повтор">
-        <svg viewBox="0 0 24 24"><path d="M7 7h9.6l-.8-.8a1 1 0 1 1 1.4-1.4l2.5 2.5a1 1 0 0 1 0 1.4l-2.5 2.5a1 1 0 0 1-1.4-1.4l.8-.8H7a1 1 0 0 0-1 1v1a1 1 0 1 1-2 0V10a3 3 0 0 1 3-3Zm10 10H7.4l.8.8a1 1 0 1 1-1.4 1.4l-2.5-2.5a1 1 0 0 1 0-1.4l2.5-2.5a1 1 0 0 1 1.4 1.4l-.8.8H17a1 1 0 0 0 1-1v-1a1 1 0 1 1 2 0v1a3 3 0 0 1-3 3Z"/></svg>
-        <span class="repeat-one">1</span>
       </button>
     </div>
 
     <div class="np-extras">
-      <button class="pill" id="npQuality" type="button">MID<span>128</span></button>
-      <button class="pill ghost" id="npArtistLink" type="button">Исполнитель</button>
-      <button class="pill ghost" id="npAlbumLink" type="button">Альбом</button>
+      <button class="chip" id="npLike" type="button">В библиотеку</button>
+      <button class="chip" id="npAdd" type="button">В плейлист</button>
     </div>
 
-    <div class="np-queue" id="npQueueList" aria-label="Очередь воспроизведения"></div>
+    <div class="np-queue" id="npQueueList"></div>
   </div>
 </section>
 
-<!-- ─────────────── Queue drawer ─────────────── -->
-<aside class="drawer" id="drawer" aria-label="Очередь">
+<!-- ─────────── Очередь ─────────── -->
+<aside class="drawer" id="drawer" aria-label="Очередь" aria-hidden="true">
   <div class="drawer-head">
     <h2>Очередь</h2>
     <button class="icon-btn round" id="drawerClose" type="button" aria-label="Закрыть">
@@ -242,6 +230,11 @@
   <div class="drawer-sub" id="drawerSub">Очередь пуста</div>
   <div class="drawer-body" id="drawerBody"></div>
 </aside>
+
+<!-- ─────────── Универсальный лист действий ─────────── -->
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="sheet-panel" id="sheetPanel"></div>
+</div>
 
 <div class="scrim" id="scrim" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

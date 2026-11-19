@@ -1,22 +1,19 @@
 #!/usr/bin/env node
 /**
- * Публикация статического фронтенда RH—MUSIC на Cloudflare Pages
- * через Direct Upload API (без wrangler).
+ * Публикация фронтенда RH—MUSIC на Cloudflare Pages (Direct Upload API).
  *
- * Порядок, как у wrangler:
+ * Порядок как у wrangler:
  *   1. upload-token (JWT)
- *   2. POST /pages/assets/upload   — сами файлы (base64)
+ *   2. POST /pages/assets/upload      — файлы (base64)
  *   3. POST /pages/assets/upsert-hashes
- *   4. POST /pages/projects/{name}/deployments — манифест + branch
+ *   4. POST /pages/projects/{name}/deployments — манифест + branch + _worker.bundle
+ *
+ * Файл web/_worker.js (прокси /api → Worker) уезжает отдельным полем
+ * _worker.bundle как Pages Function в advanced mode.
  *
  * Переменные окружения:
- *   CLOUDFLARE_API_TOKEN   — токен Cloudflare (Pages:Edit)
- *   CLOUDFLARE_ACCOUNT_ID  — id аккаунта
- *   PAGES_PROJECT          — имя проекта (по умолчанию rh-music)
- *   PAGES_BRANCH           — ветка (по умолчанию main)
- *
- * Запуск:
- *   CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... node scripts/deploy-pages.mjs
+ *   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+ *   PAGES_PROJECT (по умолчанию rh-music), PAGES_BRANCH (main)
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises';
@@ -33,6 +30,7 @@ const token = process.env.CLOUDFLARE_API_TOKEN;
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 const projectName = process.env.PAGES_PROJECT || 'rh-music';
 const branch = process.env.PAGES_BRANCH || 'main';
+const COMPAT_DATE = '2025-01-15';
 
 if (!token || !accountId) {
   console.error('Нужны CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID');
@@ -81,25 +79,26 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+const CRLF = '\r\n';
+
 function buildMultipart(parts) {
   const boundary = '----RHMusic' + randomBytes(12).toString('hex');
   const chunks = [];
   for (const part of parts) {
-    const head =
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="${part.name}"` +
-      (part.filename ? `; filename="${part.filename}"` : '') + '\r\n' +
-      (part.type ? `Content-Type: ${part.type}\r\n` : '') +
-      '\r\n';
+    const head = `--${boundary}${CRLF}`
+      + `Content-Disposition: form-data; name="${part.name}"`
+      + (part.filename ? `; filename="${part.filename}"` : '') + CRLF
+      + (part.type ? `Content-Type: ${part.type}${CRLF}` : '')
+      + CRLF;
     chunks.push(Buffer.from(head, 'utf8'));
     chunks.push(Buffer.isBuffer(part.data) ? part.data : Buffer.from(String(part.data), 'utf8'));
-    chunks.push(Buffer.from('\r\n', 'utf8'));
+    chunks.push(Buffer.from(CRLF, 'utf8'));
   }
-  chunks.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
-  return { body: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
+  chunks.push(Buffer.from(`--${boundary}--${CRLF}`, 'utf8'));
+  return { body: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}`, boundary };
 }
 
-// 1. Проект
+/* 1. Проект */
 let project = null;
 try {
   project = await cf(`/accounts/${accountId}/pages/projects/${projectName}`);
@@ -114,70 +113,84 @@ try {
   console.log(`Проект создан: ${project.name}`);
 }
 
-// 2. Файлы
+/* 2. Файлы: _worker.js — не статика, а Pages Function */
 const files = [];
 for (const full of await walk(webDir)) {
   const info = await stat(full);
   if (!info.isFile()) continue;
   const contents = await readFile(full);
   const rel = relative(webDir, full).split(sep).join('/');
-  const ext = rel.includes('.') ? '.' + rel.split('.').pop() : '';
-  const hash = createHash('sha256').update(contents).digest('hex').slice(0, 32);
+  const ext = rel.includes('.') ? rel.split('.').pop() : '';
+  const isEntry = rel === '_worker.js';
+  // Хеш считается так же, как у wrangler: base64(содержимое) + расширение, без ведущего слэша.
+  const hash = createHash('sha256')
+    .update(contents.toString('base64') + ext)
+    .digest('hex')
+    .slice(0, 32);
   files.push({
     path: '/' + rel,
-    hash,
+    hash: isEntry ? '_worker.js' : hash,
     contents,
-    type: MIME[ext] || 'application/octet-stream',
-    size: info.size,
+    type: MIME['.' + ext] || 'application/octet-stream',
+    isEntry,
   });
 }
 
-// 3. JWT для загрузки ассетов
+console.log(`Файлов: ${files.length} (из них функций: ${files.filter((f) => f.isEntry).length})`);
+
+/* 3. JWT и загрузка статики */
 const { jwt } = await cf(`/accounts/${accountId}/pages/projects/${projectName}/upload-token`);
 if (!jwt) throw new Error('Не удалось получить upload-token');
 
-// 4. Загрузка файлов
-const payload = files.map((file) => ({
-  key: file.hash,
-  value: file.contents.toString('base64'),
-  metadata: { contentType: file.type },
-  base64: true,
-}));
-
+const assets = files.filter((file) => !file.isEntry);
 await cf('/pages/assets/upload', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(payload),
+  body: JSON.stringify(assets.map((file) => ({
+    key: file.hash,
+    value: file.contents.toString('base64'),
+    metadata: { contentType: file.type },
+    base64: true,
+  }))),
 }, jwt);
-console.log(`Файлы загружены: ${files.length}`);
 
-// 5. Фиксация хешей
 try {
   await cf('/pages/assets/upsert-hashes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hashes: files.map((file) => file.hash) }),
+    body: JSON.stringify({ hashes: assets.map((file) => file.hash) }),
   }, jwt);
 } catch (error) {
   console.warn('upsert-hashes:', error.message);
 }
 
-// 6. Деплой
+/* 4. Манифест и вложенный бандл функции */
 const manifest = {};
-for (const file of files) manifest[file.path] = file.hash;
+for (const file of assets) manifest[file.path] = file.hash;
 
-const commitHash = createHash('sha1')
-  .update(files.map((file) => file.hash).sort().join(':'))
-  .digest('hex');
-
-const { body, contentType } = buildMultipart([
+const parts = [
   { name: 'manifest', data: JSON.stringify(manifest), type: 'application/json' },
   { name: 'branch', data: branch },
-  { name: 'commit_hash', data: commitHash },
+  { name: 'commit_hash', data: createHash('sha1').update(assets.map((f) => f.hash).sort().join(':')).digest('hex') },
   { name: 'commit_message', data: 'RH—MUSIC deploy' },
   { name: 'commit_dirty', data: 'false' },
-]);
+];
 
+const entryFile = files.find((file) => file.isEntry);
+if (entryFile) {
+  const inner = buildMultipart([
+    {
+      name: 'metadata',
+      data: JSON.stringify({ main_module: '_worker.js', compatibility_date: COMPAT_DATE, bindings: [] }),
+      type: 'application/json',
+    },
+    { name: '_worker.js', filename: '_worker.js', data: entryFile.contents, type: 'application/javascript+module' },
+  ]);
+  console.log(`Pages Function: ${entryFile.contents.length} байт`);
+  parts.push({ name: '_worker.bundle', filename: '_worker.bundle', data: inner.body, type: 'application/octet-stream' });
+}
+
+const { body, contentType } = buildMultipart(parts);
 const deployment = await cf(
   `/accounts/${accountId}/pages/projects/${projectName}/deployments`,
   { method: 'POST', headers: { 'Content-Type': contentType }, body },

@@ -5,4 +5,8 @@ workers_dev = true
 
 # Секрет ZVUK_TOKEN НЕ хранится в этом файле.
 # Задаётся командой:  wrangler secret put ZVUK_TOKEN
-# или через API:      node scripts/deploy-worker.mjs
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rh-music-db"
+database_id = "164c51cd-2899-4daf-a669-a837f7a460b1"
