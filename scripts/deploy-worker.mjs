@@ -60,9 +60,10 @@ const srcDir = join(root, 'worker/src');
 const modules = (await readdir(srcDir)).filter((name) => name.endsWith('.js')).sort();
 
 // Публичные (не секретные) параметры OAuth. Передаются в Worker как plain_text.
-// Секреты (VK_CLIENT_SECRET, APPLE_PRIVATE_KEY) задаются отдельно и не логируются.
-const PUBLIC_VARS = ['SITE_URL', 'GOOGLE_CLIENT_ID', 'VK_CLIENT_ID', 'APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID'];
-const SECRET_VARS = ['VK_CLIENT_SECRET', 'APPLE_PRIVATE_KEY'];
+// Google Identity Services работает без client secret — нужен только публичный Client ID.
+// Список секретов оставлен пустым: провайдерских секретов у проекта нет.
+const PUBLIC_VARS = ['SITE_URL', 'GOOGLE_CLIENT_ID'];
+const SECRET_VARS = [];
 
 const publicBindings = PUBLIC_VARS
   .filter((name) => process.env[name] && String(process.env[name]).trim())

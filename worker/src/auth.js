@@ -305,7 +305,7 @@ export async function requireReauth(env, user, body) {
   const fresh = await store.consumeReauth(env, user.id, REAUTH_TTL_SECONDS);
   if (!fresh) {
     throw new ApiError(403, 'REAUTH_REQUIRED',
-      'Подтвердите личность: войдите заново через привязанный сервис (Google, VK или Apple).');
+      'Подтвердите личность: войдите заново через Google.');
   }
   return 'provider';
 }

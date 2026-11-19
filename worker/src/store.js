@@ -653,7 +653,7 @@ export async function unlinkIfNotLast(env, userId, provider) {
     `DELETE FROM oauth_identities
      WHERE user_id = ?1 AND provider = ?2
        AND (
-         (SELECT COUNT(*) FROM oauth_identities WHERE user_id = ?1) > 1
+         EXISTS (SELECT 1 FROM oauth_identities o WHERE o.user_id = ?1 AND o.provider <> ?2)
          OR EXISTS (SELECT 1 FROM users WHERE id = ?1 AND password_hash <> '')
        )`,
     [userId, provider],

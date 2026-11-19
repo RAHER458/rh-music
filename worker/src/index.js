@@ -25,8 +25,7 @@ import {
 import { handleRecommendations } from './recommend.js';
 import { handleHome, handleCatalogPlaylist } from './home.js';
 import {
-  handleProviders, handleIdentities, handleUnlink, handleGoogleNonce,
-  handleGoogleLogin, handleVkStart, handleVkCallback, handleAppleStart, handleAppleCallback,
+  handleProviders, handleIdentities, handleUnlink, handleGoogleNonce, handleGoogleLogin,
 } from './oauth.js';
 
 const ID_RE = /^[0-9]{1,20}$/;
@@ -291,7 +290,7 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.1.3',
+      version: '2.2.0',
       features: ['catalog', 'accounts', 'oauth', 'library', 'playlists', 'history', 'recommendations', 'home'],
     });
   }
@@ -318,7 +317,7 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.1.3',
+      version: '2.2.0',
       tokenConfigured: !!env.ZVUK_TOKEN,
       database,
       upstream,
@@ -341,10 +340,6 @@ async function route(request, env) {
   if (path === '/api/auth/identities/unlink' && method === 'POST') return handleUnlink(request, env);
   if (path === '/api/auth/oauth/google/nonce' && method === 'POST') return handleGoogleNonce(request, env);
   if (path === '/api/auth/oauth/google' && method === 'POST') return handleGoogleLogin(request, env);
-  if (path === '/api/auth/oauth/vk/start' && method === 'POST') return handleVkStart(request, env);
-  if (path === '/api/auth/oauth/vk/callback' && (method === 'GET' || method === 'POST')) return handleVkCallback(request, env, url);
-  if (path === '/api/auth/oauth/apple/start' && method === 'POST') return handleAppleStart(request, env);
-  if (path === '/api/auth/oauth/apple/callback' && (method === 'POST' || method === 'GET')) return handleAppleCallback(request, env);
   if (path === '/api/auth/account' && method === 'DELETE') return handleDeleteAccount(request, env);
   if (path === '/api/me/preferences' && method === 'PATCH') return handlePreferences(request, env);
 
