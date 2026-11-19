@@ -2456,8 +2456,18 @@ function renderQueuePanel() {
   }).join('');
 }
 
+/**
+ * Текущая интерфейсная среда. Определяется один раз по признакам устройства
+ * (web/device.js) и не зависит от ширины окна: телефон в ландшафте и планшет
+ * остаются в Mobile UI.
+ */
 function isDesktop() {
-  return !!(window.matchMedia && window.matchMedia('(min-width: 1024px)').matches);
+  if (window.RH_UI && typeof window.RH_UI.isDesktop === 'function') return window.RH_UI.isDesktop();
+  return document.documentElement.dataset.ui === 'desktop';
+}
+
+function currentUi() {
+  return document.documentElement.dataset.ui === 'mobile' ? 'mobile' : 'desktop';
 }
 
 /**
@@ -3078,6 +3088,20 @@ $('miniNowOpen').addEventListener('click', () => showPlayer());
 $('miniNowPlay').addEventListener('click', (event) => {
   event.stopPropagation();
   togglePlay();
+});
+
+/* Смена интерфейсной среды (поворот/подключение мыши/принудительный выбор):
+   закрываем оверлей чужой среды и перерисовываем текущий раздел. Трек, очередь,
+   позиция и аудиопоток не затрагиваются — они общие для обеих сред. */
+document.addEventListener('rh:ui-change', () => {
+  if (isDesktop()) {
+    if (S.drawerOpen) openDrawer(false);
+  } else if (S.queueOpen) {
+    closeQueuePanel();
+  }
+  updateTransport();
+  renderQueue();
+  route();
 });
 
 /* Клик вне правой панели закрывает её (кнопки-переключатели исключены). */

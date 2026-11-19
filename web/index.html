@@ -25,7 +25,7 @@
 <div class="app">
 
   <!-- ─────────── Sidebar (desktop) ─────────── -->
-  <aside class="sidebar" id="sidebar" aria-label="Навигация">
+  <aside class="sidebar" id="sidebar" aria-label="Навигация" data-ui-only="desktop">
     <a class="side-brand" href="#/home" data-link>
       <span class="logo">RH</span>
       <span class="side-brand-text">
@@ -112,11 +112,11 @@
         <span class="brand-mobile-text">RH—MUSIC</span>
       </a>
 
-      <button class="icon-btn subtle sidebar-toggle" id="sidebarToggle" type="button" aria-label="Свернуть панель навигации">
+      <button class="icon-btn subtle sidebar-toggle" id="sidebarToggle" type="button" data-ui-only="desktop" aria-label="Свернуть панель навигации">
         <svg viewBox="0 0 24 24"><path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 7a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 7a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z"/></svg>
       </button>
 
-      <div class="topbar-nav">
+      <div class="topbar-nav" data-ui-only="desktop">
         <button class="icon-btn subtle" id="navBack" type="button" aria-label="Назад">
           <svg viewBox="0 0 24 24"><path d="M14.7 4.3a1 1 0 0 1 0 1.4L8.4 12l6.3 6.3a1 1 0 1 1-1.4 1.4l-7-7a1 1 0 0 1 0-1.4l7-7a1 1 0 0 1 1.4 0Z"/></svg>
         </button>
@@ -125,7 +125,7 @@
         </button>
       </div>
 
-      <h1 class="topbar-title" id="pageTitle">Главная</h1>
+      <h1 class="topbar-title" id="pageTitle" data-ui-only="desktop">Главная</h1>
 
       <form class="searchbar" id="searchForm" role="search" autocomplete="off">
         <svg class="search-ico" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1-4.6 13.4l-3.2 3.2a1 1 0 1 1-1.4-1.4l3.2-3.2A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
@@ -154,7 +154,7 @@
         </button>
       </div>
 
-      <button class="icon-btn subtle queue-toggle" id="queueToggle" type="button" data-action="queue-toggle" aria-label="Очередь воспроизведения" aria-pressed="false">
+      <button class="icon-btn subtle queue-toggle" id="queueToggle" type="button" data-ui-only="desktop" data-action="queue-toggle" aria-label="Очередь воспроизведения" aria-pressed="false">
         <svg viewBox="0 0 24 24"><path d="M4 6a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm13.5-7.6a1 1 0 0 1 1.5.9v6.2a2.6 2.6 0 1 1-2-2.5V9.6l.5.8Z"/></svg>
       </button>
 
@@ -167,7 +167,7 @@
   </div>
 
   <!-- ─────────── Правая панель: сейчас играет и очередь ─────────── -->
-  <aside class="queue-panel" id="queuePanel" aria-label="Очередь воспроизведения" hidden>
+  <aside class="queue-panel" id="queuePanel" aria-label="Очередь воспроизведения" data-ui-only="desktop" hidden>
     <div class="queue-panel-head">
       <div>
         <div class="queue-panel-kicker">Сейчас играет</div>
@@ -238,12 +238,12 @@
       <svg viewBox="0 0 24 24"><path d="M12 16.5 5.6 10a1.2 1.2 0 0 1 1.7-1.7l4.7 4.7 4.7-4.7A1.2 1.2 0 0 1 18.4 10L12 16.5Z"/></svg>
     </button>
 
-    <button class="ctrl ghost player-like" id="playerLike" type="button" aria-label="Сохранить в библиотеку" disabled>
+    <button class="ctrl ghost player-like" id="playerLike" type="button" data-ui-only="desktop" aria-label="Сохранить в библиотеку" disabled>
       <svg class="i-heart" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.6 5.2 5.2 0 0 1 21.3 12c-1.8 4.4-9.3 9-9.3 9Z"/></svg>
       <svg class="i-heart-filled" viewBox="0 0 24 24"><path d="M12 20.6S5.2 16.4 3.4 12.2A4.9 4.9 0 0 1 12 7.4a4.9 4.9 0 0 1 8.6 4.8c-1.8 4.2-8.6 8.4-8.6 8.4Z"/></svg>
     </button>
 
-    <div class="player-right">
+    <div class="player-right" data-ui-only="desktop">
       <button class="ctrl ghost" id="volumeBtn" type="button" aria-label="Выключить звук">
         <svg class="i-vol-on" viewBox="0 0 24 24"><path d="M11 5.2v13.6a1 1 0 0 1-1.6.8L5.9 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1.9l3.5-3.6A1 1 0 0 1 11 5.2Zm4.3 1.5a1 1 0 0 1 1.4 0A7.4 7.4 0 0 1 19 12a7.4 7.4 0 0 1-2.3 5.3 1 1 0 0 1-1.4-1.4A5.4 5.4 0 0 0 17 12a5.4 5.4 0 0 0-1.7-3.9 1 1 0 0 1 0-1.4Zm-2.6 2.6a1 1 0 0 1 1.4 0A3.6 3.6 0 0 1 15.2 12a3.6 3.6 0 0 1-1.1 2.7 1 1 0 0 1-1.4-1.4 1.6 1.6 0 0 0 0-2.6 1 1 0 0 1 0-1.4Zm-1-7.2Z"/></svg>
         <svg class="i-vol-off" viewBox="0 0 24 24"><path d="M11 5.2v13.6a1 1 0 0 1-1.6.8L5.9 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1.9l3.5-3.6A1 1 0 0 1 11 5.2Zm4.8 4.6a1 1 0 0 1 1.4 0L18.6 11l1.4-1.2a1 1 0 1 1 1.4 1.4L20 12.4l1.4 1.2a1 1 0 0 1-1.4 1.4l-1.4-1.2-1.4 1.2a1 1 0 0 1-1.4-1.4l1.4-1.2-1.4-1.2a1 1 0 0 1 0-1.2Z"/></svg>
@@ -263,7 +263,7 @@
 </footer>
 
 <!-- ─────────── Нижняя навигация (телефон) ─────────── -->
-<nav class="tabbar" id="tabbar" aria-label="Навигация">
+<nav class="tabbar" id="tabbar" aria-label="Навигация" data-ui-only="mobile">
   <a class="tab" data-nav="home" href="#/home" data-link>
     <svg viewBox="0 0 24 24"><path d="M11.3 3.3a1 1 0 0 1 1.4 0l7.5 7.2a1 1 0 0 1 .3.7V19a2 2 0 0 1-2 2h-4a1 1 0 0 1-1-1v-4h-2v4a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2v-7.8a1 1 0 0 1 .3-.7l7-6.5Z"/></svg>
     <span>Главная</span>
@@ -359,6 +359,7 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="metadata" playsinline></audio>
 
+<script src="device.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
