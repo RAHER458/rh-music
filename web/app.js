@@ -1060,16 +1060,11 @@ async function renderAlbum(id) {
 
 /* ───────────────────────────── аккаунт ───────────────────────────── */
 
-const PROVIDER_LABEL = { google: 'Google', vk: 'VK ID', apple: 'Apple' };
+const PROVIDER_LABEL = { google: 'Google' };
 
 function providerGlyph(id) {
-  if (id === 'google') {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.06-1.4-.18-2.05H12v3.9h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.75 3-4.3 3-7.35Z"/><path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.6-2.43l-3.2-2.5c-.9.6-2.05.95-3.4.95-2.6 0-4.8-1.75-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.4 13.9a6 6 0 0 1 0-3.8V7.5H3.1a10 10 0 0 0 0 9l3.3-2.6Z"/><path fill="#EA4335" d="M12 6.05c1.47 0 2.8.5 3.83 1.5l2.85-2.85A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.9 5.5l3.3 2.6C7.2 7.8 9.4 6.05 12 6.05Z"/></svg>';
-  }
-  if (id === 'vk') {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4C75A3" d="M12.8 17.5c-5.2 0-8.4-3.6-8.6-9.6h2.7c.1 4.4 2 6.3 3.5 6.7V7.9h2.5v3.6c1.5-.2 3-1.8 3.6-3.6h2.5a7.3 7.3 0 0 1-3.4 4.8 7.5 7.5 0 0 1 3.9 4.8h-2.8a4.7 4.7 0 0 0-3.8-3.3v3.3h-.1Z"/></svg>';
-  }
-  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#f5f5f7" d="M16.4 12.7c0-2 1.6-3 1.7-3.1-.9-1.4-2.4-1.6-2.9-1.6-1.2-.1-2.4.7-3 .7-.6 0-1.6-.7-2.6-.7-1.3 0-2.6.8-3.3 2-1.4 2.4-.4 6 1 8 .7 1 1.5 2 2.5 2 1 0 1.4-.6 2.6-.6s1.6.6 2.6.6 1.8-1 2.4-2c.8-1.1 1.1-2.2 1.1-2.3 0 0-2.1-.8-2.1-3ZM14.3 6.4c.5-.7.9-1.6.8-2.5-.8 0-1.8.5-2.4 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.8-.5 2.4-1.1Z"/></svg>';
+  if (id !== 'google') return '';
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.06-1.4-.18-2.05H12v3.9h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.75 3-4.3 3-7.35Z"/><path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.6-2.43l-3.2-2.5c-.9.6-2.05.95-3.4.95-2.6 0-4.8-1.75-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.4 13.9a6 6 0 0 1 0-3.8V7.5H3.1a10 10 0 0 0 0 9l3.3-2.6Z"/><path fill="#EA4335" d="M12 6.05c1.47 0 2.8.5 3.83 1.5l2.85-2.85A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.9 5.5l3.3 2.6C7.2 7.8 9.4 6.05 12 6.05Z"/></svg>';
 }
 
 async function loadProviders(force = false) {
@@ -1083,20 +1078,14 @@ async function loadProviders(force = false) {
   return S.providers;
 }
 
+/** Разметка блока внешнего входа: только Google. */
 function providerBlock(mode = 'login') {
-  const list = S.providers || [];
-  if (!list.length) return '';
-  const buttons = list.map((provider) => `
-    <button class="btn-provider${provider.enabled ? '' : ' is-off'}" type="button"
-            data-action="${mode === 'link' ? 'link-provider' : 'oauth'}"
-            data-provider="${esc(provider.id)}" data-mode="${esc(mode)}">
-      ${providerGlyph(provider.id)}
-      <span class="provider-text">
-        <b>Продолжить с ${esc(provider.title)}</b>
-        ${provider.enabled ? '' : '<small>пока не подключён</small>'}
-      </span>
-    </button>`).join('');
-  return `<div class="provider-list">${buttons}</div><div class="auth-sep"><span>или по email</span></div>`;
+  return `
+    <div class="provider-list">
+      <div class="google-slot" id="googleSlot" data-mode="${esc(mode)}"></div>
+      <p class="provider-status" id="googleStatus" hidden></p>
+    </div>
+    <div class="auth-sep"><span>или по email</span></div>`;
 }
 
 let gisPromise = null;
@@ -1109,70 +1098,153 @@ function loadGoogleSdk() {
       script.async = true;
       script.defer = true;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Не удалось загрузить Google Identity Services'));
+      script.onerror = () => { gisPromise = null; reject(new Error('Не удалось загрузить вход через Google')); };
       document.head.appendChild(script);
     });
   }
   return gisPromise;
 }
 
-async function startOauth(provider, mode = 'login') {
-  if (!provider) return;
-  await loadProviders();
-  const entry = (S.providers || []).find((item) => item.id === provider);
-  if (!entry) { toast('Способ входа недоступен'); return; }
-  if (!entry.enabled) {
-    toast('Вход через ' + (PROVIDER_LABEL[provider] || provider) +
-      ' пока не подключён: на сервере не заданы ключи приложения.', 'info');
-    return;
-  }
+/** Состояние одного Google-входа: защита от двойной отправки и повторного credential. */
+const googleFlow = { mode: 'login', state: null, nonce: null, clientId: null, busy: false, lastCredential: null };
+
+function setGoogleStatus(kind, text) {
+  const el = $('googleStatus');
+  if (!el) return;
+  el.textContent = text || '';
+  el.hidden = !text;
+  el.classList.toggle('is-error', kind === 'error');
+  el.classList.toggle('is-ok', kind === 'ok');
+  el.classList.toggle('is-loading', kind === 'loading');
+}
+
+async function fetchGoogleGate(mode) {
   try {
-    if (provider === 'google') return await startGoogle(entry, mode);
-    const data = await api('/api/auth/oauth/' + provider + '/start', { method: 'POST', body: { mode } });
-    if (data.url) location.href = data.url;
-    else throw new Error('Провайдер не вернул адрес входа');
+    const gate = await api('/api/auth/oauth/google/nonce', { method: 'POST', body: { mode } });
+    googleFlow.state = gate.state;
+    googleFlow.nonce = gate.nonce;
+    return gate;
   } catch (error) {
-    toast(error.message);
+    setGoogleStatus('error', error.message);
+    return null;
   }
 }
 
-async function startGoogle(entry, mode) {
-  const gate = await api('/api/auth/oauth/google/nonce', { method: 'POST', body: { mode } });
-  await loadGoogleSdk();
-  if (!(window.google && window.google.accounts && window.google.accounts.id)) {
-    throw new Error('Google Identity Services недоступен');
+function renderGoogleButton(mode) {
+  const slot = $('googleSlot');
+  if (!slot || !window.google || !window.google.accounts || !window.google.accounts.id) return;
+  try {
+    window.google.accounts.id.renderButton(slot, {
+      theme: 'filled_black',
+      size: 'large',
+      shape: 'pill',
+      text: 'continue_with',
+      logo_alignment: 'left',
+      width: Math.min(320, Math.max(200, slot.clientWidth || 280)),
+    });
+  } catch { /* кнопку можно нарисовать повторно */ }
+  void mode;
+}
+
+async function handleGoogleCredential(response) {
+  if (!response || !response.credential) return;
+  // Двойная отправка и повторная обработка одного и того же credential запрещены.
+  if (googleFlow.busy) return;
+  if (googleFlow.lastCredential === response.credential) return;
+  googleFlow.busy = true;
+  googleFlow.lastCredential = response.credential;
+  setGoogleStatus('loading', 'Проверяем вход через Google…');
+
+  try {
+    const data = await api('/api/auth/oauth/google', {
+      method: 'POST',
+      body: { state: googleFlow.state, credential: response.credential },
+    });
+    setGoogleStatus('ok', data.linked ? 'Google привязан' : 'Вход выполнен');
+    setUser(data.user);
+    await afterLogin();
+    toast(data.linked ? 'Аккаунт Google привязан' : 'Вы вошли через Google', 'ok');
+    if (data.linked || googleFlow.mode === 'link') {
+      sheetClose();
+      if (S.route === 'account') renderAccount();
+      else go('/account');
+    } else {
+      go('/');
+    }
+  } catch (error) {
+    setGoogleStatus('error', error.message);
+    toast(error.message);
+    // state одноразовый: готовим новый, чтобы следующая попытка не упиралась в «устарело».
+    const gate = await fetchGoogleGate(googleFlow.mode);
+    if (gate && window.google && window.google.accounts && window.google.accounts.id) {
+      window.google.accounts.id.initialize({
+        client_id: googleFlow.clientId,
+        nonce: gate.nonce,
+        ux_mode: 'popup',
+        callback: handleGoogleCredential,
+      });
+    }
+  } finally {
+    googleFlow.busy = false;
   }
+}
+
+/** Монтирует официальную кнопку Google Identity Services в слот. */
+async function mountGoogleButton(mode = 'login') {
+  const slot = $('googleSlot');
+  if (!slot) return;
+  await loadProviders();
+  const entry = (S.providers || []).find((item) => item.id === 'google');
+  if (!entry) return;
+  googleFlow.mode = mode;
+  googleFlow.clientId = entry.clientId || null;
+
+  if (!entry.enabled) {
+    setGoogleStatus('error', 'Вход через Google пока недоступен: на сервере не задан Client ID.');
+    return;
+  }
+
+  setGoogleStatus('loading', 'Загружаем вход через Google…');
+  try {
+    await loadGoogleSdk();
+  } catch (error) {
+    setGoogleStatus('error', error.message);
+    return;
+  }
+
+  const gate = await fetchGoogleGate(mode);
+  if (!gate) return;
+
   window.google.accounts.id.initialize({
     client_id: entry.clientId,
     nonce: gate.nonce,
     ux_mode: 'popup',
-    callback: async (response) => {
-      try {
-        const data = await api('/api/auth/oauth/google', {
-          method: 'POST',
-          body: { state: gate.state, credential: response.credential },
-        });
-        setUser(data.user);
-        await afterLogin();
-        toast(data.linked ? 'Аккаунт Google привязан' : 'Вы вошли через Google', 'ok');
-        go(data.linked || mode === 'link' ? '/account' : '/');
-      } catch (error) {
-        toast(error.message);
-      }
-    },
+    callback: handleGoogleCredential,
   });
-  window.google.accounts.id.prompt();
+  renderGoogleButton(mode);
+  setGoogleStatus('idle', '');
+
+  // One Tap — только на широких экранах, где он не мешает кнопке и не спорит с мобильным Safari.
+  if (window.matchMedia && window.matchMedia('(min-width: 700px)').matches) {
+    try { window.google.accounts.id.prompt(); } catch { /* One Tap может быть недоступен */ }
+  }
+}
+
+/* Привязка Google к уже открытому аккаунту — в той же шторке. */
+function openGoogleLinkSheet() {
+  sheetOpen(`
+    <h2 class="sheet-title">Привязать Google</h2>
+    <p class="sheet-sub">Выберите Google-аккаунт — он станет ещё одним способом входа в этот аккаунт RH—MUSIC.</p>
+    ${providerBlock('link')}
+    <p class="hint">Если этот Google-аккаунт уже привязан к другому пользователю, привязка будет отклонена.</p>
+  `);
+  mountGoogleButton('link');
 }
 
 const OAUTH_ERRORS = {
-  state_expired: 'Сессия входа истекла. Попробуйте снова.',
-  identity_taken: 'Этот аккаунт уже привязан к другому пользователю RH—MUSIC.',
-  provider_disabled: 'Этот способ входа ещё не настроен на сервере.',
-  vk_denied: 'Вход через VK отменён.',
-  apple_denied: 'Вход через Apple отменён.',
-  vk_exchange: 'VK не подтвердил вход. Попробуйте ещё раз.',
-  apple_exchange: 'Apple не подтвердил вход. Попробуйте ещё раз.',
-  apple_token: 'Не удалось проверить данные Apple.',
+  state_expired: 'Запрос входа устарел. Попробуйте снова.',
+  identity_taken: 'Этот аккаунт Google уже привязан к другому пользователю RH—MUSIC.',
+  provider_disabled: 'Вход через Google ещё не настроен на сервере.',
 };
 
 function oauthErrorFromHash() {
@@ -1187,7 +1259,7 @@ function oauthErrorFromHash() {
 function consumeOauthNotice() {
   const code = oauthErrorFromHash();
   if (!code) return;
-  toast(OAUTH_ERRORS[code] || 'Не удалось войти через внешний сервис.', 'error');
+  toast(OAUTH_ERRORS[code] || 'Не удалось войти через Google.', 'error');
   history.replaceState(null, '', '#/login');
 }
 
@@ -1240,6 +1312,7 @@ async function renderLogin({ focus = false } = {}) {
   await loadProviders();
   page.innerHTML = authFormTemplate({ mode: 'login' });
   bindAuthForm('login', focus);
+  mountGoogleButton('login');
   consumeOauthNotice();
 }
 
@@ -1250,6 +1323,7 @@ async function renderRegister({ focus = false } = {}) {
   await loadProviders();
   page.innerHTML = authFormTemplate({ mode: 'register' });
   bindAuthForm('register', focus);
+  mountGoogleButton('register');
 }
 
 function bindAuthForm(mode, focus) {
@@ -1329,7 +1403,7 @@ async function renderAccount() {
   const methods = S.identities;
   const totalMethods = methods.length + (hasPassword ? 1 : 0);
 
-  const providerRows = ['google', 'vk', 'apple'].map((id) => {
+  const providerRows = ['google'].map((id) => {
     const linked = methods.find((method) => method.provider === id);
     const label = PROVIDER_LABEL[id] || id;
     const canUnlink = linked && totalMethods > 1;
@@ -1344,7 +1418,7 @@ async function renderAccount() {
           ? (canUnlink
             ? `<button class="btn-mini" type="button" data-action="unlink-provider" data-provider="${esc(id)}">Отвязать</button>`
             : '<span class="badge">единственный</span>')
-          : `<button class="btn-mini primary" type="button" data-action="link-provider" data-provider="${esc(id)}">Привязать</button>`}
+          : `<button class="btn-mini primary" type="button" data-action="link-google">Привязать</button>`}
         ${linked && currentMethod === id ? '<span class="badge ok">текущий вход</span>' : ''}
       </div>`;
   }).join('');
@@ -1431,7 +1505,7 @@ function openDeleteSheet() {
     <h2 class="sheet-title">Удалить аккаунт?</h2>
     <p class="sheet-sub">Действие необратимо. Будут удалены:</p>
     <ul class="danger-list">
-      <li>профиль и все способы входа (Google, VK ID, Apple, пароль);</li>
+      <li>профиль и все способы входа (Google и пароль);</li>
       <li>личная библиотека «Моя музыка»;</li>
       <li>все созданные плейлисты и их треки;</li>
       <li>история прослушиваний и профиль рекомендаций;</li>
@@ -2199,13 +2273,8 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
-  if (action === 'oauth') {
-    startOauth(target.dataset.provider, target.dataset.mode || 'login');
-    return;
-  }
-
-  if (action === 'link-provider') {
-    startOauth(target.dataset.provider, 'link');
+  if (action === 'link-google') {
+    openGoogleLinkSheet();
     return;
   }
 
