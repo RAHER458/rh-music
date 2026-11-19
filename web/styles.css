@@ -1737,3 +1737,22 @@ html[data-ui="mobile"] .lyrics-word { padding: 1px 5px; margin: -1px -5px; }
 @media (prefers-reduced-motion: reduce) {
   .lyrics-word { transition: none; }
 }
+
+/* ── RH Smart Mix: карточка настройки и кнопки плеера ── */
+.smartmix-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--glass);
+}
+.smartmix-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.smartmix-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.smartmix-text b { font-size: 14px; font-weight: 700; }
+.smartmix-text small { font-size: 12px; color: var(--muted); }
+.smartmix-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.smartmix-presets .chip { padding: 6px 12px; font-size: 12px; }
+.smartmix-btn.is-on { color: #fff; background: rgba(108, 140, 255, 0.18); border-color: rgba(139, 92, 246, 0.4); }
+html[data-ui="mobile"] .smartmix-card { padding: 12px; }

@@ -1681,6 +1681,8 @@ async function renderAccount(options = {}) {
       <button class="sheet-item" type="button" data-action="logout">${ICONS.logout} Выйти из аккаунта</button>
     </div>
 
+    ${settings ? smartMixSettingsHTML() : ''}
+
     <section class="section danger-zone">
       <div class="section-head">
         <div>
@@ -1694,6 +1696,7 @@ async function renderAccount(options = {}) {
 
     <p class="hint">Пароль, токены провайдеров и сессии хранятся на сервере. В браузере нет ни пароля, ни токенов — только защищённая HttpOnly cookie.</p>
   `;
+  refreshSmartMixUI();
 }
 
 function openUnlinkSheet(provider) {
@@ -1909,11 +1912,190 @@ function setQueue(tracks, index) {
   S.queue = Array.isArray(tracks) ? tracks.slice() : [];
   S.originalQueue = null;
   S.index = index;
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.onQueue();
 }
 
 function streamUrl(track) {
   // Качество всегда MID (128 kbps) — пользователь его не выбирает.
   return API + '/api/stream/' + encodeURIComponent(track.id) + '?quality=mid';
+}
+
+
+/* ───────────────────────── RH Smart Mix (UI и мост к движку) ───────────────────────── */
+
+function smartMixBarsLabel(bars) {
+  const n = Number(bars);
+  if (n === 4) return '4 такта';
+  if (n === 16) return '16 тактов';
+  return '8 тактов';
+}
+
+function smartMixControlsHTML() {
+  const settings = window.RH_SMARTMIX
+    ? window.RH_SMARTMIX.getSettings()
+    : { enabled: false, bars: 8 };
+  const presets = [4, 8, 16].map((bars) => `
+    <button class="chip${settings.bars === bars ? ' is-active' : ''}" type="button"
+            data-action="smartmix-bars" data-bars="${bars}" data-smartmix-preset="${bars}"
+            aria-pressed="${settings.bars === bars ? 'true' : 'false'}">${smartMixBarsLabel(bars)}</button>`).join('');
+  return `
+    <div class="smartmix-row">
+      <div class="smartmix-text">
+        <b>RH Smart Mix</b>
+        <small data-smartmix-state>${settings.enabled ? `Включены · ${smartMixBarsLabel(settings.bars)}` : 'Выключены'}</small>
+      </div>
+      <button class="btn-mini" type="button" data-action="smartmix-toggle" data-smartmix-toggle
+              aria-pressed="${settings.enabled ? 'true' : 'false'}">${settings.enabled ? 'Выключить' : 'Включить'}</button>
+    </div>
+    <div class="smartmix-presets" role="group" aria-label="Длина перехода">${presets}</div>
+    <p class="hint" data-smartmix-hint>Сведение по битам и фразам: следующий трек входит заранее, бас меняется в музыкальный момент.</p>`;
+}
+
+function smartMixSettingsHTML() {
+  return `
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Музыкальные переходы</h2>
+          <p class="section-sub">RH Smart Mix</p>
+        </div>
+      </div>
+      <div class="smartmix-card">${smartMixControlsHTML()}</div>
+    </section>`;
+}
+
+function refreshSmartMixUI() {
+  const info = window.RH_SMARTMIX ? window.RH_SMARTMIX.getState() : null;
+  const settings = info ? info.settings : { enabled: false, bars: 8 };
+  const supported = info ? info.supported : null;
+  const pressed = settings.enabled ? 'true' : 'false';
+  document.querySelectorAll('[data-smartmix-toggle]').forEach((el) => {
+    el.textContent = settings.enabled ? 'Выключить' : 'Включить';
+    el.setAttribute('aria-pressed', pressed);
+    el.classList.toggle('is-on', settings.enabled);
+  });
+  document.querySelectorAll('[data-smartmix-state]').forEach((el) => {
+    el.textContent = settings.enabled ? `Включены · ${smartMixBarsLabel(settings.bars)}` : 'Выключены';
+  });
+  document.querySelectorAll('[data-smartmix-preset]').forEach((el) => {
+    const active = Number(el.dataset.smartmixPreset) === Number(settings.bars);
+    el.classList.toggle('is-active', active);
+    el.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-smartmix-hint]').forEach((el) => {
+    el.textContent = supported === false
+      ? 'Упрощённый режим без эквалайзера: темп и фраза выравниваются, если это возможно.'
+      : settings.enabled
+        ? 'Следующий трек входит на границе фразы, темп выравнивается мягко, бас меняется в музыкальный момент.'
+        : 'Выключено. Включите, чтобы треки переходили с музыкальным сведением.';
+  });
+  const button = $('smartmixBtn');
+  if (button) {
+    button.classList.toggle('is-on', settings.enabled);
+    button.setAttribute('aria-pressed', pressed);
+  }
+  const chip = $('npSmartMix');
+  if (chip) chip.classList.toggle('is-on', settings.enabled);
+}
+
+function openSmartMixSheet() {
+  sheetOpen(`
+    <h2 class="sheet-title">Музыкальные переходы</h2>
+    <p class="sheet-sub">RH Smart Mix сводит треки по ритму и музыкальным фразам, а не просто затуханием громкости.</p>
+    <div class="smartmix-card">${smartMixControlsHTML()}</div>
+    <p class="hint" data-smartmix-hint></p>
+  `);
+  refreshSmartMixUI();
+}
+
+function toggleSmartMix() {
+  if (!window.RH_SMARTMIX) return;
+  const current = window.RH_SMARTMIX.getSettings();
+  const next = !current.enabled;
+  window.RH_SMARTMIX.setSettings({ enabled: next });
+  refreshSmartMixUI();
+  if (next) {
+    window.RH_SMARTMIX.warm().then((ok) => {
+      refreshSmartMixUI();
+      if (!ok) toast('Упрощённый режим: без эквалайзера', 'info');
+    }).catch(() => {});
+  }
+}
+
+function setSmartMixBars(bars) {
+  if (!window.RH_SMARTMIX) return;
+  window.RH_SMARTMIX.setSettings({ bars: Number(bars) });
+  refreshSmartMixUI();
+}
+
+function smartMixState() {
+  return {
+    current: S.current,
+    index: S.index,
+    queue: S.queue,
+    repeat: S.repeat,
+    paused: audio.paused,
+    currentTime: audio.currentTime || 0,
+    duration: Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.duration
+      : (S.current ? Number(S.current.duration) || 0 : 0),
+    volume: S.volume,
+    muted: S.muted,
+  };
+}
+
+async function adoptSmartMixTrack(index, position) {
+  if (index < 0 || index >= S.queue.length) return false;
+  flushPlayback(true);
+  const track = S.queue[index];
+  S.index = index;
+  S.current = track;
+  S.retried = false;
+  updateNowPlayingMeta(track);
+  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
+  renderQueue();
+  markCurrentRow();
+  S.loading = true;
+  updateTransport();
+  audio.src = streamUrl(track);
+  audio.load();
+  const ready = await new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      audio.removeEventListener('canplay', onCan);
+      resolve(value);
+    };
+    const onCan = () => finish(true);
+    audio.addEventListener('canplay', onCan, { once: true });
+    setTimeout(() => finish(false), 2500);
+  });
+  if (!ready) return false;
+  try {
+    if (position > 0) audio.currentTime = position;
+  } catch { /* ignore */ }
+  try {
+    await audio.play();
+  } catch {
+    return false;
+  }
+  startPlaybackSession(track, 'smartmix');
+  savePlayerState(position);
+  return true;
+}
+
+function initSmartMix() {
+  if (!window.RH_SMARTMIX) return;
+  window.RH_SMARTMIX.init({
+    getState: smartMixState,
+    getAudio: () => audio,
+    streamUrl,
+    adoptTrack: adoptSmartMixTrack,
+    toast,
+    onChange: refreshSmartMixUI,
+  });
+  refreshSmartMixUI();
 }
 
 const PLAYER_STATE_KEY = 'rh_player_v1';
@@ -2097,6 +2279,9 @@ function restorePlayerState() {
 
 function applyVolume() {
   audio.volume = S.muted ? 0 : S.volume;
+  if (window.RH_SMARTMIX && typeof window.RH_SMARTMIX.setVolume === 'function') {
+    window.RH_SMARTMIX.setVolume(S.muted ? 0 : S.volume);
+  }
   const el = $('volume');
   const percent = Math.round((S.muted ? 0 : S.volume) * 100);
   if (el) {
@@ -2275,6 +2460,7 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   }
 
   audio.load();
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   startPlaybackSession(track, source);
   savePlayerState(0);
 
@@ -2323,12 +2509,14 @@ function togglePlay() {
       if (error.name !== 'AbortError') handleAudioFailure(error.message);
     });
   } else {
+    if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('pause');
     audio.pause();
   }
 }
 
 function nextTrack(auto = false) {
   if (!S.queue.length) return;
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('next');
   if (auto && S.repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
   const next = S.index + 1;
   if (next >= S.queue.length) {
@@ -2340,6 +2528,7 @@ function nextTrack(auto = false) {
 
 function prevTrack() {
   if (!S.queue.length) return;
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('prev');
   if (audio.currentTime > 4) { audio.currentTime = 0; return; }
   playIndex(S.index <= 0 ? S.queue.length - 1 : S.index - 1, { reveal: false });
 }
@@ -2358,6 +2547,7 @@ function toggleShuffle() {
     S.index = currentId ? S.queue.findIndex((t) => String(t.id) === currentId) : -1;
     S.originalQueue = null;
   }
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.onQueue();
   renderQueue();
   updateTransport();
   savePreferences();
@@ -2734,6 +2924,9 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
+  if (action === 'smartmix-open') { openSmartMixSheet(); return; }
+  if (action === 'smartmix-toggle') { toggleSmartMix(); return; }
+  if (action === 'smartmix-bars') { setSmartMixBars(target.dataset.bars); return; }
   if (action === 'lyrics-toggle') { toggleLyrics(); return; }
   if (action === 'lyrics-open') { openLyricsSheet(true); return; }
   if (action === 'lyrics-close') { openLyricsSheet(false); return; }
@@ -3268,6 +3461,7 @@ audio.addEventListener('canplay', () => { S.loading = false; updateTransport(); 
 audio.addEventListener('playing', () => {
   S.loading = false;
   S.playing = true;
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.warm();
   S.playback.lastTick = audio.currentTime;
   updateTransport();
   markCurrentRow();
@@ -3288,7 +3482,15 @@ audio.addEventListener('error', () => {
   handleAudioFailure(audio.error ? 'код ' + audio.error.code : null);
 });
 
+audio.addEventListener('pause', () => {
+  if (window.RH_SMARTMIX && window.RH_SMARTMIX.isPlaying()) window.RH_SMARTMIX.cancel('pause');
+});
+
 audio.addEventListener('pause', () => savePlayerState());
+
+audio.addEventListener('seeking', () => {
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
+});
 
 audio.addEventListener('timeupdate', () => {
   const current = audio.currentTime || 0;
@@ -3304,6 +3506,8 @@ audio.addEventListener('timeupdate', () => {
     S.lastStateSave = Date.now();
     savePlayerState(current);
   }
+
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTime(smartMixState());
 
   if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && duration > 0) {
     try {
@@ -3330,6 +3534,7 @@ audio.addEventListener('loadedmetadata', () => {
     $('npCur').textContent = fmt(duration * percent / 100);
   });
   el.addEventListener('change', () => {
+    if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? S.current.duration : 0);
     if (duration > 0) audio.currentTime = (Number(el.value) / 1000) * duration;
     S.seeking = false;
@@ -3343,7 +3548,10 @@ if ('mediaSession' in navigator) {
     navigator.mediaSession.setActionHandler('pause', () => audio.pause());
     navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
-    navigator.mediaSession.setActionHandler('seekto', (d) => { if (d && Number.isFinite(d.seekTime)) audio.currentTime = d.seekTime; });
+    navigator.mediaSession.setActionHandler('seekto', (d) => {
+      if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
+      if (d && Number.isFinite(d.seekTime)) audio.currentTime = d.seekTime;
+    });
   } catch { /* ignore */ }
 }
 
@@ -3384,6 +3592,8 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   const layout = readJson('rh_layout_v1', null);
   if (layout && layout.sidebarCollapsed) document.body.classList.add('sidebar-collapsed');
   restorePlayerState();
+  initSmartMix();
+  if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   updateTransport();
   await refreshMe();
   await loadProviders();
