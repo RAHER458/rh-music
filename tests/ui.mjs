@@ -184,6 +184,46 @@ check('привязка Google открывается в существующе�
 check('в аккаунте показывается только строка Google',
   /const providerRows = \['google'\]/.test(app));
 
+/* ───────────────────────────── desktop-first компоновка ───────────────────────────── */
+
+check('в сайдбаре девять основных разделов',
+  (html.match(/class="side-item"/g) || []).length === 9,
+  String((html.match(/class="side-item"/g) || []).length));
+check('разделы сайдбара сгруппированы', (html.match(/class="side-group-title"/g) || []).length === 2);
+check('в сайдбаре есть настройки и выход',
+  /id="sideLogout"/.test(html) && /data-action="logout"/.test(html) && /href="#\/settings"/.test(html));
+check('в топбаре есть назад/вперёд и заголовок раздела',
+  /id="navBack"/.test(html) && /id="navForward"/.test(html) && /id="pageTitle"/.test(html));
+check('есть переключатели сайдбара и панели очереди',
+  /id="sidebarToggle"/.test(html) && /id="queueToggle"/.test(html));
+check('правая панель очереди свёрстана', /id="queuePanel"/.test(html) && /id="qpList"/.test(html) && /id="qpTitle"/.test(html));
+check('в плеере есть лайк, громкость и очередь',
+  /id="playerLike"/.test(html) && /id="volume"/.test(html) && /id="volumeBtn"/.test(html) && /id="playerQueue"/.test(html));
+check('панель очереди скрыта по умолчанию', /id="queuePanel"[^>]*hidden/.test(html));
+
+check('маршруты новых разделов зарегистрированы',
+  ['/albums', '/artists', '/favorites', '/history', '/settings'].every((r) => app.includes("path === '" + r + "'")));
+check('заголовок раздела обновляется при переходе', /function updateSectionTitle/.test(app) && /SECTION_TITLES/.test(app));
+check('страницы альбомов и исполнителей собираются из библиотеки',
+  /function loadLibraryGroups/.test(app) && /async function renderAlbums/.test(app) && /async function renderArtists/.test(app));
+check('громкость сохраняется и применяется', /function applyVolume/.test(app) && /function restoreVolume/.test(app) && /rh_volume_v1/.test(app));
+check('панель очереди переключается и рендерится',
+  /function openQueuePanel/.test(app) && /function renderQueuePanel/.test(app) && /function toggleQueue/.test(app));
+check('на десктопе панель плеера постоянная',
+  /emptyDesktopBar/.test(app) && /isDesktop\(\)/.test(app));
+
+check('CSS: сайдбар как колонка сетки', /\.app \{[^}]*grid-template-columns: var\(--sidebar-w\)/.test(css));
+check('CSS: правая панель — третья колонка', /body\.queue-open \.app \{[^}]*grid-template-columns: var\(--sidebar-w\) minmax\(0, 1fr\) var\(--queue-w\)/.test(css));
+check('CSS: плеер разложен по трём зонам',
+  /\.player-row \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(300px, 1\.1fr\) minmax\(0, 1fr\)/.test(css));
+check('CSS: строка трека из пяти ячеек на широких экранах',
+  /\.track \{ grid-template-columns: 32px 46px minmax\(0, 1fr\) auto auto/.test(css));
+check('CSS: свёрнутый сайдбар скрывает подписи',
+  /body\.sidebar-collapsed \.side-item span/.test(css));
+check('CSS: громкость появляется только на десктопе',
+  /\.volume \{ display: none; \}/.test(css) && /visibility|display: block/.test(css.split('@media (min-width: 1024px)')[1] || ''));
+check('CSS: сетка карточек адаптивная', /grid-template-columns: repeat\(auto-fill, minmax\(1[0-9]{2,2}px, 1fr\)\)/.test(css));
+
 console.log(`\nПройдено: ${passed}, провалено: ${failures.length}`);
 if (failures.length) {
   console.log('Провалы:');

@@ -52,6 +52,9 @@ const S = {
   restorePosition: 0,
   lastStateSave: 0,
   playerHidden: false,
+  volume: 1,
+  muted: false,
+  queueOpen: false,
   discoveryLoadedFor: null,
 };
 
@@ -343,6 +346,33 @@ function emptyState(title, text, icon = 'note', hint = '', actions = '') {
 }
 
 /* ───────────────────────────── главная и рекомендации ───────────────────────────── */
+
+const SECTION_TITLES = [
+  [/^\/(home)?$/, 'Главная'],
+  [/^\/search/, 'Поиск'],
+  [/^\/for-you/, 'Рекомендации'],
+  [/^\/library/, 'Моя музыка'],
+  [/^\/favorites/, 'Любимые треки'],
+  [/^\/albums/, 'Альбомы'],
+  [/^\/artists/, 'Исполнители'],
+  [/^\/playlists/, 'Плейлисты'],
+  [/^\/playlist\/\d+/, 'Плейлист'],
+  [/^\/catalog\/playlist\/\d+/, 'Плейлист каталога'],
+  [/^\/history|^\/recent/, 'История прослушивания'],
+  [/^\/artist\/\d+/, 'Исполнитель'],
+  [/^\/album\/\d+/, 'Альбом'],
+  [/^\/account/, 'Аккаунт'],
+  [/^\/settings/, 'Настройки'],
+  [/^\/login/, 'Вход'],
+  [/^\/register/, 'Регистрация'],
+];
+
+function updateSectionTitle(path) {
+  const el = $('pageTitle');
+  if (!el) return;
+  const hit = SECTION_TITLES.find(([re]) => re.test(path));
+  el.textContent = hit ? hit[1] : 'RH—MUSIC';
+}
 
 function setNav(name) {
   document.querySelectorAll('[data-nav]').forEach((el) => {
@@ -735,14 +765,20 @@ async function loadMoreResults() {
 
 /* ───────────────────────────── библиотека ───────────────────────────── */
 
-async function renderLibrary() {
-  S.route = 'library';
-  setNav('library');
-  document.title = 'Моя музыка — RH—MUSIC';
+async function renderLibrary(options = {}) {
+  const opts = {
+    route: 'library', nav: 'library', title: 'Моя музыка',
+    sub: 'Личная библиотека сохраняется в вашем аккаунте',
+    heading: 'Моя музыка',
+    ...options,
+  };
+  S.route = opts.route;
+  setNav(opts.nav);
+  document.title = opts.title + ' — RH—MUSIC';
 
   if (!S.user) {
     page.innerHTML = `
-      <div class="page-head"><div><h1 class="page-title">Моя музыка</h1><p class="page-sub">Личная библиотека сохраняется в вашем аккаунте</p></div></div>
+      <div class="page-head"><div><h1 class="page-title">${esc(opts.heading)}</h1><p class="page-sub">${esc(opts.sub)}</p></div></div>
       ${emptyState('Войдите в аккаунт', 'Сохранённые треки привязаны к аккаунту и доступны с любого устройства.',
         'heart', '', '<a class="btn btn-primary" href="#/login" data-link>Войти</a><a class="btn btn-ghost" href="#/register" data-link>Регистрация</a>')}`;
     return;
@@ -750,7 +786,7 @@ async function renderLibrary() {
 
   page.innerHTML = `
     <div class="page-head">
-      <div><h1 class="page-title">Моя музыка</h1><p class="page-sub" id="libCount">Загружаю…</p></div>
+      <div><h1 class="page-title">${esc(opts.heading)}</h1><p class="page-sub" id="libCount">Загружаю…</p></div>
     </div>
     <div class="search-field" id="libSearchField" style="position:static;margin-bottom:10px">
       <svg class="search-ico" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1-4.6 13.4l-3.2 3.2a1 1 0 1 1-1.4-1.4l3.2-3.2A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
@@ -825,6 +861,180 @@ function refreshRowStates() {
     button.classList.toggle('is-on', saved);
     button.innerHTML = saved ? ICONS.heartFilled : ICONS.heart;
   });
+}
+
+/* ───────────────────────────── альбомы и исполнители библиотеки ───────────────────────────── */
+
+function plural(n, one, few, many) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
+
+async function loadLibraryGroups() {
+  const data = await api('/api/library?limit=500&sort=recent');
+  const items = data.items || [];
+  const albums = new Map();
+  const artists = new Map();
+
+  for (const track of items) {
+    const albumKey = track.albumId ? 'id:' + track.albumId : 'name:' + (track.album || track.title || '');
+    if (!albums.has(albumKey)) {
+      albums.set(albumKey, {
+        key: albumKey,
+        id: track.albumId || null,
+        title: track.album || track.title || 'Без альбома',
+        artist: track.artist || '',
+        artistId: track.artistId || null,
+        cover: track.cover || null,
+        tracks: [],
+      });
+    }
+    albums.get(albumKey).tracks.push(track);
+
+    if (track.artist || track.artistId) {
+      const artistKey = track.artistId ? 'id:' + track.artistId : 'name:' + track.artist;
+      if (!artists.has(artistKey)) {
+        artists.set(artistKey, {
+          key: artistKey,
+          id: track.artistId || null,
+          title: track.artist || 'Неизвестный исполнитель',
+          cover: track.cover || null,
+          tracks: [],
+        });
+      }
+      artists.get(artistKey).tracks.push(track);
+    }
+  }
+
+  return { items, albums: [...albums.values()], artists: [...artists.values()] };
+}
+
+function groupPlayButton(group, listName) {
+  S.lists[listName] = group.tracks;
+  return `<button class="card-play" type="button" data-action="play-all" data-list="${esc(listName)}" aria-label="Слушать ${esc(group.title)}">${ICONS.play}</button>`;
+}
+
+async function renderAlbums() {
+  S.route = 'albums';
+  setNav('albums');
+  document.title = 'Альбомы — RH—MUSIC';
+
+  if (!S.user) {
+    page.innerHTML = `
+      <div class="page-head"><div><h1 class="page-title">Альбомы</h1><p class="page-sub">Альбомы из вашей библиотеки</p></div></div>
+      ${emptyState('Войдите в аккаунт', 'Альбомы собираются из треков, сохранённых в «Мою музыку».', 'user', '',
+        '<a class="btn btn-primary" href="#/login" data-link>Войти</a><a class="btn btn-ghost" href="#/register" data-link>Регистрация</a>')}`;
+    return;
+  }
+
+  page.innerHTML = `<div class="page-head"><div><h1 class="page-title">Альбомы</h1><p class="page-sub" id="libCount">Загружаю...</p></div></div>` + skeletonCards(8);
+
+  let groups;
+  try {
+    groups = await loadLibraryGroups();
+  } catch (error) {
+    page.innerHTML = emptyState('Не удалось загрузить альбомы', error.message, 'alert');
+    return;
+  }
+
+  if (!groups.albums.length) {
+    page.innerHTML = `
+      <div class="page-head"><div><h1 class="page-title">Альбомы</h1><p class="page-sub">Пока пусто</p></div></div>
+      ${emptyState('Альбомов нет', 'Сохраняйте треки в «Мою музыку» — альбомы появятся здесь автоматически.', 'note', '',
+        '<a class="btn btn-primary" href="#/search" data-link>Найти музыку</a>')}`;
+    return;
+  }
+
+  const cards = groups.albums.map((album) => {
+    const listName = 'album_' + album.key.replace(/[^a-zA-Z0-9]/g, '');
+    const sub = [album.artist, album.tracks.length + ' ' + plural(album.tracks.length, 'трек', 'трека', 'треков')]
+      .filter(Boolean).join(' · ');
+    const inner = `
+      <span class="card-art">
+        ${album.cover ? `<img src="${esc(pic(album.cover, 300))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+        <span class="cover-fallback">♪</span>
+        ${groupPlayButton(album, listName)}
+      </span>
+      <span>
+        <span class="card-title">${esc(album.title)}</span>
+        <span class="card-sub">${esc(sub)}</span>
+      </span>`;
+    return album.id
+      ? `<a class="card" href="#/album/${esc(album.id)}" data-link>${inner}</a>`
+      : `<div class="card">${inner}</div>`;
+  }).join('');
+
+  page.innerHTML = `
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Альбомы</h1>
+        <p class="page-sub">${groups.albums.length} ${plural(groups.albums.length, 'альбом', 'альбома', 'альбомов')} из вашей библиотеки</p>
+      </div>
+      <button class="btn btn-ghost" type="button" data-action="shuffle-all-library">${ICONS.play} Перемешать всё</button>
+    </div>
+    <div class="grid-cards">${cards}</div>`;
+}
+
+async function renderArtists() {
+  S.route = 'artists';
+  setNav('artists');
+  document.title = 'Исполнители — RH—MUSIC';
+
+  if (!S.user) {
+    page.innerHTML = `
+      <div class="page-head"><div><h1 class="page-title">Исполнители</h1><p class="page-sub">Исполнители из вашей библиотеки</p></div></div>
+      ${emptyState('Войдите в аккаунт', 'Исполнители собираются из треков, сохранённых в «Мою музыку».', 'user', '',
+        '<a class="btn btn-primary" href="#/login" data-link>Войти</a><a class="btn btn-ghost" href="#/register" data-link>Регистрация</a>')}`;
+    return;
+  }
+
+  page.innerHTML = `<div class="page-head"><div><h1 class="page-title">Исполнители</h1><p class="page-sub" id="libCount">Загружаю...</p></div></div>` + skeletonCards(8);
+
+  let groups;
+  try {
+    groups = await loadLibraryGroups();
+  } catch (error) {
+    page.innerHTML = emptyState('Не удалось загрузить исполнителей', error.message, 'alert');
+    return;
+  }
+
+  if (!groups.artists.length) {
+    page.innerHTML = `
+      <div class="page-head"><div><h1 class="page-title">Исполнители</h1><p class="page-sub">Пока пусто</p></div></div>
+      ${emptyState('Исполнителей нет', 'Сохраняйте треки — исполнители появятся здесь автоматически.', 'note', '',
+        '<a class="btn btn-primary" href="#/search" data-link>Найти музыку</a>')}`;
+    return;
+  }
+
+  const cards = groups.artists.map((artist) => {
+    const listName = 'artist_' + artist.key.replace(/[^a-zA-Z0-9]/g, '');
+    const sub = artist.tracks.length + ' ' + plural(artist.tracks.length, 'трек', 'трека', 'треков');
+    const inner = `
+      <span class="card-art round">
+        ${artist.cover ? `<img src="${esc(pic(artist.cover, 300))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+        <span class="cover-fallback">♪</span>
+        ${groupPlayButton(artist, listName)}
+      </span>
+      <span>
+        <span class="card-title">${esc(artist.title)}</span>
+        <span class="card-sub">${esc(sub)}</span>
+      </span>`;
+    return artist.id
+      ? `<a class="card" href="#/artist/${esc(artist.id)}" data-link>${inner}</a>`
+      : `<div class="card">${inner}</div>`;
+  }).join('');
+
+  page.innerHTML = `
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Исполнители</h1>
+        <p class="page-sub">${groups.artists.length} ${plural(groups.artists.length, 'исполнитель', 'исполнителя', 'исполнителей')} в библиотеке</p>
+      </div>
+    </div>
+    <div class="grid-cards">${cards}</div>`;
 }
 
 /* ───────────────────────────── плейлисты ───────────────────────────── */
@@ -941,14 +1151,14 @@ async function movePlaylistTrack(playlistId, index, delta) {
 
 /* ───────────────────────────── история ───────────────────────────── */
 
-async function renderRecent() {
-  S.route = 'recent';
-  setNav('recent');
-  document.title = 'Недавние — RH—MUSIC';
+async function renderRecent(mode = 'history') {
+  S.route = mode;
+  setNav('history');
+  document.title = 'История прослушивания — RH—MUSIC';
 
   if (!S.user) {
     page.innerHTML = `
-      <div class="page-head"><div><h1 class="page-title">Недавние</h1><p class="page-sub">История прослушивания</p></div></div>
+      <div class="page-head"><div><h1 class="page-title">История прослушивания</h1><p class="page-sub">Что вы слушали последним</p></div></div>
       ${emptyState('Войдите в аккаунт', 'История прослушивания сохраняется в вашем аккаунте.', 'user', '',
         '<a class="btn btn-primary" href="#/login" data-link>Войти</a>')}`;
     return;
@@ -960,7 +1170,7 @@ async function renderRecent() {
     S.lists.history = data.items;
     page.innerHTML = `
       <div class="page-head">
-        <div><h1 class="page-title">Недавние</h1><p class="page-sub">${data.items.length ? data.items.length + ' треков в истории' : 'История пока пуста'}</p></div>
+        <div><h1 class="page-title">История прослушивания</h1><p class="page-sub">${data.items.length ? data.items.length + ' треков в истории' : 'История пока пуста'}</p></div>
         ${data.items.length ? '<button class="btn btn-ghost" type="button" data-action="play-all" data-list="history">▶ Слушать</button>' : ''}
       </div>
       ${data.items.length
@@ -1375,14 +1585,15 @@ async function afterLogin() {
   S.identities = null;
 }
 
-async function renderAccount() {
-  S.route = 'account';
+async function renderAccount(options = {}) {
+  const settings = !!options.settings;
+  S.route = settings ? 'settings' : 'account';
   setNav(null);
-  document.title = 'Аккаунт — RH—MUSIC';
+  document.title = (settings ? 'Настройки' : 'Аккаунт') + ' — RH—MUSIC';
 
   if (!S.user) { renderLogin(); return; }
 
-  page.innerHTML = '<div class="page-head"><div><h1 class="page-title">Аккаунт</h1></div></div>' + skeletonTracks(3);
+  page.innerHTML = '<div class="page-head"><div><h1 class="page-title">' + (settings ? 'Настройки' : 'Аккаунт') + '</h1></div></div>' + skeletonTracks(3);
 
   let data;
   try {
@@ -1424,7 +1635,7 @@ async function renderAccount() {
   }).join('');
 
   page.innerHTML = `
-    <div class="page-head"><div><h1 class="page-title">Аккаунт</h1></div></div>
+    <div class="page-head"><div><h1 class="page-title">${settings ? 'Настройки' : 'Аккаунт'}</h1><p class="page-sub">Профиль, способы входа и удаление аккаунта</p></div></div>
 
     <div class="profile-head">
       <div class="profile-avatar">${esc(name.slice(0, 1))}</div>
@@ -1721,9 +1932,16 @@ function shouldShowPlayer(state = S) {
   return true;
 }
 
-/** Прячет/показывает плеер и освобождает место под ним. */
+/**
+ * Прячет/показывает плеер и освобождает место под ним.
+ * На десктопе панель постоянная (как в Koel/Spotify): даже без выбранного трека
+ * она остаётся на месте и не перекрывает контент, потому что страница резервирует
+ * её высоту. На телефоне пустая панель по-прежнему скрыта.
+ */
 function syncPlayerVisibility() {
-  const visible = shouldShowPlayer();
+  const authRoute = S.route === 'login' || S.route === 'register';
+  const emptyDesktopBar = isDesktop() && !authRoute && !S.playerHidden && !hasSelectedTrack();
+  const visible = shouldShowPlayer() || emptyDesktopBar;
   player.hidden = !visible;
   player.classList.toggle('is-hidden', !visible);
   document.body.classList.toggle('has-player', visible);
@@ -1872,6 +2090,34 @@ function restorePlayerState() {
   return true;
 }
 
+/* ───────────────────────────── громкость ───────────────────────────── */
+
+function applyVolume() {
+  audio.volume = S.muted ? 0 : S.volume;
+  const el = $('volume');
+  const percent = Math.round((S.muted ? 0 : S.volume) * 100);
+  if (el) {
+    el.value = String(percent);
+    el.style.setProperty('--vol-fill', percent + '%');
+    el.classList.toggle('is-muted', S.muted || S.volume === 0);
+  }
+  const btn = $('volumeBtn');
+  if (btn) {
+    btn.classList.toggle('is-muted', S.muted || S.volume === 0);
+    btn.setAttribute('aria-label', S.muted ? 'Включить звук' : 'Выключить звук');
+  }
+  writeJson('rh_volume_v1', { volume: S.volume, muted: S.muted });
+}
+
+function restoreVolume() {
+  const saved = readJson('rh_volume_v1', null);
+  if (saved && Number.isFinite(Number(saved.volume))) {
+    S.volume = Math.min(1, Math.max(0, Number(saved.volume)));
+    S.muted = !!saved.muted;
+  }
+  applyVolume();
+}
+
 function updateTransport() {
   const hasTrack = !!S.current;
   ['play', 'playMini', 'npPlay'].forEach((id) => { const el = $(id); if (el) el.disabled = !hasTrack; });
@@ -1939,11 +2185,20 @@ function updateNowPlayingMeta(track) {
 }
 
 function updateNpLike() {
+  const saved = !!(S.current && S.libraryIds.has(String(S.current.id)));
   const button = $('npLike');
-  if (!button) return;
-  const saved = S.current && S.libraryIds.has(String(S.current.id));
-  button.textContent = saved ? 'В моей музыке' : 'В библиотеку';
-  button.classList.toggle('is-on', !!saved);
+  if (button) {
+    button.textContent = saved ? 'В моей музыке' : 'В библиотеку';
+    button.classList.toggle('is-on', saved);
+  }
+  const playerLike = $('playerLike');
+  if (playerLike) {
+    playerLike.classList.toggle('is-on', saved);
+    playerLike.disabled = !S.current;
+    playerLike.setAttribute('aria-label', saved ? 'Убрать из библиотеки' : 'Сохранить в библиотеку');
+  }
+  const qpLike = $('qpLike');
+  if (qpLike) qpLike.textContent = saved ? 'В моей музыке' : 'В библиотеку';
 }
 
 function syncSeek(current, duration) {
@@ -2157,6 +2412,71 @@ function renderQueue() {
   const html = `<div class="track-list">${S.queue.map((t, i) => trackRow(t, i, 'queue', i + 1)).join('')}</div>`;
   if (body) body.innerHTML = S.drawerOpen ? html : '';
   if (npList) npList.innerHTML = S.npOpen ? `<div class="section-title" style="margin:8px 0 6px">Очередь · ${S.queue.length}</div>${html}` : '';
+  renderQueuePanel();
+}
+
+/* ───────────────────────────── правая панель очереди ───────────────────────────── */
+
+function renderQueuePanel() {
+  const list = $('qpList');
+  if (!list) return;
+  const track = S.current;
+  const title = $('qpTitle');
+  const artist = $('qpArtist');
+  if (title) title.textContent = track ? track.title : 'Ничего не играет';
+  if (artist) artist.textContent = track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек';
+
+  const cover = $('qpCover');
+  if (cover) {
+    if (track && track.cover) { cover.src = pic(track.cover, 400); cover.hidden = false; }
+    else { cover.removeAttribute('src'); cover.hidden = true; }
+  }
+  const count = $('qpCount');
+  if (count) count.textContent = String(S.queue.length);
+
+  if (!S.queue.length) {
+    list.innerHTML = '<div class="recent-sub" style="padding:8px 8px 0">Очередь пуста</div>';
+    return;
+  }
+  S.lists.queue = S.queue;
+  list.innerHTML = S.queue.map((t, i) => {
+    const isCurrent = track && String(track.id) === String(t.id);
+    return `
+      <button class="queue-panel-row${isCurrent ? ' is-current' : ''}" type="button"
+              data-action="play" data-list="queue" data-index="${i}">
+        <span class="qp-cover">
+          ${t.cover ? `<img src="${esc(pic(t.cover, 120))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+        </span>
+        <span class="qp-meta">
+          <span class="qp-name">${esc(t.title)}</span>
+          <span class="qp-artist">${esc(t.artist || '')}</span>
+        </span>
+        <span class="qp-index">${isCurrent ? '♪' : i + 1}</span>
+      </button>`;
+  }).join('');
+}
+
+function isDesktop() {
+  return !!(window.matchMedia && window.matchMedia('(min-width: 1024px)').matches);
+}
+
+function openQueuePanel(open = true) {
+  S.queueOpen = open;
+  const panel = $('queuePanel');
+  if (panel) panel.hidden = !open;
+  const toggle = $('queueToggle');
+  if (toggle) toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+  document.body.classList.toggle('queue-open', open);
+  if (open) renderQueuePanel();
+  syncLayoutHeight();
+}
+
+function toggleQueue(force) {
+  if (isDesktop()) {
+    openQueuePanel(force === undefined ? !S.queueOpen : force);
+    return;
+  }
+  openDrawer(force === undefined ? !S.drawerOpen : force);
 }
 
 function openNowPlaying(open = true) {
@@ -2197,16 +2517,22 @@ function route() {
 
   document.body.classList.toggle('auth-route', path === '/login' || path === '/register');
 
+  updateSectionTitle(path);
+
   if (path === '/' || path === '/home') return renderShowcase();
   if (path === '/for-you') return renderRecommendations();
   if ((m = path.match(/^\/catalog\/playlist\/(\d+)$/))) return renderCatalogPlaylist(m[1]);
   if (path === '/search') return renderSearch();
   if (path === '/library') return renderLibrary();
+  if (path === '/favorites') return renderLibrary({ route: 'favorites', nav: 'favorites', title: 'Любимые треки', heading: 'Любимые треки', sub: 'Треки, которые вы сохранили в «Мою музыку»' });
+  if (path === '/albums') return renderAlbums();
+  if (path === '/artists') return renderArtists();
   if (path === '/playlists') return renderPlaylists();
   if ((m = path.match(/^\/playlist\/(\d+)$/))) return renderPlaylist(m[1]);
-  if (path === '/recent') return renderRecent();
+  if (path === '/history' || path === '/recent') return renderRecent('history');
   if (path === '/login') return renderLogin();
   if (path === '/register') return renderRegister();
+  if (path === '/settings') return renderAccount({ settings: true });
   if (path === '/account') return renderAccount();
   if ((m = path.match(/^\/artist\/(\d+)$/))) return renderArtist(m[1]);
   if ((m = path.match(/^\/album\/(\d+)$/))) return renderAlbum(m[1]);
@@ -2248,6 +2574,20 @@ document.addEventListener('click', async (event) => {
     setQueue(list, 0);
     if (action === 'shuffle-list') { S.shuffle = true; toggleShuffle(); }
     playIndex(0);
+    return;
+  }
+
+  if (action === 'shuffle-all-library') {
+    api('/api/library?limit=200&sort=recent')
+      .then((data) => {
+        const tracks = data.items || [];
+        if (!tracks.length) throw new Error('В библиотеке пока нет треков');
+        S.lists.libraryShuffle = tracks;
+        setQueue(tracks, 0);
+        if (!S.shuffle) toggleShuffle();
+        playIndex(0);
+      })
+      .catch((error) => toast(error.message));
     return;
   }
 
@@ -2578,7 +2918,7 @@ $('shuffle').addEventListener('click', toggleShuffle);
 $('repeat').addEventListener('click', cycleRepeat);
 $('npOpen').addEventListener('click', () => openNowPlaying(true));
 $('npClose').addEventListener('click', () => openNowPlaying(false));
-$('npQueue').addEventListener('click', () => openDrawer(true));
+$('npQueue').addEventListener('click', () => toggleQueue(true));
 $('drawerClose').addEventListener('click', () => openDrawer(false));
 $('accountBtn').addEventListener('click', () => {
   if (S.user) go('/account');
@@ -2685,6 +3025,36 @@ player.addEventListener('click', (event) => {
 }, true);
 
 $('playerHide').addEventListener('click', () => hidePlayer());
+/* ── Десктопные элементы: панели, навигация, громкость ── */
+const sidebarToggle = $('sidebarToggle');
+if (sidebarToggle) {
+  sidebarToggle.addEventListener('click', () => {
+    document.body.classList.toggle('sidebar-collapsed');
+    writeJson('rh_layout_v1', { sidebarCollapsed: document.body.classList.contains('sidebar-collapsed') });
+    syncLayoutHeight();
+  });
+}
+function bindClick(id, handler) { const el = $(id); if (el) el.addEventListener('click', handler); }
+
+bindClick('navBack', () => history.back());
+bindClick('navForward', () => history.forward());
+bindClick('queueToggle', () => toggleQueue());
+bindClick('playerQueue', () => toggleQueue());
+bindClick('queueClose', () => openQueuePanel(false));
+bindClick('playerLike', () => { if (S.current) toggleSave(S.current); });
+bindClick('qpLike', () => { if (S.current) { toggleSave(S.current); updateNpLike(); } });
+bindClick('qpAdd', () => { if (S.current) openPlaylistPicker(S.current); });
+bindClick('volumeBtn', () => { S.muted = !S.muted; applyVolume(); });
+
+const volumeInput = $('volume');
+if (volumeInput) {
+  volumeInput.addEventListener('input', (event) => {
+    S.volume = Math.min(1, Math.max(0, Number(event.target.value) / 100));
+    S.muted = false;
+    applyVolume();
+  });
+}
+
 $('miniNowOpen').addEventListener('click', () => showPlayer());
 $('miniNowPlay').addEventListener('click', (event) => {
   event.stopPropagation();
@@ -2791,7 +3161,9 @@ function markCurrentRow() {
 }
 
 function syncLayoutHeight() {
-  const hidden = player.hidden || !shouldShowPlayer();
+  // Источник истины — фактическая видимость панели, а не наличие трека:
+  // на десктопе панель постоянная и занимает своё место даже пустой.
+  const hidden = player.hidden || getComputedStyle(player).display === 'none';
   const playerHeight = hidden ? 0 : Math.round(player.getBoundingClientRect().height || 0);
   document.documentElement.style.setProperty('--player-h', playerHeight + 'px');
 }
@@ -2809,6 +3181,9 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   updateTransport();
   renderQueue();
   renderSidePlaylists();
+  restoreVolume();
+  const layout = readJson('rh_layout_v1', null);
+  if (layout && layout.sidebarCollapsed) document.body.classList.add('sidebar-collapsed');
   restorePlayerState();
   updateTransport();
   await refreshMe();
