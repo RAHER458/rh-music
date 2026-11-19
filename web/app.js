@@ -29,6 +29,11 @@ const S = {
   search: { tracks: emptyPage(), artists: emptyPage(), albums: emptyPage(), requestId: 0 },
   recommendations: null,
   recommendationsAt: 0,
+  home: null,
+  homeAt: 0,
+  providers: null,
+  identities: null,
+  security: null,
   queue: [],
   originalQueue: null,
   index: -1,
@@ -351,18 +356,122 @@ async function loadRecommendations(force = false) {
   return data;
 }
 
-async function renderHome() {
+/* ───────────────────────────── витрина ───────────────────────────── */
+
+function playlistCard(playlist) {
+  const minutes = playlist.duration ? Math.round(playlist.duration / 60) : 0;
+  const sub = playlist.description || (minutes ? minutes + ' мин' : 'Плейлист');
+  return `
+    <a class="card" href="#/catalog/playlist/${esc(playlist.id)}" data-link>
+      <span class="card-art">
+        ${playlist.cover ? `<img src="${esc(pic(playlist.cover, 300))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+        <span class="cover-fallback">♪</span>
+        <button class="card-play" type="button" data-action="play-catalog-playlist" data-id="${esc(playlist.id)}" aria-label="Включить ${esc(playlist.title)}">${ICONS.play}</button>
+      </span>
+      <span>
+        <span class="card-title">${esc(playlist.title)}</span>
+        <span class="card-sub">${esc(sub)}</span>
+      </span>
+    </a>`;
+}
+
+function carousel(items, renderItem) {
+  return `<div class="carousel">${items.map(renderItem).join('')}</div>`;
+}
+
+async function loadHome(force = false) {
+  if (!force && S.home && Date.now() - S.homeAt < 120000) return S.home;
+  const data = await api('/api/home');
+  S.home = data;
+  S.homeAt = Date.now();
+  return data;
+}
+
+async function renderShowcase() {
   S.route = 'home';
   setNav('home');
   document.title = 'RH—MUSIC';
 
+  if (!S.home) {
+    page.innerHTML = `
+      <div class="hero-skeleton">
+        <div class="sk sk-hero"></div>
+      </div>
+      ${skeletonCards(6)}`;
+  }
+
+  let data;
+  try {
+    data = await loadHome(true);
+  } catch (error) {
+    page.innerHTML = emptyState('Витрина недоступна', error.message, 'alert',
+      'Общий контент каталога временно не отвечает — попробуйте обновить страницу.',
+      '<button class="btn btn-ghost" type="button" data-action="reload-home">Обновить</button>');
+    return;
+  }
+
+  const sections = data.sections || [];
+  const hero = data.hero || null;
+  const heroBlock = hero ? `
+    <div class="hero">
+      <div class="hero-art">
+        ${hero.cover ? `<img src="${esc(pic(hero.cover, 600))}" alt="" decoding="async" onerror="this.remove()">` : ''}
+        <span class="cover-fallback big">RH</span>
+      </div>
+      <div class="hero-info">
+        <span class="hero-kicker">Подборка каталога</span>
+        <h1 class="hero-title">${esc(hero.title)}</h1>
+        ${hero.description ? `<p class="hero-sub">${esc(hero.description)}</p>` : ''}
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#/catalog/playlist/${esc(hero.id)}" data-link>${ICONS.play} Слушать</a>
+        </div>
+      </div>
+    </div>` : '';
+
+  const blocks = sections.map((block) => {
+    if (block.type === 'playlists') {
+      return section(block.title, carousel(block.items, playlistCard), { sub: block.subtitle || '', key: block.key });
+    }
+    if (block.type === 'albums') {
+      return section(block.title, carousel(block.items, albumCard), { sub: block.subtitle || '', key: block.key });
+    }
+    if (block.type === 'artists') {
+      return section(block.title, carousel(block.items, artistCard), { sub: block.subtitle || '', key: block.key });
+    }
+    S.lists['home_' + block.key] = block.items;
+    return section(block.title, trackList(block.items, 'home_' + block.key), { sub: block.subtitle || '', key: block.key });
+  });
+
+  const genres = (data.genres || []).map((genre) =>
+    `<button class="chip" type="button" data-action="genre" data-query="${esc(genre.title)}">${esc(genre.title)}</button>`).join('');
+
+  page.innerHTML = `
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">${S.user ? 'Привет, ' + esc(S.user.displayName || S.user.username) : 'Витрина RH—MUSIC'}</h1>
+        <p class="page-sub">Плейлисты каталога, новинки и исполнители — для всех</p>
+      </div>
+    </div>
+    ${heroBlock}
+    ${genres ? `<div class="chip-row">${genres}</div>` : ''}
+    ${blocks.join('')}
+    <p class="section-sub">${sections.length ? 'Витрина обновляется автоматически по мере появления нового контента в каталоге.' : 'Каталог временно не вернул контент.'}</p>
+  `;
+}
+
+/* ───────────────────────────── персональные рекомендации ───────────────────────────── */
+
+async function renderRecommendations() {
+  S.route = 'for-you';
+  setNav('for-you');
+  document.title = 'Рекомендации — RH—MUSIC';
+
   if (!S.user) {
     page.innerHTML = `
-      <div class="page-head"><div><h1 class="page-title">Музыка для вас</h1><p class="page-sub">Сервис учится на ваших прослушиваниях</p></div></div>
-      ${emptyState('Войдите в аккаунт', 'RH—MUSIC собирает личную библиотеку, плейлисты и рекомендации на основе того, что вы слушаете.',
-        'user', 'Без аккаунта доступен поиск и воспроизведение музыки.',
-        `<a class="btn btn-primary" href="#/register" data-link>Создать аккаунт</a><a class="btn btn-ghost" href="#/login" data-link>Войти</a>`)}
-      ${section('Начните с поиска', emptyState('Найдите первую музыку', 'Введите название трека, имя исполнителя или альбома.', 'search', '', '<a class="btn btn-primary" href="#/search" data-link>Открыть поиск</a>'))}
+      <div class="page-head"><div><h1 class="page-title">Рекомендации</h1><p class="page-sub">Индивидуальная подборка по вашей истории</p></div></div>
+      ${emptyState('Войдите в аккаунт', 'Рекомендации строятся только по вашей истории прослушиваний, библиотеке и плейлистам.',
+        'user', 'Без аккаунта доступна витрина, поиск и воспроизведение музыки.',
+        `<a class="btn btn-primary" href="#/login" data-link>Войти</a><a class="btn btn-ghost" href="#/register" data-link>Создать аккаунт</a>`)}
     `;
     return;
   }
@@ -372,7 +481,7 @@ async function renderHome() {
   try {
     data = await loadRecommendations(true);
   } catch (error) {
-    page.innerHTML = emptyState('Не удалось загрузить рекомендации', error.message, 'alert', 'Потяните обновить позже.');
+    page.innerHTML = emptyState('Не удалось загрузить рекомендации', error.message, 'alert', 'Попробуйте обновить позже.');
     return;
   }
 
@@ -381,15 +490,15 @@ async function renderHome() {
   if (!sections.length) {
     page.innerHTML = `
       <div class="page-head">
-        <div><h1 class="page-title">Привет, ${esc(S.user.displayName || S.user.username)}</h1>
-        <p class="page-sub">Персональные рекомендации появятся, когда вы что-нибудь послушаете</p></div>
+        <div><h1 class="page-title">Рекомендации</h1>
+        <p class="page-sub">Пока недостаточно данных для персональных рекомендаций</p></div>
       </div>
       <div class="notice">
         <span>${ICONS.note}</span>
-        <span>Рекомендации строятся только на вашей реальной истории: прослушивания, библиотека и плейлисты. Пока данных нет — показывать нечего, и мы не подставляем случайные подборки.</span>
+        <span>Послушайте музыку, добавляйте любимые треки в «Мою музыку» и создавайте плейлисты — подборки появятся постепенно. Мы не подставляем случайные треки под видом персональных.</span>
       </div>
       <div style="height:16px"></div>
-      ${emptyState('Ничего не прослушано', 'Включите любой трек — и раздел начнёт наполняться: «Продолжить прослушивание», «Для вас», «Похожие композиции» и «Новые релизы».',
+      ${emptyState('Ничего не прослушано', 'Включите любой трек — и раздел начнёт наполняться: «Продолжить прослушивание», «Для вас», «На основе любимых исполнителей» и «Возможно, вам понравится».',
         'search', '', '<a class="btn btn-primary" href="#/search" data-link>Найти музыку</a>')}
     `;
     return;
@@ -397,7 +506,7 @@ async function renderHome() {
 
   const blocks = sections.map((sectionData) => {
     const body = sectionData.type === 'albums'
-      ? `<div class="grid-cards">${sectionData.items.map(albumCard).join('')}</div>`
+      ? carousel(sectionData.items, albumCard)
       : trackList(sectionData.items, 'rec_' + sectionData.key);
     S.lists['rec_' + sectionData.key] = sectionData.items;
     return section(sectionData.title, body, { sub: sectionData.subtitle || '', key: sectionData.key });
@@ -406,12 +515,53 @@ async function renderHome() {
   page.innerHTML = `
     <div class="page-head">
       <div>
-        <h1 class="page-title">Привет, ${esc(S.user.displayName || S.user.username)}</h1>
+        <h1 class="page-title">Рекомендации</h1>
         <p class="page-sub">${data.plays ? `Прослушано треков: ${data.tracks} · всего воспроизведений: ${data.plays}` : 'Начните слушать — подборки обновятся'}</p>
       </div>
     </div>
     ${blocks.join('')}
-    <p class="section-sub">Подборки сформированы по вашей истории прослушивания, библиотеке и плейлистам.</p>
+    <p class="section-sub">Подборки сформированы по вашей истории прослушивания, библиотеке и плейлистам. Чужая история в них не попадает.</p>
+  `;
+}
+
+/* ───────────────────────────── плейлист каталога ───────────────────────────── */
+
+async function renderCatalogPlaylist(id) {
+  S.route = 'catalog-playlist';
+  setNav('home');
+  page.innerHTML = '<div class="page-head"><div class="sk sk-line" style="width:40%;height:26px"></div></div>' + skeletonTracks(8);
+
+  let data;
+  try {
+    data = await api('/api/playlist/' + encodeURIComponent(id));
+  } catch (error) {
+    page.innerHTML = emptyState('Плейлист недоступен', error.message, 'alert');
+    return;
+  }
+
+  const playlist = data.playlist;
+  const tracks = data.tracks || [];
+  document.title = playlist.title + ' — RH—MUSIC';
+  S.lists.catalogTracks = tracks;
+
+  page.innerHTML = `
+    <div class="page-head playlist-head">
+      <div class="playlist-cover">
+        ${playlist.cover ? `<img src="${esc(pic(playlist.cover, 400))}" alt="" decoding="async" onerror="this.remove()">` : ''}
+        <span class="cover-fallback big">RH</span>
+      </div>
+      <div class="playlist-head-text">
+        <span class="kicker">Плейлист каталога</span>
+        <h1 class="page-title">${esc(playlist.title)}</h1>
+        <p class="page-sub">${esc(playlist.description || '')}</p>
+        <p class="page-sub">${tracks.length} ${tracks.length === 1 ? 'трек' : 'треков'}${playlist.duration ? ' · ' + fmt(playlist.duration) : ''}</p>
+        ${tracks.length ? `<div class="playlist-actions">
+          <button class="btn btn-primary" type="button" data-action="play-all" data-list="catalogTracks">${ICONS.play} Слушать</button>
+          <button class="btn btn-ghost" type="button" data-action="shuffle-list" data-list="catalogTracks">${ICONS.shuffle || ICONS.play} Перемешать</button>
+        </div>` : ''}
+      </div>
+    </div>
+    ${tracks.length ? trackList(tracks, 'catalogTracks', true) : emptyState('Пусто', 'В этом плейлисте нет доступных треков.', 'note')}
   `;
 }
 
@@ -605,6 +755,7 @@ async function renderLibrary() {
       <button class="chip" type="button" data-action="lib-sort" data-sort="title">По названию</button>
       <button class="chip" type="button" data-action="lib-sort" data-sort="artist">По исполнителю</button>
       <button class="chip" type="button" data-action="play-all" data-list="library">▶ Слушать</button>
+      <a class="chip" href="#/recent" data-link>История</a>
     </div>
     <div id="libBody"></div>`;
 
@@ -903,6 +1054,137 @@ async function renderAlbum(id) {
 
 /* ───────────────────────────── аккаунт ───────────────────────────── */
 
+const PROVIDER_LABEL = { google: 'Google', vk: 'VK ID', apple: 'Apple' };
+
+function providerGlyph(id) {
+  if (id === 'google') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.06-1.4-.18-2.05H12v3.9h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.75 3-4.3 3-7.35Z"/><path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.6-2.43l-3.2-2.5c-.9.6-2.05.95-3.4.95-2.6 0-4.8-1.75-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.4 13.9a6 6 0 0 1 0-3.8V7.5H3.1a10 10 0 0 0 0 9l3.3-2.6Z"/><path fill="#EA4335" d="M12 6.05c1.47 0 2.8.5 3.83 1.5l2.85-2.85A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.9 5.5l3.3 2.6C7.2 7.8 9.4 6.05 12 6.05Z"/></svg>';
+  }
+  if (id === 'vk') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4C75A3" d="M12.8 17.5c-5.2 0-8.4-3.6-8.6-9.6h2.7c.1 4.4 2 6.3 3.5 6.7V7.9h2.5v3.6c1.5-.2 3-1.8 3.6-3.6h2.5a7.3 7.3 0 0 1-3.4 4.8 7.5 7.5 0 0 1 3.9 4.8h-2.8a4.7 4.7 0 0 0-3.8-3.3v3.3h-.1Z"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#f5f5f7" d="M16.4 12.7c0-2 1.6-3 1.7-3.1-.9-1.4-2.4-1.6-2.9-1.6-1.2-.1-2.4.7-3 .7-.6 0-1.6-.7-2.6-.7-1.3 0-2.6.8-3.3 2-1.4 2.4-.4 6 1 8 .7 1 1.5 2 2.5 2 1 0 1.4-.6 2.6-.6s1.6.6 2.6.6 1.8-1 2.4-2c.8-1.1 1.1-2.2 1.1-2.3 0 0-2.1-.8-2.1-3ZM14.3 6.4c.5-.7.9-1.6.8-2.5-.8 0-1.8.5-2.4 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.8-.5 2.4-1.1Z"/></svg>';
+}
+
+async function loadProviders(force = false) {
+  if (S.providers && !force) return S.providers;
+  try {
+    const data = await api('/api/auth/providers');
+    S.providers = data.providers || [];
+  } catch {
+    S.providers = [];
+  }
+  return S.providers;
+}
+
+function providerBlock(mode = 'login') {
+  const list = S.providers || [];
+  if (!list.length) return '';
+  const buttons = list.map((provider) => `
+    <button class="btn-provider${provider.enabled ? '' : ' is-off'}" type="button"
+            data-action="${mode === 'link' ? 'link-provider' : 'oauth'}"
+            data-provider="${esc(provider.id)}" data-mode="${esc(mode)}">
+      ${providerGlyph(provider.id)}
+      <span class="provider-text">
+        <b>Продолжить с ${esc(provider.title)}</b>
+        ${provider.enabled ? '' : '<small>пока не подключён</small>'}
+      </span>
+    </button>`).join('');
+  return `<div class="provider-list">${buttons}</div><div class="auth-sep"><span>или по email</span></div>`;
+}
+
+let gisPromise = null;
+function loadGoogleSdk() {
+  if (window.google && window.google.accounts && window.google.accounts.id) return Promise.resolve();
+  if (!gisPromise) {
+    gisPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Не удалось загрузить Google Identity Services'));
+      document.head.appendChild(script);
+    });
+  }
+  return gisPromise;
+}
+
+async function startOauth(provider, mode = 'login') {
+  if (!provider) return;
+  await loadProviders();
+  const entry = (S.providers || []).find((item) => item.id === provider);
+  if (!entry) { toast('Способ входа недоступен'); return; }
+  if (!entry.enabled) {
+    toast('Вход через ' + (PROVIDER_LABEL[provider] || provider) +
+      ' пока не подключён: на сервере не заданы ключи приложения.', 'info');
+    return;
+  }
+  try {
+    if (provider === 'google') return await startGoogle(entry, mode);
+    const data = await api('/api/auth/oauth/' + provider + '/start', { method: 'POST', body: { mode } });
+    if (data.url) location.href = data.url;
+    else throw new Error('Провайдер не вернул адрес входа');
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function startGoogle(entry, mode) {
+  const gate = await api('/api/auth/oauth/google/nonce', { method: 'POST', body: { mode } });
+  await loadGoogleSdk();
+  if (!(window.google && window.google.accounts && window.google.accounts.id)) {
+    throw new Error('Google Identity Services недоступен');
+  }
+  window.google.accounts.id.initialize({
+    client_id: entry.clientId,
+    nonce: gate.nonce,
+    ux_mode: 'popup',
+    callback: async (response) => {
+      try {
+        const data = await api('/api/auth/oauth/google', {
+          method: 'POST',
+          body: { state: gate.state, credential: response.credential },
+        });
+        setUser(data.user);
+        await afterLogin();
+        toast(data.linked ? 'Аккаунт Google привязан' : 'Вы вошли через Google', 'ok');
+        go(data.linked || mode === 'link' ? '/account' : '/');
+      } catch (error) {
+        toast(error.message);
+      }
+    },
+  });
+  window.google.accounts.id.prompt();
+}
+
+const OAUTH_ERRORS = {
+  state_expired: 'Сессия входа истекла. Попробуйте снова.',
+  identity_taken: 'Этот аккаунт уже привязан к другому пользователю RH—MUSIC.',
+  provider_disabled: 'Этот способ входа ещё не настроен на сервере.',
+  vk_denied: 'Вход через VK отменён.',
+  apple_denied: 'Вход через Apple отменён.',
+  vk_exchange: 'VK не подтвердил вход. Попробуйте ещё раз.',
+  apple_exchange: 'Apple не подтвердил вход. Попробуйте ещё раз.',
+  apple_token: 'Не удалось проверить данные Apple.',
+};
+
+function oauthErrorFromHash() {
+  const hash = location.hash.replace(/^#/, '');
+  const queryIndex = hash.indexOf('?');
+  if (queryIndex < 0) return null;
+  const params = new URLSearchParams(hash.slice(queryIndex + 1));
+  if (params.get('oauth') !== 'error') return null;
+  return params.get('code') || 'unknown';
+}
+
+function consumeOauthNotice() {
+  const code = oauthErrorFromHash();
+  if (!code) return;
+  toast(OAUTH_ERRORS[code] || 'Не удалось войти через внешний сервис.', 'error');
+  history.replaceState(null, '', '#/login');
+}
+
 function authFormTemplate({ mode }) {
   const isRegister = mode === 'register';
   return `
@@ -912,6 +1194,7 @@ function authFormTemplate({ mode }) {
         <h1>${isRegister ? 'Создать аккаунт' : 'Вход в RH—MUSIC'}</h1>
         <p>${isRegister ? 'Библиотека, плейлисты и персональные рекомендации' : 'Продолжите слушать со своей библиотекой'}</p>
       </div>
+      ${providerBlock('login')}
       <form id="authForm" novalidate>
         ${isRegister ? `
         <div class="field">
@@ -944,18 +1227,21 @@ function authFormTemplate({ mode }) {
     </div>`;
 }
 
-function renderLogin({ focus = false } = {}) {
+async function renderLogin({ focus = false } = {}) {
   S.route = 'login';
   setNav(null);
   document.title = 'Вход — RH—MUSIC';
+  await loadProviders();
   page.innerHTML = authFormTemplate({ mode: 'login' });
   bindAuthForm('login', focus);
+  consumeOauthNotice();
 }
 
-function renderRegister({ focus = false } = {}) {
+async function renderRegister({ focus = false } = {}) {
   S.route = 'register';
   setNav(null);
   document.title = 'Регистрация — RH—MUSIC';
+  await loadProviders();
   page.innerHTML = authFormTemplate({ mode: 'register' });
   bindAuthForm('register', focus);
 }
@@ -1005,6 +1291,8 @@ function bindAuthForm(mode, focus) {
 async function afterLogin() {
   await Promise.all([refreshLibraryIds(), refreshPlaylists()]);
   S.recommendations = null;
+  S.security = null;
+  S.identities = null;
 }
 
 async function renderAccount() {
@@ -1015,43 +1303,144 @@ async function renderAccount() {
   if (!S.user) { renderLogin(); return; }
 
   page.innerHTML = '<div class="page-head"><div><h1 class="page-title">Аккаунт</h1></div></div>' + skeletonTracks(3);
+
+  let data;
   try {
-    const data = await api('/api/auth/me');
-    const user = data.user;
-    setUser(user);
-    const name = user.displayName || user.username;
-    page.innerHTML = `
-      <div class="page-head"><div><h1 class="page-title">Аккаунт</h1></div></div>
-      <div class="profile-head">
-        <div class="profile-avatar">${esc(name.slice(0, 1))}</div>
-        <div>
-          <div class="profile-name">${esc(name)}</div>
-          <div class="profile-mail">${esc(user.email)}</div>
-        </div>
-      </div>
-      <div class="stat-grid">
-        <div class="stat"><b>${data.stats.library}</b><span>в библиотеке</span></div>
-        <div class="stat"><b>${data.stats.tracks}</b><span>треков в истории</span></div>
-        <div class="stat"><b>${data.stats.plays}</b><span>прослушиваний</span></div>
-      </div>
-
-      <div class="list-block">
-        <div class="list-row"><span class="label">Имя в профиле</span><span class="value">${esc(name)}</span></div>
-        <div class="list-row"><span class="label">Email</span><span class="value">${esc(user.email)}</span></div>
-        <div class="list-row"><span class="label">Аккаунт создан</span><span class="value">${esc(new Date(user.createdAt).toLocaleDateString('ru-RU'))}</span></div>
-      </div>
-
-      <div class="list-block">
-        <button class="sheet-item" type="button" data-action="edit-profile">${ICONS.edit} Изменить профиль</button>
-        <button class="sheet-item" type="button" data-action="change-password">${ICONS.user} Сменить пароль</button>
-        <button class="sheet-item" type="button" data-action="logout">${ICONS.logout} Выйти из аккаунта</button>
-        <button class="sheet-item is-danger" type="button" data-action="delete-account">${ICONS.trash} Удалить аккаунт и данные</button>
-      </div>
-      <p class="hint">Пароль и сессии хранятся на сервере. В браузере нет ни пароля, ни токенов — только защищённая cookie сессии.</p>
-    `;
+    data = await api('/api/auth/me');
   } catch (error) {
     page.innerHTML = emptyState('Не удалось загрузить профиль', error.message, 'alert');
+    return;
   }
+
+  setUser(data.user);
+  S.security = data.security || { password: false, methods: [] };
+  S.identities = S.security.methods || [];
+
+  const user = data.user;
+  const name = user.displayName || user.username;
+  const hasPassword = !!S.security.password;
+  const methods = S.identities;
+  const totalMethods = methods.length + (hasPassword ? 1 : 0);
+
+  const providerRows = ['google', 'vk', 'apple'].map((id) => {
+    const linked = methods.find((method) => method.provider === id);
+    const label = PROVIDER_LABEL[id] || id;
+    const canUnlink = linked && totalMethods > 1;
+    return `
+      <div class="login-row">
+        <span class="login-glyph">${providerGlyph(id)}</span>
+        <span class="login-text">
+          <b>${esc(label)}</b>
+          <small>${linked ? esc(linked.email || 'привязан') : 'не привязан'}</small>
+        </span>
+        ${linked
+          ? (canUnlink
+            ? `<button class="btn-mini" type="button" data-action="unlink-provider" data-provider="${esc(id)}">Отвязать</button>`
+            : '<span class="badge">единственный</span>')
+          : `<button class="btn-mini primary" type="button" data-action="link-provider" data-provider="${esc(id)}">Привязать</button>`}
+      </div>`;
+  }).join('');
+
+  page.innerHTML = `
+    <div class="page-head"><div><h1 class="page-title">Аккаунт</h1></div></div>
+
+    <div class="profile-head">
+      <div class="profile-avatar">${esc(name.slice(0, 1))}</div>
+      <div>
+        <div class="profile-name">${esc(name)}</div>
+        <div class="profile-mail">${esc(user.email)}</div>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat"><b>${data.stats.library}</b><span>в библиотеке</span></div>
+      <div class="stat"><b>${data.stats.tracks}</b><span>треков в истории</span></div>
+      <div class="stat"><b>${data.stats.plays}</b><span>прослушиваний</span></div>
+    </div>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Способы входа</h2>
+          <p class="section-sub">Один аккаунт RH—MUSIC, несколько способов входа</p>
+        </div>
+      </div>
+      <div class="login-list">
+        <div class="login-row">
+          <span class="login-glyph">${ICONS.user}</span>
+          <span class="login-text">
+            <b>Email и пароль</b>
+            <small>${hasPassword ? esc(user.email) : 'пароль не задан'}</small>
+          </span>
+          <span class="badge ${hasPassword ? 'ok' : ''}">${hasPassword ? 'включён' : 'нет'}</span>
+        </div>
+        ${providerRows}
+      </div>
+      <p class="hint">Привязать новый способ можно только из этого аккаунта. Если внешний аккаунт уже принадлежит другому пользователю, привязка будет отклонена — мы не объединяем аккаунты по совпадению email.</p>
+    </section>
+
+    <div class="list-block">
+      <button class="sheet-item" type="button" data-action="edit-profile">${ICONS.edit} Изменить профиль</button>
+      ${hasPassword ? `<button class="sheet-item" type="button" data-action="change-password">${ICONS.user} Сменить пароль</button>` : ''}
+      <button class="sheet-item" type="button" data-action="logout">${ICONS.logout} Выйти из аккаунта</button>
+    </div>
+
+    <section class="section danger-zone">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Удаление аккаунта</h2>
+          <p class="section-sub">Удаляются профиль, библиотека, плейлисты, история и рекомендации</p>
+        </div>
+      </div>
+      <button class="btn btn-danger btn-block" type="button" data-action="delete-account">${ICONS.trash} Удалить аккаунт</button>
+      <p class="hint">После удаления вход тем же способом создаст новый чистый аккаунт — старые данные не восстанавливаются.</p>
+    </section>
+
+    <p class="hint">Пароль, токены провайдеров и сессии хранятся на сервере. В браузере нет ни пароля, ни токенов — только защищённая HttpOnly cookie.</p>
+  `;
+}
+
+function openUnlinkSheet(provider) {
+  const label = PROVIDER_LABEL[provider] || provider;
+  const hasPassword = !!(S.security && S.security.password);
+  sheetOpen(`
+    <h2 class="sheet-title">Отвязать ${esc(label)}?</h2>
+    <p class="sheet-sub">Способ входа перестанет работать для этого аккаунта. Остальные способы останутся.</p>
+    ${hasPassword
+      ? `<div class="field"><label for="unlink-pw">Подтвердите паролем</label><input id="unlink-pw" type="password" autocomplete="current-password"></div>`
+      : `<div class="notice"><span>${ICONS.user}</span><span>У аккаунта нет пароля. Подтвердите личность повторным входом через любой привязанный сервис, затем повторите отвязку.</span></div>`}
+    <div class="sheet-actions">
+      <button class="btn btn-danger btn-block" type="button" data-action="confirm-unlink" data-provider="${esc(provider)}">Отвязать</button>
+      <button class="btn btn-ghost btn-block" type="button" data-action="close-sheet">Отмена</button>
+    </div>
+  `);
+}
+
+function openDeleteSheet() {
+  const hasPassword = !!(S.security && S.security.password);
+  sheetOpen(`
+    <h2 class="sheet-title">Удалить аккаунт?</h2>
+    <p class="sheet-sub">Действие необратимо. Будут удалены:</p>
+    <ul class="danger-list">
+      <li>профиль и все способы входа (Google, VK ID, Apple, пароль);</li>
+      <li>личная библиотека «Моя музыка»;</li>
+      <li>все созданные плейлисты и их треки;</li>
+      <li>история прослушиваний и профиль рекомендаций;</li>
+      <li>настройки и все активные сессии.</li>
+    </ul>
+    <p class="sheet-sub">Музыкальный каталог и данные других пользователей не затрагиваются.</p>
+    <div class="field">
+      <label for="del-confirm">Введите УДАЛИТЬ для подтверждения</label>
+      <input id="del-confirm" type="text" autocomplete="off" autocapitalize="characters" placeholder="УДАЛИТЬ">
+    </div>
+    ${hasPassword
+      ? `<div class="field"><label for="del-pw">Текущий пароль</label><input id="del-pw" type="password" autocomplete="current-password"></div>`
+      : `<div class="notice"><span>${ICONS.user}</span><span>Подтвердите личность повторным входом через привязанный сервис — после этого удаление станет доступно.</span></div>`}
+    <div class="sheet-actions">
+      <button class="btn btn-danger btn-block" type="button" data-action="confirm-delete">Удалить аккаунт навсегда</button>
+      <button class="btn btn-ghost btn-block" type="button" data-action="close-sheet">Отмена</button>
+    </div>
+  `);
 }
 
 /* ───────────────────────────── листы действий ───────────────────────────── */
@@ -1502,7 +1891,11 @@ function route() {
   const path = hash.split('?')[0];
   let m;
 
-  if (path === '/' || path === '/home') return renderHome();
+  document.body.classList.toggle('auth-route', path === '/login' || path === '/register');
+
+  if (path === '/' || path === '/home') return renderShowcase();
+  if (path === '/for-you') return renderRecommendations();
+  if ((m = path.match(/^\/catalog\/playlist\/(\d+)$/))) return renderCatalogPlaylist(m[1]);
   if (path === '/search') return renderSearch();
   if (path === '/library') return renderLibrary();
   if (path === '/playlists') return renderPlaylists();
@@ -1513,12 +1906,12 @@ function route() {
   if (path === '/account') return renderAccount();
   if ((m = path.match(/^\/artist\/(\d+)$/))) return renderArtist(m[1]);
   if ((m = path.match(/^\/album\/(\d+)$/))) return renderAlbum(m[1]);
-  return renderHome();
+  return renderShowcase();
 }
 
 /* ───────────────────────────── события ───────────────────────────── */
 
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
   const closeSheetTarget = event.target.closest('[data-close-sheet]');
   if (closeSheetTarget) sheetClose();
 
@@ -1551,6 +1944,43 @@ document.addEventListener('click', (event) => {
     setQueue(list, 0);
     if (action === 'shuffle-list') { S.shuffle = true; toggleShuffle(); }
     playIndex(0);
+    return;
+  }
+
+  if (action === 'reload-home') { S.home = null; renderShowcase(); return; }
+
+  if (action === 'genre') {
+    go('/search?q=' + encodeURIComponent(target.dataset.query || '') + '&type=all');
+    return;
+  }
+
+  if (action === 'play-catalog-playlist') {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = target.dataset.id;
+    api('/api/playlist/' + encodeURIComponent(id))
+      .then((data) => {
+        if (!data.tracks || !data.tracks.length) throw new Error('В плейлисте нет доступных треков');
+        S.lists.catalogQuick = data.tracks;
+        setQueue(data.tracks, 0);
+        playIndex(0, { source: 'playlist' });
+      })
+      .catch((error) => toast(error.message));
+    return;
+  }
+
+  if (action === 'oauth') {
+    startOauth(target.dataset.provider, target.dataset.mode || 'login');
+    return;
+  }
+
+  if (action === 'link-provider') {
+    startOauth(target.dataset.provider, 'link');
+    return;
+  }
+
+  if (action === 'unlink-provider') {
+    openUnlinkSheet(target.dataset.provider);
     return;
   }
 
@@ -1768,26 +2198,54 @@ document.addEventListener('click', (event) => {
     return;
   }
 
-  if (action === 'delete-account') {
-    sheetOpen(`
-      <h2 class="sheet-title">Удалить аккаунт?</h2>
-      <p class="sheet-sub">Будут удалены библиотека, плейлисты, история и настройки. Действие необратимо.</p>
-      <form id="delForm">
-        <div class="field"><label for="del-pw">Подтвердите паролем</label><input id="del-pw" type="password" autocomplete="current-password"></div>
-        <button class="btn btn-danger btn-block" type="submit">Удалить аккаунт</button>
-      </form>`);
-    $('delForm').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      try {
-        await api('/api/auth/account', { method: 'DELETE', body: { password: $('del-pw').value } });
-        setUser(null);
-        sheetClose();
-        toast('Аккаунт удалён', 'info');
-        go('/home');
-      } catch (error) { toast(error.message); }
-    });
+  if (action === 'delete-account') { openDeleteSheet(); return; }
+
+  if (action === 'confirm-delete') {
+    const confirm = String(($('del-confirm') || {}).value || '').trim().toUpperCase();
+    const password = String(($('del-pw') || {}).value || '');
+    if (confirm !== 'УДАЛИТЬ' && confirm !== 'DELETE') {
+      toast('Введите слово УДАЛИТЬ для подтверждения');
+      return;
+    }
+    try {
+      await api('/api/auth/account', { method: 'DELETE', body: { confirm: 'DELETE', password } });
+      sheetClose();
+      setUser(null);
+      S.home = null;
+      S.recommendations = null;
+      S.security = null;
+      S.identities = null;
+      S.libraryIds = new Set();
+      S.playlists = [];
+      S.queue = [];
+      S.current = null;
+      S.index = -1;
+      S.lists = {};
+      try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch { /* ignore */ }
+      renderSidePlaylists();
+      toast('Аккаунт и все данные удалены', 'ok');
+      go('/login');
+    } catch (error) {
+      toast(error.message);
+    }
     return;
   }
+
+  if (action === 'confirm-unlink') {
+    const provider = target.dataset.provider;
+    const password = String(($('unlink-pw') || {}).value || '');
+    try {
+      await api('/api/auth/identities/unlink', { method: 'POST', body: { provider, password } });
+      sheetClose();
+      toast('Способ входа отвязан', 'ok');
+      renderAccount();
+    } catch (error) {
+      toast(error.message);
+    }
+    return;
+  }
+
+  if (action === 'close-sheet') { sheetClose(); return; }
 });
 
 /* форма поиска в топбаре (десктоп) */
@@ -1956,5 +2414,6 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   renderQueue();
   renderSidePlaylists();
   await refreshMe();
+  await loadProviders();
   route();
 })();
