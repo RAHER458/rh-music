@@ -178,6 +178,21 @@
         <svg viewBox="0 0 24 24"><path d="M6.2 6.2a1 1 0 0 1 1.4 0L12 10.6l4.4-4.4a1 1 0 1 1 1.4 1.4L13.4 12l4.4 4.4a1 1 0 0 1-1.4 1.4L12 13.4l-4.4 4.4a1 1 0 0 1-1.4-1.4L10.6 12 6.2 7.6a1 1 0 0 1 0-1.4Z"/></svg>
       </button>
     </div>
+    <div class="queue-panel-tabs" role="tablist" aria-label="Панель воспроизведения">
+      <button class="qp-tab is-active" id="qpTabQueue" type="button" role="tab" aria-selected="true" aria-controls="qpList" data-queue-tab="queue">Очередь</button>
+      <button class="qp-tab" id="qpTabLyrics" type="button" role="tab" aria-selected="false" aria-controls="lyricsPane" data-queue-tab="lyrics">Текст</button>
+    </div>
+    <div class="lyrics-pane" id="lyricsPane" hidden>
+      <div class="lyrics-pane-head">
+        <span class="lyrics-pane-title" id="lyricsTitleDesktop">Ничего не играет</span>
+        <span class="lyrics-badge" id="lyricsBadgeDesktop" hidden></span>
+      </div>
+      <div class="lyrics-scroll" id="lyricsScrollDesktop" tabindex="0" role="region" aria-label="Текст песни"></div>
+      <div class="lyrics-pane-foot">
+        <span class="lyrics-source" id="lyricsSourceDesktop" hidden></span>
+        <button class="lyrics-return" id="lyricsReturnDesktop" type="button" hidden>К текущей строке</button>
+      </div>
+    </div>
     <div class="queue-panel-art">
       <img id="qpCover" alt="" decoding="async">
       <span class="cover-fallback big">RH</span>
@@ -244,6 +259,9 @@
     </button>
 
     <div class="player-right" data-ui-only="desktop">
+      <button class="ctrl ghost lyrics-btn" id="playerLyrics" type="button" data-action="lyrics-toggle" aria-label="Текст песни" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><path d="M5 4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3.6l2.9 2.8a1 1 0 0 0 1.7-.7V17H19a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5Zm2.2 4h9.6a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Zm0 4h6.2a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Z"/></svg>
+      </button>
       <button class="ctrl ghost" id="volumeBtn" type="button" aria-label="Выключить звук">
         <svg class="i-vol-on" viewBox="0 0 24 24"><path d="M11 5.2v13.6a1 1 0 0 1-1.6.8L5.9 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1.9l3.5-3.6A1 1 0 0 1 11 5.2Zm4.3 1.5a1 1 0 0 1 1.4 0A7.4 7.4 0 0 1 19 12a7.4 7.4 0 0 1-2.3 5.3 1 1 0 0 1-1.4-1.4A5.4 5.4 0 0 0 17 12a5.4 5.4 0 0 0-1.7-3.9 1 1 0 0 1 0-1.4Zm-2.6 2.6a1 1 0 0 1 1.4 0A3.6 3.6 0 0 1 15.2 12a3.6 3.6 0 0 1-1.1 2.7 1 1 0 0 1-1.4-1.4 1.6 1.6 0 0 0 0-2.6 1 1 0 0 1 0-1.4Zm-1-7.2Z"/></svg>
         <svg class="i-vol-off" viewBox="0 0 24 24"><path d="M11 5.2v13.6a1 1 0 0 1-1.6.8L5.9 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1.9l3.5-3.6A1 1 0 0 1 11 5.2Zm4.8 4.6a1 1 0 0 1 1.4 0L18.6 11l1.4-1.2a1 1 0 1 1 1.4 1.4L20 12.4l1.4 1.2a1 1 0 0 1-1.4 1.4l-1.4-1.2-1.4 1.2a1 1 0 0 1-1.4-1.4l1.4-1.2-1.4-1.2a1 1 0 0 1 0-1.2Z"/></svg>
@@ -330,11 +348,36 @@
     </div>
 
     <div class="np-extras">
+      <button class="chip" id="npLyrics" type="button" data-action="lyrics-open">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3.6l2.9 2.8a1 1 0 0 0 1.7-.7V17H19a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5Zm2.2 4h9.6a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Zm0 4h6.2a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Z"/></svg>
+        Текст
+      </button>
       <button class="chip" id="npLike" type="button">В библиотеку</button>
       <button class="chip" id="npAdd" type="button">В плейлист</button>
     </div>
 
     <div class="np-queue" id="npQueueList"></div>
+  </div>
+</section>
+
+<!-- ─────────── Текст песни (телефон) ─────────── -->
+<section class="lyrics-sheet" id="lyricsSheet" aria-label="Текст песни" aria-hidden="true" data-ui-only="mobile">
+  <div class="lyrics-sheet-inner">
+    <header class="lyrics-sheet-head">
+      <button class="icon-btn round" id="lyricsCloseMobile" type="button" data-action="lyrics-close" aria-label="Закрыть текст">
+        <svg viewBox="0 0 24 24"><path d="M12 16.5 5.6 10a1.2 1.2 0 0 1 1.7-1.7l4.7 4.7 4.7-4.7A1.2 1.2 0 0 1 18.4 10L12 16.5Z"/></svg>
+      </button>
+      <div class="lyrics-sheet-meta">
+        <span class="lyrics-sheet-title" id="lyricsTitleMobile">Ничего не играет</span>
+        <span class="lyrics-badge" id="lyricsBadgeMobile" hidden></span>
+      </div>
+      <span class="lyrics-sheet-grip" aria-hidden="true"></span>
+    </header>
+    <div class="lyrics-scroll lyrics-scroll-mobile" id="lyricsScrollMobile" tabindex="0" role="region" aria-label="Текст песни"></div>
+    <footer class="lyrics-sheet-foot">
+      <span class="lyrics-source" id="lyricsSourceMobile" hidden></span>
+      <button class="lyrics-return" id="lyricsReturnMobile" type="button" hidden>К текущей строке</button>
+    </footer>
   </div>
 </section>
 
@@ -360,6 +403,7 @@
 <audio id="audio" preload="metadata" playsinline></audio>
 
 <script src="device.js"></script>
+<script src="lyrics.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

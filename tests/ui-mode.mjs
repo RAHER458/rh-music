@@ -134,7 +134,11 @@ check('переключатели панелей помечены как дес�
 check('правая панель очереди помечена как десктопная', /id="queuePanel"[^>]*data-ui-only="desktop"/.test(html));
 check('десктопные элементы плеера помечены',
   /id="playerLike"[^>]*data-ui-only="desktop"/.test(html) && /class="player-right" data-ui-only="desktop"/.test(html));
-check('ровно девять элементов размечены по средам', (html.match(/data-ui-only=/g) || []).length === 9);
+check('элементы размечены по средам (10: 8 десктопных + 2 мобильных)',
+  (html.match(/data-ui-only="desktop"/g) || []).length === 8
+  && (html.match(/data-ui-only="mobile"/g) || []).length === 2);
+check('слой текста на телефоне помечен как мобильный',
+  /id="lyricsSheet"[^>]*data-ui-only="mobile"/.test(html));
 
 /* ───────────────── CSS: изоляция и оболочки ───────────────── */
 
@@ -151,9 +155,14 @@ check('десктопные правила не дублируются scoped-с
   && !/html\[data-ui="desktop"\] \.player-row \{/.test(css)
   && !/html\[data-ui="desktop"\] \.grid-cards \{/.test(css)
   && !/html\[data-ui="desktop"\] \.page \{/.test(css));
-check('scoped-правил для десктопа ровно два (изоляция и узкий таббар)',
-  (css.match(/html\[data-ui="desktop"\]/g) || []).length === 2,
-  String((css.match(/html\[data-ui="desktop"\]/g) || []).length));
+// Scoped-правила допустимы только для НОВЫХ компонентов (вкладки и текст):
+// существующая раскладка по-прежнему задаётся медиазапросами.
+const scopedSelectors = [...css.matchAll(/html\[data-ui="desktop"\]\s+([^,{]+)/g)]
+  .map((m) => m[1].trim());
+check('scoped-правила для десктопа описывают только новые компоненты текста',
+  scopedSelectors.length >= 2
+  && scopedSelectors.every((sel) => /^(\[data-ui-only="mobile"\]|\.tabbar$|\.lyrics-|\.qp-tab|\.queue-panel-tabs|\.queue-panel\.is-lyrics)/.test(sel)),
+  scopedSelectors.join(' | '));
 check('Mobile UI скрывает сайдбар', /html\[data-ui="mobile"\] \.sidebar \{ display: none; \}/.test(css));
 check('Mobile UI показывает таббар', /html\[data-ui="mobile"\] \.tabbar \{ display: grid; \}/.test(css));
 check('Mobile UI не показывает десктопные контролы плеера',

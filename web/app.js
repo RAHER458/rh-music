@@ -47,6 +47,8 @@ const S = {
   npOpen: false,
   drawerOpen: false,
   sheetOpen: false,
+  lyricsOpen: false,
+  queueTab: 'queue',
   recentSearches: readJson('rh_searches_v1', []),
   playback: { historyId: null, trackId: null, pending: 0, lastTick: 0, completed: false, source: 'player' },
   restorePosition: 0,
@@ -2079,6 +2081,7 @@ function restorePlayerState() {
   S.lastStateSave = Date.now();
 
   updateNowPlayingMeta(S.current);
+  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(S.current);
   renderQueue();
   updateTransport();
 
@@ -2249,6 +2252,7 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   if (reveal) S.playerHidden = false;
 
   updateNowPlayingMeta(track);
+  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
   renderQueue();
   markCurrentRow();
   S.loading = true;
@@ -2488,8 +2492,112 @@ function openQueuePanel(open = true) {
   const toggle = $('queueToggle');
   if (toggle) toggle.setAttribute('aria-pressed', S.queueOpen ? 'true' : 'false');
   document.body.classList.toggle('queue-open', S.queueOpen);
-  if (S.queueOpen) renderQueuePanel();
+  if (S.queueOpen) {
+    setQueueTab(S.queueTab);
+    renderQueuePanel();
+  }
+  setLyricsPressed();
   syncLayoutHeight();
+}
+
+/**
+ * Вкладка правой панели: «Очередь» или «Текст».
+ * Вкладка — часть существующей панели: сама очередь не удаляется и не
+ * заменяется, меняется только видимая часть на десктопе.
+ */
+function setQueueTab(tab = 'queue') {
+  const next = tab === 'lyrics' ? 'lyrics' : 'queue';
+  S.queueTab = next;
+  const panel = $('queuePanel');
+  if (panel) panel.classList.toggle('is-lyrics', next === 'lyrics');
+  const pane = $('lyricsPane');
+  if (pane) pane.hidden = next !== 'lyrics';
+  const queueTab = $('qpTabQueue');
+  const lyricsTab = $('qpTabLyrics');
+  if (queueTab) {
+    queueTab.classList.toggle('is-active', next === 'queue');
+    queueTab.setAttribute('aria-selected', next === 'queue' ? 'true' : 'false');
+  }
+  if (lyricsTab) {
+    lyricsTab.classList.toggle('is-active', next === 'lyrics');
+    lyricsTab.setAttribute('aria-selected', next === 'lyrics' ? 'true' : 'false');
+  }
+  setLyricsPressed();
+  if (next === 'lyrics' && window.RH_LYRICS) {
+    window.RH_LYRICS.ensure();
+    requestAnimationFrame(() => window.RH_LYRICS.refresh());
+  }
+}
+
+function setLyricsPressed() {
+  const button = $('playerLyrics');
+  if (button) {
+    const active = isDesktop()
+      ? (S.queueOpen && S.queueTab === 'lyrics')
+      : S.lyricsOpen;
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.classList.toggle('is-on', active);
+  }
+  const chip = $('npLyrics');
+  if (chip) chip.classList.toggle('is-on', S.lyricsOpen);
+}
+
+/* Свайп вниз по шапке слоя текста закрывает его; содержимое прокручивается
+   свободно, поэтому жест живёт только на шапке и не конфликтует со скроллом. */
+let lyricsDrag = null;
+const lyricsSheetEl = $('lyricsSheet');
+if (lyricsSheetEl) {
+  const head = lyricsSheetEl.querySelector('.lyrics-sheet-head');
+  head.addEventListener('pointerdown', (event) => {
+    if (!S.lyricsOpen || event.button > 0) return;
+    lyricsDrag = { id: event.pointerId, y: event.clientY, dy: 0 };
+    lyricsSheetEl.classList.add('is-dragging');
+    try { head.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+  });
+  head.addEventListener('pointermove', (event) => {
+    if (!lyricsDrag || event.pointerId !== lyricsDrag.id) return;
+    const dy = Math.max(0, event.clientY - lyricsDrag.y);
+    lyricsDrag.dy = dy;
+    lyricsSheetEl.style.transform = dy ? `translateY(${dy}px)` : '';
+  }, { passive: true });
+  const endLyricsDrag = (event) => {
+    if (!lyricsDrag || event.pointerId !== lyricsDrag.id) return;
+    const dy = lyricsDrag.dy;
+    lyricsDrag = null;
+    lyricsSheetEl.classList.remove('is-dragging');
+    lyricsSheetEl.style.transform = '';
+    if (dy > 90) openLyricsSheet(false);
+  };
+  head.addEventListener('pointerup', endLyricsDrag);
+  head.addEventListener('pointercancel', endLyricsDrag);
+}
+
+/** Единая точка открытия текста: на десктопе — вкладка панели, на телефоне — слой. */
+function toggleLyrics() {
+  if (isDesktop()) {
+    if (S.queueOpen && S.queueTab === 'lyrics') { openQueuePanel(false); return; }
+    openQueuePanel(true);
+    setQueueTab('lyrics');
+    return;
+  }
+  openLyricsSheet(!S.lyricsOpen);
+}
+
+function openLyricsSheet(open = true) {
+  S.lyricsOpen = !!open;
+  const section = $('lyricsSheet');
+  if (section) {
+    section.classList.toggle('is-open', open);
+    section.setAttribute('aria-hidden', open ? 'false' : 'true');
+    section.style.transform = '';
+    section.classList.remove('is-dragging');
+  }
+  document.body.classList.toggle('lyrics-open', S.lyricsOpen);
+  setLyricsPressed();
+  if (S.lyricsOpen && window.RH_LYRICS) {
+    window.RH_LYRICS.ensure();
+    requestAnimationFrame(() => window.RH_LYRICS.refresh());
+  }
 }
 
 function closeQueuePanel() {
@@ -2498,7 +2606,11 @@ function closeQueuePanel() {
 
 function toggleQueue(force) {
   if (isDesktop()) {
-    openQueuePanel(force === undefined ? !S.queueOpen : force);
+    const open = force === undefined ? !S.queueOpen : force;
+    // Кнопка очереди всегда показывает очередь, даже если панель осталась
+    // на вкладке «Текст» с прошлого раза.
+    if (open) S.queueTab = 'queue';
+    openQueuePanel(open);
     return;
   }
   // На телефоне та же кнопка управляет очередью в шторке.
@@ -2622,6 +2734,9 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
+  if (action === 'lyrics-toggle') { toggleLyrics(); return; }
+  if (action === 'lyrics-open') { openLyricsSheet(true); return; }
+  if (action === 'lyrics-close') { openLyricsSheet(false); return; }
   if (action === 'drawer-close') { openDrawer(false); return; }
 
   if (action === 'reload-home') { S.home = null; renderShowcase(); return; }
@@ -2892,6 +3007,7 @@ document.addEventListener('click', async (event) => {
       S.queue = [];
       S.current = null;
       S.index = -1;
+      if (window.RH_LYRICS) window.RH_LYRICS.setTrack(null);
       S.lists = {};
       S.restorePosition = 0;
       clearPlayerState();
@@ -2952,6 +3068,10 @@ $('repeat').addEventListener('click', cycleRepeat);
 $('npOpen').addEventListener('click', () => openNowPlaying(true));
 $('npClose').addEventListener('click', () => openNowPlaying(false));
 $('npQueue').addEventListener('click', () => toggleQueue(true));
+['qpTabQueue', 'qpTabLyrics'].forEach((id) => {
+  const tab = $(id);
+  if (tab) tab.addEventListener('click', () => setQueueTab(id === 'qpTabLyrics' ? 'lyrics' : 'queue'));
+});
 /* Кнопка закрытия шторки очереди обрабатывается делегированно (data-action). */
 $('accountBtn').addEventListener('click', () => {
   if (S.user) go('/account');
@@ -2970,7 +3090,8 @@ scrim.addEventListener('click', () => {
 document.addEventListener('keydown', (event) => {
   // Escape закрывает оверлеи всегда, в том числе когда фокус в поле ввода.
   if (event.key === 'Escape') {
-    if (S.sheetOpen) sheetClose();
+    if (S.lyricsOpen) openLyricsSheet(false);
+    else if (S.sheetOpen) sheetClose();
     else if (S.drawerOpen) openDrawer(false);
     else if (S.npOpen) openNowPlaying(false);
     else if (S.queueOpen) closeQueuePanel();
@@ -2978,7 +3099,17 @@ document.addEventListener('keydown', (event) => {
   }
   const tag = (event.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea') return;
-  if (event.key === ' ' && tag !== 'button') { event.preventDefault(); togglePlay(); }
+  if ((event.key === 'l' || event.key === 'L') && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    event.preventDefault();
+    toggleLyrics();
+    return;
+  }
+  if (event.key === ' ' && tag !== 'button') {
+    // Пробел на строке текста — переход к этой строке, а не Play/Pause.
+    if (event.target.closest && event.target.closest('.lyrics-line')) return;
+    event.preventDefault();
+    togglePlay();
+  }
 });
 
 /* ───────────────────────────── жесты ───────────────────────────── */
@@ -3103,6 +3234,8 @@ document.addEventListener('rh:ui-change', () => {
   } else if (S.queueOpen) {
     closeQueuePanel();
   }
+  if (isDesktop() && S.lyricsOpen) openLyricsSheet(false);
+  if (!isDesktop() && S.queueTab === 'lyrics' && S.queueOpen) closeQueuePanel();
   updateTransport();
   renderQueue();
   route();
@@ -3117,7 +3250,7 @@ document.addEventListener('click', (event) => {
   // перерисовывает список, и обычный contains(event.target) уже не сработал бы.
   const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
   if (path.indexOf(panel) !== -1 || panel.contains(event.target)) return;
-  if (event.target.closest && event.target.closest('[data-action="queue-toggle"], #npQueue')) return;
+  if (event.target.closest && event.target.closest('[data-action="queue-toggle"], [data-action="lyrics-toggle"], #npQueue')) return;
   closeQueuePanel();
 });
 

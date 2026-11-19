@@ -91,6 +91,7 @@ function makeHarness({ desktop = true } = {}) {
   };
   const fn = new Function(
     '$', 'document', 'S', 'renderQueuePanel', 'syncLayoutHeight', 'isDesktop', 'openDrawer',
+    'setQueueTab', 'setLyricsPressed',
     openSrc + '\n' + closeSrc + '\n' + toggleSrc +
     '\n; return { openQueuePanel, closeQueuePanel, toggleQueue };',
   );
@@ -102,6 +103,8 @@ function makeHarness({ desktop = true } = {}) {
     () => { state.layoutCalls++; },
     () => desktop,
     (open = true) => { state.S.drawerOpen = open; state.drawerOpens.push(open); },
+    () => {},
+    () => {},
   );
   return { state, api };
 }
@@ -143,10 +146,13 @@ const openCalls = app.split('\n')
   .filter((line) => /openQueuePanel\(/.test(line) && !/function openQueuePanel/.test(line))
   .map((line) => line.trim());
 const openers = openCalls.filter((line) => !line.includes('openQueuePanel(false)'));
-check('открыть панель может только переключатель',
-  openers.length === 1 && openers[0].includes('force'), JSON.stringify(openCalls));
+check('открыть панель могут только кнопка очереди и кнопка текста',
+  openers.length === 2
+  && openers.some((line) => line.includes('openQueuePanel(open)'))
+  && openers.some((line) => line.includes('openQueuePanel(true)')),
+  JSON.stringify(openCalls));
 check('все остальные вызовы — только закрытие',
-  openCalls.filter((line) => line.includes('openQueuePanel(false)')).length === 2,
+  openCalls.filter((line) => line.includes('openQueuePanel(false)')).length === 3,
   JSON.stringify(openCalls));
 
 const replayPath = grab(/function playIndex\(index,[\s\S]*?\n\}/) || '';
