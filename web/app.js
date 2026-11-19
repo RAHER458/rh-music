@@ -2529,6 +2529,8 @@ function route() {
   let m;
 
   document.body.classList.toggle('auth-route', path === '/login' || path === '/register');
+  // Шторка очереди — модальная: при навигации она закрывается, чтобы не висеть поверх страницы.
+  if (S.drawerOpen) openDrawer(false);
 
   updateSectionTitle(path);
 
@@ -2606,6 +2608,7 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
+  if (action === 'drawer-close') { openDrawer(false); return; }
 
   if (action === 'reload-home') { S.home = null; renderShowcase(); return; }
 
@@ -2935,7 +2938,7 @@ $('repeat').addEventListener('click', cycleRepeat);
 $('npOpen').addEventListener('click', () => openNowPlaying(true));
 $('npClose').addEventListener('click', () => openNowPlaying(false));
 $('npQueue').addEventListener('click', () => toggleQueue(true));
-$('drawerClose').addEventListener('click', () => openDrawer(false));
+/* Кнопка закрытия шторки очереди обрабатывается делегированно (data-action). */
 $('accountBtn').addEventListener('click', () => {
   if (S.user) go('/account');
   else go('/login');
@@ -3093,6 +3096,7 @@ document.addEventListener('click', (event) => {
 /* Панель — десктопная: при сужении окна убираем её, чтобы не висел оверлей. */
 window.addEventListener('resize', () => {
   if (!isDesktop() && S.queueOpen) closeQueuePanel();
+  if (isDesktop() && S.drawerOpen) openDrawer(false);
 });
 
 /* ───────────────────────────── аудио-события ───────────────────────────── */

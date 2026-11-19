@@ -621,6 +621,10 @@ body.np-open .tabbar { visibility: hidden; pointer-events: none; }
 .drawer {
   position: fixed; left: 0; right: 0; bottom: 0;
   z-index: 95;
+  /* Скрытое состояние — структурное: visibility не зависит от transform,
+     высоты содержимого и состояния анимации. Показывает только .is-open. */
+  visibility: hidden;
+  pointer-events: none;
   max-height: 78dvh;
   display: flex; flex-direction: column;
   padding: 16px 14px calc(var(--safe-bottom) + 14px);
@@ -632,7 +636,7 @@ body.np-open .tabbar { visibility: hidden; pointer-events: none; }
   box-shadow: 0 -20px 50px rgba(0,0,0,.5);
 }
 
-.drawer.is-open { transform: none; }
+.drawer.is-open { transform: none; visibility: visible; pointer-events: auto; }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .drawer-head h2 { margin: 0; font-size: 17px; font-weight: 750; }
 .drawer-sub { color: var(--muted-2); font-size: 12.5px; margin: 5px 0 12px; }
@@ -1205,7 +1209,9 @@ body.has-mini-now .brand-mobile-text { display: none; }
 .topbar-nav,
 .topbar-title,
 .player-like,
-.player-right { display: none; }
+.player-right,
+.sidebar-toggle,
+.queue-toggle { display: none; }
 
 /* ── Правая панель: на планшете и телефоне открывается поверх ── */
 .queue-panel {
