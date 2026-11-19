@@ -464,6 +464,11 @@ const wordsData = {
     && lineNodes[0]._wordNodes[3].classList.contains('is-active')
     && !lineNodes[0]._wordNodes[1].classList.contains('is-active'));
 
+  audio.currentTime = 2.8;
+  audio.dispatch('timeupdate');
+  check('движок: в вокальной паузе слово не подсвечено',
+    api.getState().activeWord === -1 && scroll.querySelectorAll('.lyrics-word.is-active').length === 0);
+
   audio.currentTime = 3.3;
   audio.dispatch('timeupdate');
   check('движок: переход на следующую строку',

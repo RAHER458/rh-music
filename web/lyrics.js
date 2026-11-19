@@ -65,6 +65,12 @@
       if (words[mid].t <= ms) { found = mid; low = mid + 1; }
       else high = mid - 1;
     }
+    if (found < 0) return -1;
+    // Между словами бывают паузы: закончившееся слово не должно оставаться
+    // подсвеченным до начала следующего. Небольшой допуск гасит дрожание
+    // на стыке меток.
+    const end = Number(words[found].end);
+    if (Number.isFinite(end) && ms > end + 120) return -1;
     return found;
   }
 
@@ -157,6 +163,7 @@
     if (view.sourceEl) {
       view.sourceEl.textContent = source || '';
       view.sourceEl.hidden = !source;
+      view.sourceEl.title = (state.data && state.data.attribution) || '';
     }
     if (view.titleEl) {
       const track = state.track;
