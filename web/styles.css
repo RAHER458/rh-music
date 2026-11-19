@@ -1209,7 +1209,9 @@ body.has-mini-now .brand-mobile-text { display: none; }
 
 /* ── Правая панель: на планшете и телефоне открывается поверх ── */
 .queue-panel {
-  display: flex;
+  /* Панель существует, но по умолчанию полностью скрыта: показывается только
+     классом body.queue-open. Атрибут hidden дублирует состояние для a11y. */
+  display: none;
   position: fixed;
   top: 0; right: 0; bottom: calc(var(--player-h) + var(--tabbar-h) + var(--safe-bottom));
   width: min(90vw, 340px);
@@ -1225,6 +1227,7 @@ body.has-mini-now .brand-mobile-text { display: none; }
   overflow-y: auto;
 }
 .queue-panel[hidden] { display: none !important; }
+body.queue-open .queue-panel { display: flex; }
 .queue-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .queue-panel-kicker { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--blue); font-weight: 700; }
 .queue-panel-title { font-size: 16px; font-weight: 750; margin-top: 4px; line-height: 1.25; }
@@ -1335,14 +1338,13 @@ body.has-mini-now .brand-mobile-text { display: none; }
   .queue-toggle { display: grid; }
   .mini-now { max-width: 260px; flex: 0 1 260px; }
 
-  /* Правая панель встаёт третьей колонкой */
+  /* Правая панель встаёт третьей колонкой (видимость — только body.queue-open) */
   .queue-panel {
     position: sticky;
     top: 0;
     bottom: auto;
     height: calc(100dvh - var(--player-h));
     width: auto;
-    display: flex;
     box-shadow: none;
   }
 

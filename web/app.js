@@ -2460,15 +2460,26 @@ function isDesktop() {
   return !!(window.matchMedia && window.matchMedia('(min-width: 1024px)').matches);
 }
 
+/**
+ * Единственная точка управления правой панелью.
+ * Видимость задаётся классом body.queue-open (CSS), атрибут hidden дублирует
+ * состояние для доступности. Никакой другой код не имеет права открывать
+ * панель — она не появляется сама при воспроизведении, паузе, смене трека
+ * или переходе между разделами.
+ */
 function openQueuePanel(open = true) {
-  S.queueOpen = open;
+  S.queueOpen = !!open;
   const panel = $('queuePanel');
-  if (panel) panel.hidden = !open;
+  if (panel) panel.hidden = !S.queueOpen;
   const toggle = $('queueToggle');
-  if (toggle) toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
-  document.body.classList.toggle('queue-open', open);
-  if (open) renderQueuePanel();
+  if (toggle) toggle.setAttribute('aria-pressed', S.queueOpen ? 'true' : 'false');
+  document.body.classList.toggle('queue-open', S.queueOpen);
+  if (S.queueOpen) renderQueuePanel();
   syncLayoutHeight();
+}
+
+function closeQueuePanel() {
+  if (S.queueOpen) openQueuePanel(false);
 }
 
 function toggleQueue(force) {
@@ -2476,6 +2487,8 @@ function toggleQueue(force) {
     openQueuePanel(force === undefined ? !S.queueOpen : force);
     return;
   }
+  // На телефоне та же кнопка управляет очередью в шторке.
+  closeQueuePanel();
   openDrawer(force === undefined ? !S.drawerOpen : force);
 }
 
@@ -2590,6 +2603,9 @@ document.addEventListener('click', async (event) => {
       .catch((error) => toast(error.message));
     return;
   }
+
+  if (action === 'queue-toggle') { toggleQueue(); return; }
+  if (action === 'queue-close') { openQueuePanel(false); return; }
 
   if (action === 'reload-home') { S.home = null; renderShowcase(); return; }
 
@@ -2940,6 +2956,7 @@ document.addEventListener('keydown', (event) => {
     if (S.sheetOpen) sheetClose();
     else if (S.drawerOpen) openDrawer(false);
     else if (S.npOpen) openNowPlaying(false);
+    else if (S.queueOpen) closeQueuePanel();
     return;
   }
   const tag = (event.target.tagName || '').toLowerCase();
@@ -3038,9 +3055,8 @@ function bindClick(id, handler) { const el = $(id); if (el) el.addEventListener(
 
 bindClick('navBack', () => history.back());
 bindClick('navForward', () => history.forward());
-bindClick('queueToggle', () => toggleQueue());
-bindClick('playerQueue', () => toggleQueue());
-bindClick('queueClose', () => openQueuePanel(false));
+/* Кнопки панели очереди обрабатываются делегированно (data-action), чтобы
+   закрытие работало даже при сбое прямой привязки. */
 bindClick('playerLike', () => { if (S.current) toggleSave(S.current); });
 bindClick('qpLike', () => { if (S.current) { toggleSave(S.current); updateNpLike(); } });
 bindClick('qpAdd', () => { if (S.current) openPlaylistPicker(S.current); });
@@ -3059,6 +3075,24 @@ $('miniNowOpen').addEventListener('click', () => showPlayer());
 $('miniNowPlay').addEventListener('click', (event) => {
   event.stopPropagation();
   togglePlay();
+});
+
+/* Клик вне правой панели закрывает её (кнопки-переключатели исключены). */
+document.addEventListener('click', (event) => {
+  if (!S.queueOpen) return;
+  const panel = $('queuePanel');
+  if (!panel) return;
+  // composedPath фиксируется на момент события: клик по строке очереди
+  // перерисовывает список, и обычный contains(event.target) уже не сработал бы.
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+  if (path.indexOf(panel) !== -1 || panel.contains(event.target)) return;
+  if (event.target.closest && event.target.closest('[data-action="queue-toggle"], #npQueue')) return;
+  closeQueuePanel();
+});
+
+/* Панель — десктопная: при сужении окна убираем её, чтобы не висел оверлей. */
+window.addEventListener('resize', () => {
+  if (!isDesktop() && S.queueOpen) closeQueuePanel();
 });
 
 /* ───────────────────────────── аудио-события ───────────────────────────── */
