@@ -30,9 +30,14 @@ Cloudflare Worker  rh-music-api
 
 ## Возможности
 
-**Аккаунты.** Регистрация (имя, email, пароль, подтверждение), вход, выход, профиль,
-смена пароля, удаление аккаунта вместе с данными. Проверка формата и уникальности email
-и имени, понятные сообщения об ошибках.
+**Аккаунты.** Один внутренний аккаунт RH—MUSIC на несколько способов входа: email и пароль,
+Google, VK ID, Apple ID. Регистрация, вход, выход, профиль, смена пароля, привязка и отвязка
+провайдеров, полное удаление аккаунта с повторным подтверждением личности. Сессия
+восстанавливается автоматически при повторном открытии сайта.
+
+**Витрина (главная).** Общий для всех музыкальный контент каталога: плейлисты по жанрам,
+новые альбомы с настоящими датами релизов, исполнители и треки. Не зависит от истории
+пользователя, доступна гостям, кэшируется на 15 минут.
 
 **Моя музыка.** Сохранение треков из поиска, списков, страниц альбомов и из плеера.
 Повторное добавление не создаёт дубликатов (`PRIMARY KEY (user_id, track_id)`).
@@ -48,7 +53,7 @@ Cloudflare Worker  rh-music-api
 каждые ~25 секунд воспроизведения и при паузе/завершении/уходе со страницы. Хранятся
 длительность прослушивания и факт завершения. История видна в разделе «Недавние».
 
-**Рекомендации.** Никаких заранее заданных списков исполнителей и запросов: разделы
+**Рекомендации (отдельная вкладка).** Никаких заранее заданных списков исполнителей и запросов: разделы
 строятся только по данным аккаунта — прослушивания (количество, длительность, завершения,
 давность), библиотека и плейлисты. Каталог используется как источник похожих исполнителей
 (`relatedArtists`) и релизов, данные подтягиваются пакетно (1–2 запроса на всю страницу).
@@ -62,20 +67,15 @@ Cloudflare Worker  rh-music-api
 
 ## Интерфейс
 
-Мобильная версия — основная: нижняя навигация (Главная, Поиск, Моя музыка, Плейлисты,
-Недавние), компактный мини-плеер и полноэкранный «Сейчас играет». На широких экранах
-(≥1024 px) появляется боковая панель, таббар скрывается.
+Мобильная версия — основная. Нижняя навигация: **Главная · Поиск · Рекомендации · Моя музыка ·
+Плейлисты**. История прослушивания живёт внутри «Моей музыки» (кнопка «История»), чтобы не
+перегружать нижнюю панель. На широких экранах (≥1024 px) появляется боковая панель, таббар
+скрывается; на страницах входа таббар не показывается.
 
-| iPhone | | |
-|---|---|---|
-| ![Главная](docs/screenshot-iphone-home.jpg) | ![Поиск](docs/screenshot-iphone-search.jpg) | ![Моя музыка](docs/screenshot-iphone-library.jpg) |
-| Главная: рекомендации по активности | Поиск по каталогу | Личная библиотека |
-| ![Плейлисты](docs/screenshot-iphone-playlists.jpg) | ![Плейлист](docs/screenshot-iphone-playlist.jpg) | ![Сейчас играет](docs/screenshot-iphone-nowplaying.jpg) |
-| Список плейлистов | Плейлист: порядок, воспроизведение | Полноэкранный плеер |
-
-| Десктоп | |
-|---|---|
-| ![Главная (десктоп)](docs/screenshot-desktop-home.jpg) | ![Поиск (десктоп)](docs/screenshot-desktop-search.jpg) |
+Главная — витрина: крупный hero-блок с подборкой каталога, горизонтальные карусели
+(плейлисты по жанрам, новые альбомы, исполнители) и список треков. Рекомендации — отдельная
+вкладка со своими секциями. Мини-плеер и полноэкранный «Сейчас играет» работают поверх всех
+страниц.
 
 ## Структура D1
 
@@ -90,6 +90,10 @@ Cloudflare Worker  rh-music-api
 | `user_track_affinity` | агрегат по треку для рекомендаций (плейсы, секунды, завершения) | PK `(user_id, track_id)`, индексы по давности/плейсам/исполнителю |
 | `user_preferences` | повтор и перемешивание | PK `user_id` |
 | `auth_attempts` | ограничение частоты входа и регистрации | индекс `(ip, action, created_at)` |
+| `oauth_identities` | привязки внешних аккаунтов (provider, provider_subject, email провайдера) | UNIQUE `(provider, provider_subject)`, FK → `users(id)` CASCADE |
+| `oauth_states` | одноразовые состояния OAuth: nonce, PKCE, срок, признак использования | PK `state`, индексы `expires_at`, `link_user_id` |
+| `reauth_events` | свежее подтверждение личности для опасных действий (5 минут) | индекс `(user_id, created_at)` |
+| `home_snapshot` | снимок витрины главной, общий для всех посетителей | PK `key` |
 
 Миграции: `worker/migrations/*.sql`, применяются `node scripts/db-migrate.mjs`.
 
@@ -105,6 +109,8 @@ Cloudflare Worker  rh-music-api
 | GET | `/api/track/:id`, `/api/artist/:id`, `/api/album/:id` |
 | GET | `/api/track/:id/stream`, `/api/stream/:id` (Range → 206) |
 | GET | `/api/img?u=&size=` |
+| GET | `/api/home` — витрина главной (общая, кэш 15 минут) |
+| GET | `/api/playlist/:id` — плейлист каталога с треками |
 
 Аккаунты, библиотека, плейлисты, история, рекомендации:
 
@@ -128,7 +134,15 @@ Cloudflare Worker  rh-music-api
 | PATCH | `/api/playlists/:id/order` | изменить порядок |
 | POST/GET | `/api/history` | старт прослушивания, список истории |
 | PATCH | `/api/history/:id` | подтверждение прослушивания |
-| GET | `/api/recommendations` | персональные подборки |
+| GET | `/api/recommendations` | персональные подборки (только по своему `user_id`) |
+| POST | `/api/auth/reauth` | подтверждение личности паролем (5 минут) |
+| GET | `/api/auth/providers` | какие внешние способы входа настроены |
+| GET | `/api/auth/identities` | привязанные способы входа |
+| POST | `/api/auth/identities/unlink` | отвязать провайдера (нужно подтверждение) |
+| POST | `/api/auth/oauth/google/nonce` | одноразовый nonce для Google Identity Services |
+| POST | `/api/auth/oauth/google` | вход/привязка по Google ID Token |
+| POST | `/api/auth/oauth/vk/start`, GET `/api/auth/oauth/vk/callback` | VK ID (OAuth 2.1 + PKCE) |
+| POST | `/api/auth/oauth/apple/start`, POST `/api/auth/oauth/apple/callback` | Apple ID (form_post) |
 
 ## Безопасность
 
@@ -139,7 +153,75 @@ Cloudflare Worker  rh-music-api
 * Ограничение частоты: регистрация ≤ 6 / 30 мин, вход ≤ 12 / 15 мин на IP.
 * Единый ответ «Неверный логин или пароль» и выравнивание времени ответа (защита от перебора аккаунтов).
 * Все данные фильтруются по `user_id`; обращение к чужому плейлисту или треку возвращает 404.
+* Внешний вход: ID Token проверяется на сервере по JWKS (подпись, `iss`, `aud`, `exp`, `iat`, `nonce`);
+  для Google дополнительно требуется `email_verified`. Данные, пришедшие из frontend, не считаются доказательством личности.
+* `state` и `nonce` одноразовые (таблица `oauth_states`, TTL 10 минут), для VK используется PKCE (S256),
+  `redirect_uri` не берётся из запроса, а фиксируется сервером.
+* Повторный OAuth-callback с тем же `state` отклоняется; привязка чужого внешнего аккаунта невозможна
+  (`UNIQUE (provider, provider_subject)` + проверка `IDENTITY_TAKEN`).
+* Аккаунты **не объединяются по совпадению email**: вход через провайдера находит только привязанный
+  аккаунт, остальное — явная привязка из настроек после подтверждения личности.
+* Отвязка провайдера и удаление аккаунта требуют свежего подтверждения личности; последний способ входа
+  отвязать нельзя.
+* Удаление аккаунта удаляет все привязки, сессии, библиотеку, плейлисты, историю и профиль рекомендаций —
+  повторный вход тем же провайдером создаёт новый чистый аккаунт.
 * Значение `ZVUK_TOKEN` не читается и не выводится ни в одном ответе.
+
+## Внешняя авторизация
+
+Код всех трёх провайдеров реализован и проверен тестами (`node tests/oauth.mjs`), но **ключи
+приложений не заданы** — поэтому в интерфейсе кнопки помечены «пока не подключён», а сервер
+возвращает `503 PROVIDER_DISABLED`. Никакой «имитации» входа нет: без ключей вход невозможен.
+
+Публичные параметры передаются как `plain_text`-биндинги Worker, секреты — как `secret_text`:
+
+| Переменная | Тип | Где взять |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | public | Google Cloud Console → OAuth client (Web) |
+| `VK_CLIENT_ID` | public | id.vk.com → приложение |
+| `VK_CLIENT_SECRET` | secret | id.vk.com → приложение |
+| `APPLE_CLIENT_ID` | public | Apple Developer → Services ID |
+| `APPLE_TEAM_ID` | public | Apple Developer → Membership |
+| `APPLE_KEY_ID` | public | Apple Developer → Keys (Sign in with Apple) |
+| `APPLE_PRIVATE_KEY` | secret | содержимое файла `.p8` |
+| `SITE_URL` | public | необязательно, по умолчанию — домен запроса |
+
+### Google
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → новый проект.
+2. «APIs & Services» → «OAuth consent screen»: тип External, заполнить название и контакты, опубликовать.
+3. «Credentials» → «Create credentials» → «OAuth client ID» → Web application.
+4. Authorized JavaScript origins: `https://rh-music.pages.dev`.
+5. Authorized redirect URIs (для серверного fallback): `https://rh-music.pages.dev/api/auth/oauth/google/callback`.
+6. Client ID → `GOOGLE_CLIENT_ID`. Client secret не нужен: используется Google Identity Services
+   с серверной проверкой ID Token.
+
+### VK ID
+
+1. [id.vk.com](https://id.vk.com/) → «Создать приложение» → тип «Веб».
+2. Redirect URI: `https://rh-music.pages.dev/api/auth/oauth/vk/callback` (должен совпадать посимвольно).
+3. Client ID → `VK_CLIENT_ID`, Client Secret → `VK_CLIENT_SECRET`.
+4. Доступ: базовый профиль + email.
+
+### Apple ID
+
+1. [Apple Developer](https://developer.apple.com/account/) → Identifiers → App ID, включить «Sign in with Apple».
+2. Services ID (например `com.rh.music.service`) → Configure → Domain: `rh-music.pages.dev`,
+   Return URL: `https://rh-music.pages.dev/api/auth/oauth/apple/callback`.
+3. Keys → новый ключ с «Sign in with Apple», скачать `.p8` (даётся один раз).
+4. `APPLE_CLIENT_ID` = Services ID, `APPLE_TEAM_ID` = Team ID, `APPLE_KEY_ID` = Key ID,
+   `APPLE_PRIVATE_KEY` = содержимое `.p8`.
+5. Требуется платный Apple Developer Program — без него вход через Apple работать не будет.
+
+После добавления значений повторите деплой Worker:
+
+```bash
+GOOGLE_CLIENT_ID=... VK_CLIENT_ID=... VK_CLIENT_SECRET=... \
+APPLE_CLIENT_ID=... APPLE_TEAM_ID=... APPLE_KEY_ID=... APPLE_PRIVATE_KEY="$(cat AuthKey.p8)" \
+node scripts/deploy-worker.mjs
+```
+
+`GET /api/auth/providers` покажет, какие способы уже включены — интерфейс обновится сам.
 
 ## Деплой
 
@@ -152,6 +234,7 @@ export ZVUK_TOKEN=...                  # только при первой уст
 node scripts/db-migrate.mjs            # миграции D1
 node scripts/deploy-worker.mjs         # Worker + D1-биндинг (секрет сохраняется)
 node scripts/deploy-pages.mjs          # статика + Pages Function (прокси /api)
+node tests/oauth.mjs                   # тесты внешней авторизации на локальном SQLite
 ```
 
 `scripts/deploy-worker.mjs` передаёт `keep_bindings: ["secret_text"]`, поэтому обновление
@@ -176,3 +259,9 @@ node scripts/deploy-pages.mjs          # статика + Pages Function (про
 * Раздела «Популярное» может не быть, пока в сервисе мало прослушиваний — это честное поведение,
   а не отсутствие функции.
 * Аудиофайлы нигде не сохраняются: плеер получает подписанный поток по Range и не кэширует его.
+* Публичный GraphQL каталога не предоставляет метода «редакционная выдача главной» (доступны только
+  `search`, `getTracks`, `getArtists`, `getReleases`, `playlists(ids)`, `genres(ids)`), поэтому витрина
+  собирается из реальных объектов каталога по жанровым запросам. Обложки плейлистов строятся из обложек
+  их треков: серверы каталога не отдают статические обложки плейлистов.
+* Внешний вход (Google / VK ID / Apple) требует ключей приложений; без них кнопки честно помечены
+  как неподключённые.
