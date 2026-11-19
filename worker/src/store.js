@@ -90,6 +90,21 @@ export async function savePreferences(env, userId, { repeat, shuffle }) {
 
 /* ───────────────────────────── сессии ───────────────────────────── */
 
+/** Запоминает, каким способом создана сессия (только на сервере, в D1). */
+export async function recordSessionMethod(env, { tokenHash, userId, method }) {
+  await run(
+    env,
+    'INSERT OR REPLACE INTO session_methods (token_hash, user_id, method, created_at) VALUES (?1, ?2, ?3, ?4)',
+    [tokenHash, userId, String(method || 'password'), nowIso()],
+  );
+}
+
+export async function sessionMethod(env, tokenHash) {
+  const row = await first(env, 'SELECT method FROM session_methods WHERE token_hash = ?1', [tokenHash]);
+  return row ? row.method : null;
+}
+
+
 export async function insertSession(env, { id, userId, tokenHash, expiresAt, userAgent, ip }) {
   const ts = nowIso();
   await run(
@@ -115,6 +130,7 @@ export async function touchSession(env, sessionId) {
 }
 
 export async function deleteSession(env, tokenHash) {
+  await run(env, 'DELETE FROM session_methods WHERE token_hash = ?1', [tokenHash]);
   await run(env, 'DELETE FROM sessions WHERE token_hash = ?1', [tokenHash]);
 }
 
@@ -452,6 +468,7 @@ export async function deleteAllUserData(env, userId) {
     env.DB.prepare('DELETE FROM library_tracks WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM listening_history WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM user_track_affinity WHERE user_id = ?1').bind(userId),
+    env.DB.prepare('DELETE FROM session_methods WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM user_preferences WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM oauth_states WHERE link_user_id = ?1').bind(userId),
@@ -589,6 +606,27 @@ export async function addReauth(env, userId, method) {
   await run(env, 'DELETE FROM reauth_events WHERE created_at <= ?1', [new Date(Date.now() - 7 * 86400000).toISOString()]);
 }
 
+/**
+ * Атомарно забирает свежее подтверждение личности: только один запрос может
+ * использовать событие, и только в пределах своего user_id.
+ */
+export async function consumeReauth(env, userId, seconds = 300) {
+  const since = new Date(Date.now() - seconds * 1000).toISOString();
+  const row = await first(
+    env,
+    'SELECT id FROM reauth_events WHERE user_id = ?1 AND created_at > ?2 AND used_at IS NULL ORDER BY id DESC LIMIT 1',
+    [userId, since],
+  );
+  if (!row) return null;
+  const result = await run(
+    env,
+    'UPDATE reauth_events SET used_at = ?1 WHERE id = ?2 AND used_at IS NULL',
+    [nowIso(), row.id],
+  );
+  if (!result.meta || result.meta.changes < 1) return null;
+  return row.id;
+}
+
 export async function hasFreshReauth(env, userId, seconds = 300) {
   const since = new Date(Date.now() - seconds * 1000).toISOString();
   const row = await first(
@@ -601,6 +639,26 @@ export async function hasFreshReauth(env, userId, seconds = 300) {
 
 export async function useReauth(env, id) {
   await run(env, 'UPDATE reauth_events SET used_at = ?1 WHERE id = ?2', [nowIso(), id]);
+}
+
+/**
+ * Удаляет привязку провайдера ОДНИМ запросом с проверкой «не последний способ».
+ * Условие проверяется в той же транзакции, поэтому два параллельных запроса на
+ * отвязку разных провайдеров не могут оставить пользователя без входа:
+ * второй увидит уже уменьшившееся количество и удалит 0 строк.
+ */
+export async function unlinkIfNotLast(env, userId, provider) {
+  const result = await run(
+    env,
+    `DELETE FROM oauth_identities
+     WHERE user_id = ?1 AND provider = ?2
+       AND (
+         (SELECT COUNT(*) FROM oauth_identities WHERE user_id = ?1) > 1
+         OR EXISTS (SELECT 1 FROM users WHERE id = ?1 AND password_hash <> '')
+       )`,
+    [userId, provider],
+  );
+  return (result.meta && result.meta.changes) > 0;
 }
 
 /* ───────────────────────────── витрина главной ───────────────────────────── */

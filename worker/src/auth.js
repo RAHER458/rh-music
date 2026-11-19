@@ -94,7 +94,7 @@ export async function requireUser(request, env) {
  * Выдаёт серверную сессию RH—MUSIC. Общая точка входа для пароля и внешних
  * провайдеров: везде используется один и тот же механизм cookie.
  */
-export async function issueSession(env, request, user) {
+export async function issueSession(env, request, user, method = 'password') {
   const token = randomHex(32);
   const tokenHash = await sha256Hex(token);
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
@@ -106,11 +106,12 @@ export async function issueSession(env, request, user) {
     userAgent: request.headers.get('User-Agent') || '',
     ip: clientIp(request),
   });
+  await store.recordSessionMethod(env, { tokenHash, userId: user.id, method }).catch(() => {});
   return { token, cookie: sessionCookie(token, SESSION_DAYS * 86400), expiresAt };
 }
 
-async function createSessionResponse(env, request, user, extra = {}) {
-  const session = await issueSession(env, request, user);
+async function createSessionResponse(env, request, user, extra = {}, method = 'password') {
+  const session = await issueSession(env, request, user, method);
   return json(
     { ok: true, user: publicUser(user), ...extra },
     200,
@@ -149,7 +150,7 @@ export async function handleRegister(request, env) {
   await noteAttempt(env, request, 'register');
 
   const user = { id, username, email, display_name: username, created_at: new Date().toISOString() };
-  return createSessionResponse(env, request, user, { created: true });
+  return createSessionResponse(env, request, user, { created: true }, 'password');
 }
 
 /* ───────────────────────────── вход ───────────────────────────── */
@@ -201,12 +202,13 @@ export async function handleLogout(request, env) {
 export async function handleMe(request, env) {
   const user = await currentUser(request, env);
   if (!user) return json({ ok: true, user: null });
-  const [libraryCount, stats, preferences, identities, password] = await Promise.all([
+  const [libraryCount, stats, preferences, identities, password, currentMethod] = await Promise.all([
     store.libraryCount(env, user.id),
     store.userHistoryStats(env, user.id),
     store.getPreferences(env, user.id),
     store.listIdentities(env, user.id).catch(() => []),
     store.hasPassword(env, user.id).catch(() => false),
+    store.sessionMethod(env, user.tokenHash).catch(() => null),
   ]);
   return json({
     ok: true,
@@ -219,6 +221,7 @@ export async function handleMe(request, env) {
     },
     security: {
       password,
+      currentMethod: currentMethod || 'password',
       methods: [
         ...(password ? [{ provider: 'email', email: user.email }] : []),
         ...identities.map((row) => ({ provider: row.provider, email: row.email, linkedAt: row.createdAt })),
@@ -282,6 +285,8 @@ export async function handleChangePassword(request, env) {
  * Для аккаунта с паролем — пароль; для аккаунта только с внешним входом —
  * свежая авторизация через провайдера (см. oauth.js, там пишется reauth-событие).
  */
+export const REAUTH_TTL_SECONDS = 300;
+
 export async function requireReauth(env, user, body) {
   const password = String((body && body.password) || '');
   if (await store.hasPassword(env, user.id)) {
@@ -292,15 +297,16 @@ export async function requireReauth(env, user, body) {
     if (!timingSafeEqual(hash, full.password_hash)) {
       throw new ApiError(401, 'BAD_CREDENTIALS', 'Пароль указан неверно.');
     }
+    // Подтверждение одноразовое: создаём событие и тут же помечаем использованным.
     await store.addReauth(env, user.id, 'password');
+    await store.consumeReauth(env, user.id, REAUTH_TTL_SECONDS);
     return 'password';
   }
-  const fresh = await store.hasFreshReauth(env, user.id, 600);
+  const fresh = await store.consumeReauth(env, user.id, REAUTH_TTL_SECONDS);
   if (!fresh) {
     throw new ApiError(403, 'REAUTH_REQUIRED',
       'Подтвердите личность: войдите заново через привязанный сервис (Google, VK или Apple).');
   }
-  await store.useReauth(env, fresh);
   return 'provider';
 }
 
@@ -309,7 +315,7 @@ export async function handleReauth(request, env) {
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const method = await requireReauth(env, user, body);
-  return json({ ok: true, method, ttl: 300 });
+  return json({ ok: true, method, ttl: REAUTH_TTL_SECONDS });
 }
 
 /**

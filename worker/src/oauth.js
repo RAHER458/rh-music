@@ -368,7 +368,7 @@ export async function handleGoogleLogin(request, env) {
   }
 
   const { user, created, linked } = await resolveAccount(env, 'google', profile, { linkUserId });
-  const session = await issueSession(env, request, user);
+  const session = await issueSession(env, request, user, 'google');
   await store.addReauth(env, user.id, 'google').catch(() => {});
 
   return json(
@@ -484,7 +484,7 @@ export async function handleVkCallback(request, env, url) {
   const linkUserId = row.mode === 'link' ? Number(row.link_user_id) : null;
   try {
     const { user, created } = await resolveAccount(env, 'vk', profile, { linkUserId });
-    const session = await issueSession(env, request, user);
+    const session = await issueSession(env, request, user, 'vk');
     await store.addReauth(env, user.id, 'vk').catch(() => {});
     const target = linkUserId
       ? siteOrigin(request, env) + '/#/account?linked=vk'
@@ -633,7 +633,7 @@ export async function handleAppleCallback(request, env) {
   const linkUserId = row.mode === 'link' ? Number(row.link_user_id) : null;
   try {
     const { user, created } = await resolveAccount(env, 'apple', profile, { linkUserId });
-    const session = await issueSession(env, request, user);
+    const session = await issueSession(env, request, user, 'apple');
     await store.addReauth(env, user.id, 'apple').catch(() => {});
     const target = linkUserId
       ? siteOrigin(request, env) + '/#/account?linked=apple'
@@ -687,23 +687,37 @@ export async function handleUnlink(request, env) {
   const provider = String(body.provider || '');
   if (!PROVIDERS.includes(provider)) throw new ApiError(400, 'BAD_PROVIDER', 'Неизвестный способ входа.');
 
+  // Повторное подтверждение личности обязательно и расходуется один раз.
   await requireReauth(env, user, body);
+
+  const before = await store.listIdentities(env, user.id);
+  if (!before.some((row) => row.provider === provider)) {
+    throw new ApiError(404, 'NOT_LINKED', 'Этот способ входа не привязан.');
+  }
+
+  // Удаление и проверка «не последний способ» — одна атомарная операция D1.
+  const removed = await store.unlinkIfNotLast(env, user.id, provider);
+  if (!removed) {
+    throw new ApiError(409, 'LAST_AUTH_METHOD',
+      'Это последний способ входа. Сначала привяжите другой способ или задайте пароль.');
+  }
 
   const [identities, password] = await Promise.all([
     store.listIdentities(env, user.id),
     store.hasPassword(env, user.id),
   ]);
-  const has = identities.some((row) => row.provider === provider);
-  if (!has) throw new ApiError(404, 'NOT_LINKED', 'Этот способ входа не привязан.');
-
-  const remaining = identities.filter((row) => row.provider !== provider).length + (password ? 1 : 0);
-  if (remaining < 1) {
-    throw new ApiError(409, 'LAST_METHOD',
-      'Это последний способ входа. Сначала привяжите другой или задайте пароль.');
-  }
-
-  await store.deleteIdentity(env, user.id, provider);
-  return json({ ok: true, removed: provider });
+  return json({
+    ok: true,
+    removed: provider,
+    password,
+    identities: identities.map((row) => ({
+      provider: row.provider,
+      email: row.email,
+      name: row.name,
+      linkedAt: row.createdAt,
+      lastLoginAt: row.lastLoginAt,
+    })),
+  });
 }
 
 /** Одноразовый nonce для Google Identity Services (и для входа, и для привязки). */
