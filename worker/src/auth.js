@@ -90,7 +90,11 @@ export async function requireUser(request, env) {
   return user;
 }
 
-async function createSessionResponse(env, request, user, extra = {}) {
+/**
+ * Выдаёт серверную сессию RH—MUSIC. Общая точка входа для пароля и внешних
+ * провайдеров: везде используется один и тот же механизм cookie.
+ */
+export async function issueSession(env, request, user) {
   const token = randomHex(32);
   const tokenHash = await sha256Hex(token);
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
@@ -102,10 +106,15 @@ async function createSessionResponse(env, request, user, extra = {}) {
     userAgent: request.headers.get('User-Agent') || '',
     ip: clientIp(request),
   });
+  return { token, cookie: sessionCookie(token, SESSION_DAYS * 86400), expiresAt };
+}
+
+async function createSessionResponse(env, request, user, extra = {}) {
+  const session = await issueSession(env, request, user);
   return json(
     { ok: true, user: publicUser(user), ...extra },
     200,
-    { 'Set-Cookie': sessionCookie(token, SESSION_DAYS * 86400) },
+    { 'Set-Cookie': session.cookie },
   );
 }
 
@@ -192,10 +201,12 @@ export async function handleLogout(request, env) {
 export async function handleMe(request, env) {
   const user = await currentUser(request, env);
   if (!user) return json({ ok: true, user: null });
-  const [libraryCount, stats, preferences] = await Promise.all([
+  const [libraryCount, stats, preferences, identities, password] = await Promise.all([
     store.libraryCount(env, user.id),
     store.userHistoryStats(env, user.id),
     store.getPreferences(env, user.id),
+    store.listIdentities(env, user.id).catch(() => []),
+    store.hasPassword(env, user.id).catch(() => false),
   ]);
   return json({
     ok: true,
@@ -205,6 +216,14 @@ export async function handleMe(request, env) {
       plays: (stats && stats.plays) || 0,
       tracks: (stats && stats.tracks) || 0,
       lastPlayedAt: (stats && stats.lastAt) || null,
+    },
+    security: {
+      password,
+      methods: [
+        ...(password ? [{ provider: 'email', email: user.email }] : []),
+        ...identities.map((row) => ({ provider: row.provider, email: row.email, linkedAt: row.createdAt })),
+      ],
+      loginCount: (password ? 1 : 0) + identities.length,
     },
     preferences: { repeat: preferences.repeat_mode, shuffle: !!preferences.shuffle },
   });
@@ -258,20 +277,59 @@ export async function handleChangePassword(request, env) {
   return json({ ok: true });
 }
 
+/**
+ * Подтверждение личности перед опасным действием (отвязка, удаление аккаунта).
+ * Для аккаунта с паролем — пароль; для аккаунта только с внешним входом —
+ * свежая авторизация через провайдера (см. oauth.js, там пишется reauth-событие).
+ */
+export async function requireReauth(env, user, body) {
+  const password = String((body && body.password) || '');
+  if (await store.hasPassword(env, user.id)) {
+    if (!password) throw new ApiError(403, 'REAUTH_REQUIRED', 'Введите текущий пароль для подтверждения.');
+    const row = await store.findUserById(env, user.id);
+    const full = await store.findUserByLogin(env, row.email);
+    const hash = await hashPassword(password, full.password_salt, full.iterations || PASSWORD_ITERATIONS);
+    if (!timingSafeEqual(hash, full.password_hash)) {
+      throw new ApiError(401, 'BAD_CREDENTIALS', 'Пароль указан неверно.');
+    }
+    await store.addReauth(env, user.id, 'password');
+    return 'password';
+  }
+  const fresh = await store.hasFreshReauth(env, user.id, 600);
+  if (!fresh) {
+    throw new ApiError(403, 'REAUTH_REQUIRED',
+      'Подтвердите личность: войдите заново через привязанный сервис (Google, VK или Apple).');
+  }
+  await store.useReauth(env, fresh);
+  return 'provider';
+}
+
+export async function handleReauth(request, env) {
+  requireCsrf(request);
+  const user = await requireUser(request, env);
+  const body = await readJson(request);
+  const method = await requireReauth(env, user, body);
+  return json({ ok: true, method, ttl: 300 });
+}
+
+/**
+ * Полное удаление аккаунта. Требует явного подтверждения и повторной
+ * проверки личности — одного лишь user_id из frontend недостаточно.
+ */
 export async function handleDeleteAccount(request, env) {
   requireCsrf(request);
   const user = await requireUser(request, env);
   const body = await readJson(request);
-  const password = String(body.password || '');
 
-  const full = await store.findUserByLogin(env, user.email);
-  const hash = await hashPassword(password, full.password_salt, full.iterations || PASSWORD_ITERATIONS);
-  if (!timingSafeEqual(hash, full.password_hash)) {
-    throw new ApiError(401, 'BAD_CREDENTIALS', 'Пароль указан неверно.');
+  const confirm = String(body.confirm || '').trim().toUpperCase();
+  if (confirm !== 'DELETE' && confirm !== 'УДАЛИТЬ') {
+    throw new ApiError(400, 'CONFIRM_REQUIRED', 'Подтвердите удаление аккаунта.');
   }
 
+  await requireReauth(env, user, body);
   await store.deleteAllUserData(env, user.id);
-  return json({ ok: true }, 200, { 'Set-Cookie': clearCookie() });
+
+  return json({ ok: true, deleted: true }, 200, { 'Set-Cookie': clearCookie() });
 }
 
 export async function handlePreferences(request, env) {

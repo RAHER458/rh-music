@@ -439,6 +439,12 @@ export async function completedTrackIds(env, userId, limit = 100) {
   return rows.map((r) => r.track_id);
 }
 
+/**
+ * Полное удаление аккаунта и всех персональных данных.
+ * Порядок важен: сначала зависимые таблицы, затем пользователь.
+ * Внешние привязки удаляются в той же транзакции — после удаления аккаунта
+ * повторный вход через того же провайдера должен создать НОВЫЙ чистый аккаунт.
+ */
 export async function deleteAllUserData(env, userId) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM playlist_tracks WHERE playlist_id IN (SELECT id FROM playlists WHERE user_id = ?1)').bind(userId),
@@ -448,6 +454,170 @@ export async function deleteAllUserData(env, userId) {
     env.DB.prepare('DELETE FROM user_track_affinity WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM user_preferences WHERE user_id = ?1').bind(userId),
+    env.DB.prepare('DELETE FROM oauth_states WHERE link_user_id = ?1').bind(userId),
+    env.DB.prepare('DELETE FROM reauth_events WHERE user_id = ?1').bind(userId),
+    env.DB.prepare('DELETE FROM oauth_identities WHERE user_id = ?1').bind(userId),
     env.DB.prepare('DELETE FROM users WHERE id = ?1').bind(userId),
   ]);
+}
+
+/* ───────────────────────────── внешние аккаунты (OAuth) ───────────────────────────── */
+
+export async function findIdentity(env, provider, subject) {
+  return first(
+    env,
+    `SELECT i.*, u.username, u.email, u.display_name, u.created_at AS user_created_at
+     FROM oauth_identities i JOIN users u ON u.id = i.user_id
+     WHERE i.provider = ?1 AND i.provider_subject = ?2 LIMIT 1`,
+    [provider, subject],
+  );
+}
+
+export async function listIdentities(env, userId) {
+  return all(
+    env,
+    `SELECT provider, provider_subject AS subject, provider_email AS email, provider_name AS name,
+            created_at AS createdAt, last_login_at AS lastLoginAt
+     FROM oauth_identities WHERE user_id = ?1 ORDER BY created_at ASC`,
+    [userId],
+  );
+}
+
+export async function insertIdentity(env, { userId, provider, subject, email, name }) {
+  const ts = nowIso();
+  await run(
+    env,
+    `INSERT INTO oauth_identities
+       (user_id, provider, provider_subject, provider_email, provider_name, created_at, last_login_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6)`,
+    [userId, provider, subject, email || null, name || null, ts],
+  );
+}
+
+export async function touchIdentity(env, provider, subject, { email, name } = {}) {
+  await run(
+    env,
+    `UPDATE oauth_identities
+     SET last_login_at = ?1, updated_at = ?1,
+         provider_email = COALESCE(?2, provider_email),
+         provider_name  = COALESCE(?3, provider_name)
+     WHERE provider = ?4 AND provider_subject = ?5`,
+    [nowIso(), email || null, name || null, provider, subject],
+  );
+}
+
+export async function deleteIdentity(env, userId, provider) {
+  const result = await run(env, 'DELETE FROM oauth_identities WHERE user_id = ?1 AND provider = ?2', [userId, provider]);
+  return (result.meta && result.meta.changes) > 0;
+}
+
+export async function identityCount(env, userId) {
+  const row = await first(env, 'SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', [userId]);
+  return (row && row.n) || 0;
+}
+
+/** OAuth-аккаунт без пароля: password_hash остаётся пустым, вход по паролю невозможен. */
+export async function insertOAuthUser(env, { username, email, displayName }) {
+  const ts = nowIso();
+  const result = await run(
+    env,
+    `INSERT INTO users (username, email, display_name, password_hash, password_salt, iterations, created_at, updated_at)
+     VALUES (?1, ?2, ?3, '', '', 0, ?4, ?4)`,
+    [username, email, displayName || username, ts],
+  );
+  const id = result.meta && result.meta.last_row_id;
+  await run(env, 'INSERT OR IGNORE INTO user_preferences (user_id, repeat_mode, shuffle, updated_at) VALUES (?1, \'off\', 0, ?2)', [id, ts]);
+  return id;
+}
+
+export async function usernameTaken(env, username) {
+  const row = await first(env, 'SELECT id FROM users WHERE username = ?1 COLLATE NOCASE LIMIT 1', [username]);
+  return !!row;
+}
+
+export async function emailTaken(env, email, exceptUserId = 0) {
+  const row = await first(env, 'SELECT id FROM users WHERE email = ?1 COLLATE NOCASE LIMIT 1', [email]);
+  return !!row && Number(row.id) !== Number(exceptUserId);
+}
+
+export async function hasPassword(env, userId) {
+  const row = await first(env, 'SELECT password_hash FROM users WHERE id = ?1', [userId]);
+  return !!(row && row.password_hash);
+}
+
+/* ───────────────────────────── состояния OAuth ───────────────────────────── */
+
+export async function insertOAuthState(env, { state, provider, mode, nonce, codeVerifier, redirectUri, linkUserId, ttlSeconds }) {
+  const ts = new Date();
+  const expires = new Date(ts.getTime() + ttlSeconds * 1000).toISOString();
+  await run(
+    env,
+    `INSERT INTO oauth_states (state, provider, mode, nonce, code_verifier, redirect_uri, link_user_id, created_at, expires_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+    [state, provider, mode, nonce, codeVerifier || null, redirectUri || null, linkUserId || null, ts.toISOString(), expires],
+  );
+}
+
+/** Забирает состояние одноразово: возвращает строку либо null, если оно уже использовано/просрочено. */
+export async function consumeOAuthState(env, state) {
+  const ts = nowIso();
+  const row = await first(
+    env,
+    'SELECT * FROM oauth_states WHERE state = ?1 AND consumed_at IS NULL AND expires_at > ?2 LIMIT 1',
+    [state, ts],
+  );
+  if (!row) return null;
+  const result = await run(
+    env,
+    'UPDATE oauth_states SET consumed_at = ?1 WHERE state = ?2 AND consumed_at IS NULL',
+    [ts, state],
+  );
+  if (!result.meta || result.meta.changes < 1) return null;
+  return row;
+}
+
+export async function pruneOAuthStates(env) {
+  const cutoff = new Date(Date.now() - 86400000).toISOString();
+  await run(env, 'DELETE FROM oauth_states WHERE expires_at <= ?1', [cutoff]);
+}
+
+/* ───────────────────────────── подтверждение личности ───────────────────────────── */
+
+export async function addReauth(env, userId, method) {
+  const ts = nowIso();
+  await run(env, 'INSERT INTO reauth_events (user_id, method, created_at) VALUES (?1, ?2, ?3)', [userId, method, ts]);
+  await run(env, 'DELETE FROM reauth_events WHERE created_at <= ?1', [new Date(Date.now() - 7 * 86400000).toISOString()]);
+}
+
+export async function hasFreshReauth(env, userId, seconds = 300) {
+  const since = new Date(Date.now() - seconds * 1000).toISOString();
+  const row = await first(
+    env,
+    'SELECT id FROM reauth_events WHERE user_id = ?1 AND created_at > ?2 AND used_at IS NULL ORDER BY id DESC LIMIT 1',
+    [userId, since],
+  );
+  return row ? row.id : null;
+}
+
+export async function useReauth(env, id) {
+  await run(env, 'UPDATE reauth_events SET used_at = ?1 WHERE id = ?2', [nowIso(), id]);
+}
+
+/* ───────────────────────────── витрина главной ───────────────────────────── */
+
+export async function readHomeSnapshot(env, key) {
+  const row = await first(env, 'SELECT payload, fetched_at FROM home_snapshot WHERE key = ?1', [key]);
+  if (!row) return null;
+  let payload = null;
+  try { payload = JSON.parse(row.payload); } catch { payload = null; }
+  return payload ? { payload, fetchedAt: row.fetched_at } : null;
+}
+
+export async function writeHomeSnapshot(env, key, payload) {
+  await run(
+    env,
+    `INSERT INTO home_snapshot (key, payload, fetched_at) VALUES (?1, ?2, ?3)
+     ON CONFLICT(key) DO UPDATE SET payload = ?2, fetched_at = ?3`,
+    [key, JSON.stringify(payload), nowIso()],
+  );
 }

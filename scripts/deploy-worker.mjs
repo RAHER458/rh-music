@@ -59,11 +59,21 @@ async function cf(path, init = {}) {
 const srcDir = join(root, 'worker/src');
 const modules = (await readdir(srcDir)).filter((name) => name.endsWith('.js')).sort();
 
+// Публичные (не секретные) параметры OAuth. Передаются в Worker как plain_text.
+// Секреты (VK_CLIENT_SECRET, APPLE_PRIVATE_KEY) задаются отдельно и не логируются.
+const PUBLIC_VARS = ['SITE_URL', 'GOOGLE_CLIENT_ID', 'VK_CLIENT_ID', 'APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID'];
+const SECRET_VARS = ['VK_CLIENT_SECRET', 'APPLE_PRIVATE_KEY'];
+
+const publicBindings = PUBLIC_VARS
+  .filter((name) => process.env[name] && String(process.env[name]).trim())
+  .map((name) => ({ type: 'plain_text', name, text: String(process.env[name]).trim() }));
+
 const metadata = {
   main_module: 'index.js',
   compatibility_date: '2025-01-15',
   bindings: [
     { type: 'plain_text', name: 'SERVICE_NAME', text: 'rh-music-api' },
+    ...publicBindings,
     { type: 'd1', name: 'DB', id: D1_DATABASE_ID },
   ],
   // Секрет ZVUK_TOKEN не перезаписывается при обновлении кода.
@@ -115,6 +125,30 @@ if (process.env.ZVUK_TOKEN) {
     });
     console.log('Секрет ZVUK_TOKEN сохранён (значение не выводится).');
   }
+}
+
+// OAuth-секреты: обновляем только при явной передаче и отсутствии значения.
+if (publicBindings.length) console.log('Публичные параметры:', publicBindings.map((b) => b.name).join(', '));
+
+for (const name of SECRET_VARS) {
+  const value = process.env[name] ? String(process.env[name]).trim() : '';
+  if (!value) continue;
+  let exists = false;
+  try {
+    const list = await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/secrets`);
+    exists = (list || []).some((item) => item.name === name);
+  } catch {
+    exists = true; // нет доступа к списку — не перезаписываем
+  }
+  if (exists && process.env.REPLACE_SECRET !== '1') {
+    console.log(`Секрет ${name} уже существует — значение не изменялось.`);
+    continue;
+  }
+  await cf(`/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/secrets`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, type: 'secret_text', text: value }),
+  });
+  console.log(`Секрет ${name} сохранён (значение не выводится).`);
 }
 
 const subdomain = await cf(`/accounts/${accountId}/workers/subdomain`);

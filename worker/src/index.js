@@ -7,14 +7,14 @@
  * Токен каталога живёт только в секрете окружения ZVUK_TOKEN и никогда не попадает в ответы.
  */
 
-import { ApiError, json, fail, corsHeaders, sanitizeTrack, json as jsonResponse } from './http.js';
+import { ApiError, json, fail, corsHeaders, sanitizeTrack, readJson, json as jsonResponse } from './http.js';
 import {
   gql, Q, pageOf, normalizeTrack, normalizeArtist, normalizeRelease,
   MAX_LIMIT, DEFAULT_LIMIT, CDN_IMAGE_HOST,
 } from './zvuk.js';
 import {
   handleRegister, handleLogin, handleLogout, handleMe, handleUpdateProfile,
-  handleChangePassword, handleDeleteAccount, handlePreferences, requireUser,
+  handleChangePassword, handleDeleteAccount, handlePreferences, handleReauth, requireUser,
 } from './auth.js';
 import {
   handleLibraryList, handleLibraryIds, handleLibraryAdd, handleLibraryRemove,
@@ -23,6 +23,11 @@ import {
   handleHistoryStart, handleHistoryUpdate, handleHistoryRecent,
 } from './music.js';
 import { handleRecommendations } from './recommend.js';
+import { handleHome, handleCatalogPlaylist } from './home.js';
+import {
+  handleProviders, handleIdentities, handleUnlink, handleGoogleNonce,
+  handleGoogleLogin, handleVkStart, handleVkCallback, handleAppleStart, handleAppleCallback,
+} from './oauth.js';
 
 const ID_RE = /^[0-9]{1,20}$/;
 
@@ -286,12 +291,12 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.0.0',
-      features: ['catalog', 'accounts', 'library', 'playlists', 'history', 'recommendations'],
+      version: '2.1.0',
+      features: ['catalog', 'accounts', 'oauth', 'library', 'playlists', 'history', 'recommendations', 'home'],
     });
   }
 
-  if (path === '/api/health') {
+    if (path === '/api/health') {
     let upstream = null;
     if (url.searchParams.get('probe') === '1') {
       const started = Date.now();
@@ -313,7 +318,7 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.0.0',
+      version: '2.1.0',
       tokenConfigured: !!env.ZVUK_TOKEN,
       database,
       upstream,
@@ -328,6 +333,18 @@ async function route(request, env) {
   if (path === '/api/auth/me' && method === 'GET') return handleMe(request, env);
   if (path === '/api/auth/profile' && method === 'PATCH') return handleUpdateProfile(request, env);
   if (path === '/api/auth/password' && method === 'POST') return handleChangePassword(request, env);
+  if (path === '/api/auth/reauth' && method === 'POST') return handleReauth(request, env);
+
+  /* --- внешние способы входа --- */
+  if (path === '/api/auth/providers' && method === 'GET') return handleProviders(request, env);
+  if (path === '/api/auth/identities' && method === 'GET') return handleIdentities(request, env);
+  if (path === '/api/auth/identities/unlink' && method === 'POST') return handleUnlink(request, env);
+  if (path === '/api/auth/oauth/google/nonce' && method === 'POST') return handleGoogleNonce(request, env);
+  if (path === '/api/auth/oauth/google' && method === 'POST') return handleGoogleLogin(request, env);
+  if (path === '/api/auth/oauth/vk/start' && method === 'POST') return handleVkStart(request, env);
+  if (path === '/api/auth/oauth/vk/callback' && (method === 'GET' || method === 'POST')) return handleVkCallback(request, env, url);
+  if (path === '/api/auth/oauth/apple/start' && method === 'POST') return handleAppleStart(request, env);
+  if (path === '/api/auth/oauth/apple/callback' && (method === 'POST' || method === 'GET')) return handleAppleCallback(request, env);
   if (path === '/api/auth/account' && method === 'DELETE') return handleDeleteAccount(request, env);
   if (path === '/api/me/preferences' && method === 'PATCH') return handlePreferences(request, env);
 
@@ -364,6 +381,10 @@ async function route(request, env) {
     return handleHistoryUpdate(request, env, m[1], method);
   }
   if (path === '/api/recommendations' && method === 'GET') return handleRecommendations(request, env);
+
+  /* --- витрина главной (общий контент) --- */
+  if (path === '/api/home' && method === 'GET') return handleHome(request, env);
+  if ((m = path.match(/^\/api\/playlist\/(\d+)$/)) && method === 'GET') return handleCatalogPlaylist(env, m[1]);
 
   /* --- каталог (как и раньше) --- */
   if (path === '/api/search' && method === 'GET') {

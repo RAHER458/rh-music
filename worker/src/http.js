@@ -130,6 +130,41 @@ export function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
+/* ───────────────────────────── base64url и PEM (JWT/OAuth) ───────────────────────────── */
+
+export function bytesToBase64url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function base64urlToBytes(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+export function base64urlDecodeText(value) {
+  return new TextDecoder().decode(base64urlToBytes(value));
+}
+
+export function base64urlEncodeText(text) {
+  return bytesToBase64url(new TextEncoder().encode(text));
+}
+
+/** PEM (BEGIN PRIVATE KEY / BEGIN CERTIFICATE) → ArrayBuffer. */
+export function pemToBuffer(pem) {
+  const body = String(pem || '')
+    .replace(/-----BEGIN [^-]+-----/g, '')
+    .replace(/-----END [^-]+-----/g, '')
+    .replace(/\s+/g, '');
+  if (!body) throw new Error('empty pem');
+  return base64urlToBytes(body.replace(/\+/g, '-').replace(/\//g, '_')).buffer;
+}
+
 /* ───────────────────────────── валидация ───────────────────────────── */
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@.]+(\.[^\s@.]+)+$/;

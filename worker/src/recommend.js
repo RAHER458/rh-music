@@ -141,6 +141,27 @@ export async function buildRecommendations(env, user, options = {}) {
       });
     }
 
+    // Любимые исполнители: их треки «второго эшелона», чтобы не дублировать «Для вас».
+    const favoriteGroups = [];
+    for (const artist of bundle.slice(0, 3)) {
+      const tracks = (artist.popularTracks || [])
+        .map((t) => normalizeTrack(t, 300))
+        .filter((t) => t && !seen.has(String(t.id)))
+        .slice(2, 8);
+      favoriteGroups.push(tracks);
+    }
+    const favorites = [];
+    for (const track of interleave(favoriteGroups, 4, 14)) dedupePush(favorites, seen, track);
+    if (favorites.length >= 4) {
+      sections.push({
+        key: 'favorites',
+        title: 'На основе любимых исполнителей',
+        subtitle: 'Треки артистов, которые чаще всего звучат в вашей истории',
+        type: 'tracks',
+        items: favorites,
+      });
+    }
+
     // Похожие: связанные исполнители первого «любимого» артиста.
     const topSet = new Set(topIds);
     const relatedIds = [];
@@ -163,10 +184,25 @@ export async function buildRecommendations(env, user, options = {}) {
         const seedArtist = bundle[0] ? bundle[0].title : '';
         sections.push({
           key: 'similar',
-          title: seedArtist ? `Похоже на ${seedArtist}` : 'Похожие композиции',
+          title: seedArtist ? `Похоже на ${seedArtist}` : 'Похоже на то, что вы слушаете',
           subtitle: 'Исполнители, близкие к тем, кого вы слушаете',
           type: 'tracks',
           items: similar,
+        });
+      }
+
+      // «Возможно, вам понравится»: другие треки тех же близких исполнителей.
+      const discoverGroups = relatedBundle.map((artist) =>
+        (artist.popularTracks || []).map((t) => normalizeTrack(t, 300)).filter(Boolean).slice(3, 7));
+      const discover = [];
+      for (const track of interleave(discoverGroups, 3, 14)) dedupePush(discover, seen, track);
+      if (discover.length >= 4) {
+        sections.push({
+          key: 'discover',
+          title: 'Возможно, вам понравится',
+          subtitle: 'Ещё немного музыки рядом с вашими вкусами',
+          type: 'tracks',
+          items: discover,
         });
       }
     }
