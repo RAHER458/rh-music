@@ -1473,6 +1473,9 @@ function openNowPlaying(open = true) {
   if (open) { scrim.hidden = false; requestAnimationFrame(() => scrim.classList.add('is-open')); }
   else if (!S.drawerOpen && !S.sheetOpen) hideScrim();
   document.body.classList.toggle('is-locked', open || S.drawerOpen || S.sheetOpen);
+  // Safari/WebKit иногда рисует полосы с backdrop-filter выше полноэкранного плеера —
+  // на время показа «Сейчас играет» убираем мини-плеер и таббар из отрисовки.
+  document.body.classList.toggle('np-open', open);
   renderQueue();
 }
 

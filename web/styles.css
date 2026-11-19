@@ -549,6 +549,11 @@ input, textarea { font: inherit; }
 
 .now-playing.is-open { opacity: 1; visibility: visible; transform: none; }
 
+/* Полноэкранный плеер перекрывает мини-плеер и таббар: в WebKit слои с
+   backdrop-filter иначе могут отрисоваться поверх него. */
+body.np-open .player,
+body.np-open .tabbar { visibility: hidden; pointer-events: none; }
+
 .np-bg {
   position: absolute; inset: -15%;
   background:
