@@ -26,6 +26,16 @@
 
   const DEFAULTS = { enabled: false, bars: 8, preload: true };
 
+  // Handoff не должен выключать уже звучащий mix раньше, чем основной
+  // элемент реально начнёт отдавать звук в целевой позиции.
+  const HANDOFF_MIN_BUFFER = 1.5;
+  const HANDOFF_SYNC_BUFFER = 0.8;
+  const HANDOFF_PROGRESS = 0.25;
+  const HANDOFF_TIMEOUT = 3000;
+  const HANDOFF_STABILITY_TIMEOUT = 2500;
+  const HANDOFF_FADE = 0.18;
+  const HANDOFF_POST_FADE_CHECK = 600;
+
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
   /* ───────────────────────────── настройки ───────────────────────────── */
@@ -351,6 +361,13 @@
     preloadGen: 0,
     retired: [],
     mixBound: false,
+    handoffGen: 0,
+    handoffController: null,
+    handoffTrace: [],
+    handoffResult: null,
+    fallback: false,
+    fadeTimer: null,
+    fadeResolve: null,
   };
 
   const internal = {
@@ -503,6 +520,437 @@
       best = Math.max(best, rangeEnd - start);
     }
     return best;
+  }
+
+  /* ───────────────────────────── handoff ───────────────────────────── */
+
+  /**
+   * Минимальный AbortController-совместимый отменяемый сигнал.
+   * В тестовой среде AbortController может отсутствовать, а handoff всё
+   * равно обязан отменяться при Next/Prev/Pause/Seek.
+   */
+  function createAbortController() {
+    const Ctor = (typeof AbortController !== 'undefined' ? AbortController : null)
+      || (global && global.AbortController)
+      || null;
+    if (Ctor) return new Ctor();
+    const listeners = new Set();
+    const signal = {
+      aborted: false,
+      addEventListener(type, fn) { if (type === 'abort') listeners.add(fn); },
+      removeEventListener(type, fn) { if (type === 'abort') listeners.delete(fn); },
+    };
+    return {
+      signal,
+      abort() {
+        if (signal.aborted) return;
+        signal.aborted = true;
+        for (const fn of [...listeners]) {
+          try { fn(); } catch { /* ignore */ }
+        }
+        listeners.clear();
+      },
+    };
+  }
+
+  function traceHandoff(stage, extra) {
+    const detail = extra && typeof extra === 'object' ? extra : {};
+    const entry = {
+      stage,
+      at: Date.now(),
+      position: Number.isFinite(detail.position) ? Math.round(detail.position * 100) / 100 : undefined,
+      ahead: Number.isFinite(detail.ahead) ? Math.round(detail.ahead * 10) / 10 : undefined,
+      reason: detail.reason || undefined,
+    };
+    if (stage === 'handoff_started') engine.handoffTrace = [];
+    engine.handoffTrace.push(entry);
+    while (engine.handoffTrace.length > 40) engine.handoffTrace.shift();
+    engine.handoffResult = entry;
+    if (engine.host && typeof engine.host.onHandoffStage === 'function') {
+      try { engine.host.onHandoffStage(entry); } catch { /* ignore */ }
+    }
+  }
+
+  function remaining(deadline) {
+    return Math.max(0, deadline - Date.now());
+  }
+
+  function delay(ms, signal) {
+    return new Promise((resolve) => {
+      if (signal && signal.aborted) { resolve(false); return; }
+      let done = false;
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (signal && signal.removeEventListener) signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(true), Math.max(1, ms));
+      const onAbort = () => finish(false);
+      if (signal && signal.addEventListener) signal.addEventListener('abort', onAbort);
+    });
+  }
+
+  function sourceMatches(element, expected) {
+    if (!expected) return true;
+    const current = element.currentSrc || '';
+    return !current || current === expected;
+  }
+
+  function waitForMetadata(element, options = {}) {
+    const expectedSrc = options.expectedSrc;
+    if (element.readyState >= 1 && sourceMatches(element, expectedSrc)) {
+      return Promise.resolve({ ok: true });
+    }
+    if (element.error) return Promise.resolve({ ok: false, reason: 'media_error' });
+    const timeout = options.timeout != null ? options.timeout : HANDOFF_TIMEOUT;
+    const signal = options.signal;
+    return new Promise((resolve) => {
+      if (signal && signal.aborted) { resolve({ ok: false, reason: 'cancelled' }); return; }
+      let done = false;
+      let timer = null;
+      const cleanup = () => {
+        element.removeEventListener('loadedmetadata', onMeta);
+        element.removeEventListener('error', onError);
+        clearTimeout(timer);
+        if (signal && signal.removeEventListener) signal.removeEventListener('abort', onAbort);
+      };
+      const finish = (result) => { if (done) return; done = true; cleanup(); resolve(result); };
+      const onMeta = () => { if (sourceMatches(element, expectedSrc)) finish({ ok: true }); };
+      const onError = () => finish({ ok: false, reason: 'media_error' });
+      const onAbort = () => finish({ ok: false, reason: 'cancelled' });
+      element.addEventListener('loadedmetadata', onMeta);
+      element.addEventListener('error', onError);
+      if (signal && signal.addEventListener) signal.addEventListener('abort', onAbort);
+      timer = setTimeout(() => finish({ ok: false, reason: 'metadata_timeout' }), Math.max(1, timeout));
+    });
+  }
+
+  function waitForSeek(element, target, options = {}) {
+    const reached = () => Math.abs(Number(element.currentTime) - target) <= 0.35 && !element.seeking;
+    if (reached()) return Promise.resolve({ ok: true });
+    if (element.error) return Promise.resolve({ ok: false, reason: 'media_error' });
+    const timeout = options.timeout != null ? options.timeout : 1800;
+    const signal = options.signal;
+    return new Promise((resolve) => {
+      if (signal && signal.aborted) { resolve({ ok: false, reason: 'cancelled' }); return; }
+      let done = false;
+      let timer = null;
+      const cleanup = () => {
+        element.removeEventListener('seeked', onSeek);
+        element.removeEventListener('error', onError);
+        clearTimeout(timer);
+        if (signal && signal.removeEventListener) signal.removeEventListener('abort', onAbort);
+      };
+      const finish = (result) => { if (done) return; done = true; cleanup(); resolve(result); };
+      const onSeek = () => { if (reached()) finish({ ok: true }); };
+      const onError = () => finish({ ok: false, reason: 'media_error' });
+      const onAbort = () => finish({ ok: false, reason: 'cancelled' });
+      element.addEventListener('seeked', onSeek);
+      element.addEventListener('error', onError);
+      if (signal && signal.addEventListener) signal.addEventListener('abort', onAbort);
+      timer = setTimeout(() => {
+        if (reached()) finish({ ok: true });
+        else finish({ ok: false, reason: 'seek_timeout' });
+      }, Math.max(1, timeout));
+    });
+  }
+
+  /**
+   * Ждёт данные именно около from. Наличие buffered[0] или canplay на нуле
+   * не считается готовностью: проверяется диапазон, покрывающий позицию.
+   */
+  function waitForTargetBuffer(element, from, options = {}) {
+    const minAhead = options.minAhead != null ? options.minAhead : HANDOFF_MIN_BUFFER;
+    const expectedSrc = options.expectedSrc;
+    const start = Math.max(0, Number(from) || 0);
+    const enough = () => {
+      if (element.error) return false;
+      if (!sourceMatches(element, expectedSrc)) return false;
+      return bufferAhead(element, start) >= minAhead && element.readyState >= 2;
+    };
+    if (enough()) return Promise.resolve({ ok: true, ahead: bufferAhead(element, start) });
+    const timeout = options.timeout != null ? options.timeout : HANDOFF_TIMEOUT;
+    const signal = options.signal;
+    const events = ['progress', 'loadeddata', 'canplay', 'canplaythrough', 'seeked', 'timeupdate'];
+    return new Promise((resolve) => {
+      if (signal && signal.aborted) { resolve({ ok: false, reason: 'cancelled' }); return; }
+      let done = false;
+      let timer = null;
+      const cleanup = () => {
+        for (const type of events) element.removeEventListener(type, onProgress);
+        element.removeEventListener('error', onError);
+        clearTimeout(timer);
+        if (signal && signal.removeEventListener) signal.removeEventListener('abort', onAbort);
+      };
+      const finish = (result) => { if (done) return; done = true; cleanup(); resolve(result); };
+      const onProgress = () => {
+        if (enough()) finish({ ok: true, ahead: bufferAhead(element, start) });
+      };
+      const onError = () => finish({ ok: false, reason: 'media_error' });
+      const onAbort = () => finish({ ok: false, reason: 'cancelled' });
+      for (const type of events) element.addEventListener(type, onProgress);
+      element.addEventListener('error', onError);
+      if (signal && signal.addEventListener) signal.addEventListener('abort', onAbort);
+      timer = setTimeout(() => {
+        if (enough()) finish({ ok: true, ahead: bufferAhead(element, start) });
+        else finish({ ok: false, reason: 'buffer_timeout', ahead: bufferAhead(element, start) });
+      }, Math.max(1, timeout));
+    });
+  }
+
+  /**
+   * Запускает play() и подтверждает не только событие playing, но и реальное
+   * продвижение currentTime. waiting/stalled после старта считаются провалом.
+   */
+  function playAndConfirm(element, options = {}) {
+    const progress = options.progress != null ? options.progress : HANDOFF_PROGRESS;
+    const timeout = options.timeout != null ? options.timeout : HANDOFF_STABILITY_TIMEOUT;
+    const signal = options.signal;
+    const onStage = typeof options.onStage === 'function' ? options.onStage : null;
+    return new Promise((resolve) => {
+      if (signal && signal.aborted) { resolve({ ok: false, reason: 'cancelled' }); return; }
+      if (element.error) { resolve({ ok: false, reason: 'media_error' }); return; }
+      let done = false;
+      let timer = null;
+      let started = false;
+      let startPosition = 0;
+      let stalled = false;
+      const deadline = Date.now() + Math.max(1, timeout);
+      const cleanup = () => {
+        element.removeEventListener('playing', onPlaying);
+        element.removeEventListener('timeupdate', onTime);
+        element.removeEventListener('waiting', onStall);
+        element.removeEventListener('stalled', onStall);
+        element.removeEventListener('pause', onPause);
+        element.removeEventListener('error', onError);
+        clearTimeout(timer);
+        if (signal && signal.removeEventListener) signal.removeEventListener('abort', onAbort);
+      };
+      const finish = (result) => { if (done) return; done = true; cleanup(); resolve(result); };
+      const fail = (reason) => finish({ ok: false, reason });
+      const checkProgress = () => {
+        if (done) return;
+        if (signal && signal.aborted) { fail('cancelled'); return; }
+        if (element.error) { fail('media_error'); return; }
+        if (stalled) { fail('stalled'); return; }
+        // play() запускается асинхронно: до события playing paused ещё может
+        // быть true. Пауза — ошибка только после фактического старта.
+        if (element.paused) {
+          if (started) fail('paused');
+          return;
+        }
+        if (!started) return;
+        if (element.currentTime >= startPosition + progress - 0.02) {
+          finish({ ok: true, position: element.currentTime });
+        }
+      };
+      const tick = () => {
+        if (done) return;
+        checkProgress();
+        if (done) return;
+        if (Date.now() >= deadline) {
+          fail(started ? 'progress_timeout' : 'playing_timeout');
+          return;
+        }
+        timer = setTimeout(tick, 50);
+      };
+      const onPlaying = () => {
+        if (started || done) return;
+        started = true;
+        startPosition = element.currentTime || 0;
+        if (onStage) onStage('playing_event', { position: startPosition });
+        checkProgress();
+      };
+      const onTime = () => checkProgress();
+      const onStall = () => { if (started) stalled = true; };
+      const onPause = () => { if (started) fail('paused'); };
+      const onError = () => fail('media_error');
+      const onAbort = () => fail('cancelled');
+      element.addEventListener('playing', onPlaying);
+      element.addEventListener('timeupdate', onTime);
+      element.addEventListener('waiting', onStall);
+      element.addEventListener('stalled', onStall);
+      element.addEventListener('pause', onPause);
+      element.addEventListener('error', onError);
+      if (signal && signal.addEventListener) signal.addEventListener('abort', onAbort);
+      let playPromise;
+      try {
+        playPromise = element.play();
+      } catch (error) {
+        fail(error && error.name === 'NotAllowedError' ? 'play_rejected' : 'play_error');
+        return;
+      }
+      if (playPromise && typeof playPromise.then === 'function') {
+        playPromise.catch((error) => {
+          if (done) return;
+          fail(error && error.name === 'NotAllowedError' ? 'play_rejected' : 'play_error');
+        });
+      }
+      if (done) return;
+      timer = setTimeout(tick, 50);
+      if (!started && element.paused === false && element.readyState >= 2) {
+        // Некоторые браузеры не присылают playing повторно, если элемент уже
+        // был запущен. Это не отменяет обязательную проверку currentTime.
+        started = true;
+        startPosition = element.currentTime || 0;
+        if (onStage) onStage('playing_event', { position: startPosition });
+      }
+      // Не проверяем paused синхронно: play() штатно стартует асинхронно.
+    });
+  }
+
+  /**
+   * Готовит основной элемент к позиции перехода и подтверждает стабильность.
+   * Вызывается из app.js уже после audio.src/load(); сам элемент не перезагружает.
+   */
+  async function adoptPrimary(element, options = {}) {
+    if (!element) return { ok: false, reason: 'no_element', retryable: false };
+    const signal = options.signal;
+    const onStage = typeof options.onStage === 'function' ? options.onStage : null;
+    const stage = (name, extra) => {
+      if (onStage) { try { onStage(name, extra); } catch { /* ignore */ } }
+    };
+    const total = options.timeout != null ? options.timeout : HANDOFF_TIMEOUT;
+    const deadline = Date.now() + Math.max(1, total);
+    const requested = Math.max(0, Number(options.position) || 0);
+    stage('handoff_started', { position: requested });
+    if (signal && signal.aborted) return { ok: false, reason: 'cancelled', retryable: false };
+
+    const meta = await waitForMetadata(element, { timeout: remaining(deadline), signal, expectedSrc: options.expectedSrc });
+    if (!meta.ok) {
+      stage('handoff_failed', { reason: meta.reason });
+      return { ok: false, reason: meta.reason, retryable: meta.reason !== 'cancelled' };
+    }
+    if (signal && signal.aborted) return { ok: false, reason: 'cancelled', retryable: false };
+    stage('metadata_ready', { position: element.currentTime });
+
+    const duration = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : Infinity;
+    const target = Number.isFinite(duration)
+      ? Math.min(requested, Math.max(0, duration - 0.25))
+      : requested;
+
+    let seekResult = { ok: true };
+    if (target > 0.05) {
+      stage('seek_started', { position: target });
+      try { element.currentTime = target; } catch {
+        stage('handoff_failed', { reason: 'seek_error' });
+        return { ok: false, reason: 'seek_error', retryable: true };
+      }
+      seekResult = await waitForSeek(element, target, {
+        timeout: Math.min(1800, remaining(deadline)),
+        signal,
+      });
+      if (!seekResult.ok) {
+        stage('handoff_failed', { reason: seekResult.reason });
+        return { ok: false, reason: seekResult.reason, retryable: seekResult.reason !== 'cancelled' };
+      }
+      stage('seek_completed', { position: element.currentTime });
+    }
+
+    const buffer = await waitForTargetBuffer(element, target, {
+      minAhead: options.minAhead != null ? options.minAhead : HANDOFF_MIN_BUFFER,
+      timeout: Math.min(2200, remaining(deadline)),
+      signal,
+      expectedSrc: options.expectedSrc,
+    });
+    if (!buffer.ok) {
+      stage('handoff_failed', { reason: buffer.reason, ahead: buffer.ahead });
+      return { ok: false, reason: buffer.reason, retryable: buffer.reason !== 'cancelled', ahead: buffer.ahead };
+    }
+    stage('target_buffer_ready', { position: target, ahead: buffer.ahead });
+
+    if (signal && signal.aborted) return { ok: false, reason: 'cancelled', retryable: false };
+    stage('play_requested', { position: target });
+    const played = await playAndConfirm(element, {
+      timeout: Math.min(HANDOFF_STABILITY_TIMEOUT, Math.max(1, remaining(deadline))),
+      progress: options.progress != null ? options.progress : HANDOFF_PROGRESS,
+      signal,
+      onStage,
+    });
+    if (!played.ok) {
+      stage('handoff_failed', { reason: played.reason });
+      return { ok: false, reason: played.reason, retryable: played.reason !== 'cancelled' };
+    }
+    stage('playback_progress_confirmed', { position: element.currentTime, ahead: bufferAhead(element, element.currentTime) });
+
+    // Перед слышимым crossfade подтягиваем основной элемент к живой позиции
+    // mix. Он ещё не слышен, поэтому короткий seek не создаёт артефакта.
+    if (typeof options.livePosition === 'function') {
+      let live = 0;
+      try { live = Number(options.livePosition()); } catch { live = 0; }
+      if (Number.isFinite(live) && live >= 0 && Math.abs(element.currentTime - live) > 0.12) {
+        stage('sync_started', { position: live });
+        try { element.currentTime = live; } catch {
+          stage('handoff_failed', { reason: 'sync_error' });
+          return { ok: false, reason: 'sync_error', retryable: true };
+        }
+        const synced = await waitForSeek(element, live, {
+          timeout: Math.min(900, remaining(deadline)),
+          signal,
+        });
+        if (!synced.ok) {
+          stage('handoff_failed', { reason: synced.reason });
+          return { ok: false, reason: synced.reason, retryable: synced.reason !== 'cancelled' };
+        }
+        const syncBuffer = await waitForTargetBuffer(element, live, {
+          minAhead: HANDOFF_SYNC_BUFFER,
+          timeout: Math.min(900, remaining(deadline)),
+          signal,
+          expectedSrc: options.expectedSrc,
+        });
+        if (!syncBuffer.ok) {
+          stage('handoff_failed', { reason: syncBuffer.reason, ahead: syncBuffer.ahead });
+          return { ok: false, reason: syncBuffer.reason, retryable: syncBuffer.reason !== 'cancelled', ahead: syncBuffer.ahead };
+        }
+        if (element.paused || element.error) {
+          stage('handoff_failed', { reason: 'not_playing_after_sync' });
+          return { ok: false, reason: 'not_playing_after_sync', retryable: true };
+        }
+        stage('sync_completed', { position: element.currentTime });
+      }
+    }
+
+    const finalAhead = bufferAhead(element, element.currentTime);
+    if (finalAhead < HANDOFF_SYNC_BUFFER) {
+      stage('handoff_failed', { reason: 'final_buffer_low', ahead: finalAhead });
+      return { ok: false, reason: 'final_buffer_low', retryable: true, ahead: finalAhead };
+    }
+    stage('stability_check_passed', { position: element.currentTime, ahead: finalAhead });
+    return { ok: true, position: element.currentTime, ahead: finalAhead };
+  }
+
+  function confirmPrimaryAfterFade(element, timeout = HANDOFF_POST_FADE_CHECK) {
+    if (!element || element.paused || element.error) return Promise.resolve(false);
+    const start = Number(element.currentTime) || 0;
+    return new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      let stalled = false;
+      const cleanup = () => {
+        element.removeEventListener('timeupdate', onTime);
+        element.removeEventListener('waiting', onStall);
+        element.removeEventListener('stalled', onStall);
+        element.removeEventListener('pause', onPause);
+        element.removeEventListener('error', onError);
+        clearTimeout(timer);
+      };
+      const finish = (ok) => { if (done) return; done = true; cleanup(); resolve(ok); };
+      const onTime = () => { if (element.currentTime >= start + 0.08) finish(true); };
+      const onStall = () => { stalled = true; finish(false); };
+      const onPause = () => finish(false);
+      const onError = () => finish(false);
+      element.addEventListener('timeupdate', onTime);
+      element.addEventListener('waiting', onStall);
+      element.addEventListener('stalled', onStall);
+      element.addEventListener('pause', onPause);
+      element.addEventListener('error', onError);
+      timer = setTimeout(() => {
+        if (stalled) finish(false);
+        else finish(!element.paused && !element.error && element.currentTime >= start + 0.06);
+      }, Math.max(1, timeout));
+    });
   }
 
   function checkPreload() {
@@ -738,63 +1186,6 @@
     lowMix.linearRampToValueAtTime(0, now + duration * 0.8);
   }
 
-  function cleanupMix(pause) {
-    if (engine.timer) { clearTimeout(engine.timer); engine.timer = null; }
-    if (engine.analyserTimer) { clearInterval(engine.analyserTimer); engine.analyserTimer = null; }
-    if (engine.mix) {
-      try { if (pause !== false) engine.mix.pause(); } catch { /* ignore */ }
-      try { engine.mix.removeAttribute('src'); engine.mix.load(); } catch { /* ignore */ }
-    }
-    if (engine.mixGain && engine.graph) {
-      try {
-        const now = engine.graph.ctx.currentTime;
-        engine.mixGain.gain.cancelScheduledValues(now);
-        engine.mixGain.gain.setValueAtTime(0, now);
-      } catch { /* ignore */ }
-    }
-  }
-
-  function cancel(reason) {
-    if (engine.phase === 'handoff') return;
-    if (engine.phase === 'idle') {
-      if (engine.timer) { clearTimeout(engine.timer); engine.timer = null; }
-      engine.plan = null;
-      if (engine.preload) cancelPreload(reason || 'cancel');
-      return;
-    }
-    engine.phase = 'idle';
-    cancelPreload(reason || 'cancel');
-    engine.plan = null;
-    cleanupMix(true);
-    if (engine.graph) {
-      try {
-        const now = engine.graph.ctx.currentTime;
-        engine.outGain.gain.cancelScheduledValues(now);
-        engine.outGain.gain.setValueAtTime(1, now);
-        engine.outLow.gain.cancelScheduledValues(now);
-        engine.outLow.gain.setValueAtTime(0, now);
-      } catch { /* ignore */ }
-    }
-    if (engine.host && engine.host.getAudio) {
-      try {
-        if (engine.graph) engine.host.getAudio().volume = 1;
-        else engine.host.getAudio().volume = engine.host.getState().volume;
-      } catch { /* ignore */ }
-    }
-    emit();
-    if (reason && engine.host && engine.host.toast && engine.phase !== 'idle') {
-      engine.host.toast('Переход отменён', 'info');
-    }
-  }
-
-  function failStart(plan) {
-    engine.plan = null;
-    engine.phase = 'idle';
-    cancelPreload('failed');
-    if (plan && plan.currentId) engine.failedTrack = plan.currentId;
-    emit();
-  }
-
   async function start(plan) {
     if (engine.phase !== 'idle' || !engine.plan) return;
     const state = engine.host.getState();
@@ -892,66 +1283,321 @@
     engine.timer = setTimeout(() => finalize(), Math.max(1000, plan.duration * 1000));
   }
 
-  async function finalize() {
-    if (engine.phase !== 'running' || !engine.plan) return;
-    engine.phase = 'handoff';
-    const plan = engine.plan;
-    const pos = engine.mix ? engine.mix.currentTime : 0;
-    let adopted = false;
-    try {
-      adopted = await engine.host.adoptTrack(plan.nextIndex, pos);
-    } catch {
-      adopted = false;
+  function cleanupMix(pause) {
+    if (engine.timer) { clearTimeout(engine.timer); engine.timer = null; }
+    if (engine.analyserTimer) { clearInterval(engine.analyserTimer); engine.analyserTimer = null; }
+    if (engine.fadeTimer) { clearTimeout(engine.fadeTimer); engine.fadeTimer = null; }
+    if (engine.fadeResolve) { try { engine.fadeResolve(false); } catch { /* ignore */ } engine.fadeResolve = null; }
+    if (engine.mix) {
+      try { if (pause !== false) engine.mix.pause(); } catch { /* ignore */ }
+      try { engine.mix.removeAttribute('src'); engine.mix.load(); } catch { /* ignore */ }
     }
-    if (!adopted) {
-      cleanupMix(true);
+    if (engine.mixGain && engine.graph) {
+      try {
+        const now = engine.graph.ctx.currentTime;
+        engine.mixGain.gain.cancelScheduledValues(now);
+        engine.mixGain.gain.setValueAtTime(0, now);
+      } catch { /* ignore */ }
+    }
+  }
+
+  function resetOutputLevels() {
+    if (engine.graph) {
+      try {
+        const now = engine.graph.ctx.currentTime;
+        engine.outGain.gain.cancelScheduledValues(now);
+        engine.outGain.gain.setValueAtTime(1, now);
+        engine.mixGain.gain.cancelScheduledValues(now);
+        engine.mixGain.gain.setValueAtTime(0, now);
+        engine.outLow.gain.cancelScheduledValues(now);
+        engine.outLow.gain.setValueAtTime(0, now);
+        if (engine.mixLow) {
+          engine.mixLow.gain.cancelScheduledValues(now);
+          engine.mixLow.gain.setValueAtTime(-22, now);
+        }
+      } catch { /* ignore */ }
+    }
+    if (engine.host && engine.host.getAudio) {
+      try {
+        const audio = engine.host.getAudio();
+        if (engine.graph) audio.volume = 1;
+        else audio.volume = engine.host.getState().muted ? 0 : engine.host.getState().volume;
+      } catch { /* ignore */ }
+    }
+    if (engine.mix) {
+      try { engine.mix.volume = 0; } catch { /* ignore */ }
+    }
+  }
+
+  function cancel(reason) {
+    if (engine.phase === 'handoff' || engine.phase === 'fallback') {
+      if (engine.handoffController) {
+        try { engine.handoffController.abort(); } catch { /* ignore */ }
+        engine.handoffController = null;
+      }
+      engine.handoffGen += 1;
       engine.phase = 'idle';
+      engine.fallback = false;
       engine.plan = null;
-      cancelPreload('failed');
-      if (plan && plan.currentId) engine.failedTrack = plan.currentId;
+      cancelPreload(reason || 'cancel');
+      cleanupMix(true);
+      resetOutputLevels();
+      traceHandoff('handoff_cancelled', { reason: reason || 'cancel' });
       emit();
-      if (engine.host.toast) engine.host.toast('Не удалось завершить переход', 'info');
+      if (engine.host && typeof engine.host.onHandoffCancelled === 'function') {
+        try { engine.host.onHandoffCancelled(reason || 'cancel'); } catch { /* ignore */ }
+      }
       return;
     }
-    const retiredPreload = engine.preload;
-    engine.preload = null;
-    retirePreload(retiredPreload);
+    if (engine.phase === 'idle') {
+      if (engine.timer) { clearTimeout(engine.timer); engine.timer = null; }
+      engine.plan = null;
+      if (engine.preload) cancelPreload(reason || 'cancel');
+      return;
+    }
+    engine.phase = 'idle';
+    cancelPreload(reason || 'cancel');
+    engine.plan = null;
+    cleanupMix(true);
+    resetOutputLevels();
+    emit();
+    if (reason && engine.host && engine.host.toast) {
+      engine.host.toast('Переход отменён', 'info');
+    }
+  }
+
+  function failStart(plan) {
+    engine.plan = null;
+    engine.phase = 'idle';
+    cancelPreload('failed');
+    if (plan && plan.currentId) engine.failedTrack = plan.currentId;
+    emit();
+  }
+
+  async function attemptAdopt(plan, position, options) {
+    if (!engine.host || typeof engine.host.adoptTrack !== 'function') {
+      return { ok: false, reason: 'no_adopt_host', retryable: false };
+    }
+    try {
+      const result = await engine.host.adoptTrack(plan.nextIndex, position, options);
+      if (result === true) return { ok: true };
+      if (result && typeof result === 'object') return result;
+      return { ok: false, reason: 'adopt_failed', retryable: false };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error && error.name === 'AbortError' ? 'cancelled' : 'adopt_exception',
+        retryable: !(error && error.name === 'AbortError'),
+      };
+    }
+  }
+
+  function startGraphFade() {
+    const ctx = engine.graph.ctx;
+    const now = ctx.currentTime;
+    engine.mixGain.gain.cancelScheduledValues(now);
+    engine.outGain.gain.cancelScheduledValues(now);
+    engine.outGain.gain.setValueAtTime(0, now);
+    engine.outGain.gain.linearRampToValueAtTime(1, now + HANDOFF_FADE);
+    engine.mixGain.gain.setValueAtTime(1, now);
+    engine.mixGain.gain.linearRampToValueAtTime(0, now + HANDOFF_FADE);
+  }
+
+  function startElementFade() {
+    return new Promise((resolve) => {
+      const audio = engine.host.getAudio();
+      const state = engine.host.getState();
+      const volume = state.muted ? 0 : state.volume;
+      const steps = 6;
+      let step = 0;
+      const finish = (ok) => {
+        if (!engine.fadeResolve) return;
+        engine.fadeResolve = null;
+        engine.fadeTimer = null;
+        resolve(ok);
+      };
+      engine.fadeResolve = finish;
+      try { audio.volume = 0; } catch { /* ignore */ }
+      if (engine.mix) { try { engine.mix.volume = volume; } catch { /* ignore */ } }
+      const tick = () => {
+        step += 1;
+        const t = Math.min(1, step / steps);
+        try {
+          audio.volume = Math.max(0, volume * t);
+          if (engine.mix) engine.mix.volume = Math.max(0, volume * (1 - t));
+        } catch { /* ignore */ }
+        if (t >= 1) finish(true);
+        else engine.fadeTimer = setTimeout(tick, Math.max(16, (HANDOFF_FADE * 1000) / steps));
+      };
+      engine.fadeTimer = setTimeout(tick, Math.max(16, (HANDOFF_FADE * 1000) / steps));
+    });
+  }
+
+  function enterFallback(plan, reason) {
+    if (!engine.mix) {
+      cleanupMix(true);
+      resetOutputLevels();
+      engine.phase = 'idle';
+      engine.plan = null;
+      engine.handoffController = null;
+      cancelPreload('failed');
+      traceHandoff('handoff_failed', { reason: reason || 'unknown' });
+      emit();
+      if (engine.host && typeof engine.host.onHandoffCancelled === 'function') {
+        try { engine.host.onHandoffCancelled('fallback_unavailable'); } catch { /* ignore */ }
+      }
+      return;
+    }
+    engine.phase = 'fallback';
+    engine.fallback = true;
+    engine.plan = null;
+    engine.handoffController = null;
     if (engine.graph && engine.mixGain) {
       try {
-        const ctx = engine.graph.ctx;
-        const now = ctx.currentTime;
-        engine.mixGain.gain.cancelScheduledValues(now);
+        const now = engine.graph.ctx.currentTime;
         engine.outGain.gain.cancelScheduledValues(now);
+        engine.mixGain.gain.cancelScheduledValues(now);
         engine.outGain.gain.setValueAtTime(0, now);
-        engine.outGain.gain.linearRampToValueAtTime(1, now + 0.18);
         engine.mixGain.gain.setValueAtTime(1, now);
-        engine.mixGain.gain.linearRampToValueAtTime(0, now + 0.18);
       } catch { /* ignore */ }
+      try { engine.host.getAudio().volume = 1; } catch { /* ignore */ }
     } else {
       try {
         const audio = engine.host.getAudio();
         const state = engine.host.getState();
-        audio.volume = state.muted ? 0 : state.volume;
-        if (engine.mix) engine.mix.volume = 0;
+        audio.volume = 0;
+        if (engine.mix) engine.mix.volume = state.muted ? 0 : state.volume;
       } catch { /* ignore */ }
     }
-    setTimeout(() => {
-      cleanupMix(true);
-      engine.phase = 'idle';
-      engine.plan = null;
-      if (engine.graph) {
-        try {
-          const now = engine.graph.ctx.currentTime;
-          engine.outGain.gain.setValueAtTime(1, now);
-          engine.outLow.gain.setValueAtTime(0, now);
-        } catch { /* ignore */ }
+    traceHandoff('handoff_failed', { reason: reason || 'unknown' });
+    traceHandoff('fallback_triggered', { reason: reason || 'unknown' });
+    emit();
+    if (engine.host && typeof engine.host.onHandoffFallback === 'function') {
+      try {
+        engine.host.onHandoffFallback(plan ? plan.nextIndex : -1, engine.mix ? engine.mix.currentTime : 0, reason);
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function finalize() {
+    if (engine.phase !== 'running' || !engine.plan) return;
+    engine.phase = 'handoff';
+    const plan = engine.plan;
+    const gen = ++engine.handoffGen;
+    engine.fallback = false;
+    const controller = createAbortController();
+    engine.handoffController = controller;
+    const signal = controller.signal;
+    const pos = engine.mix ? engine.mix.currentTime : 0;
+    traceHandoff('handoff_started', { position: pos });
+    if (engine.graph && engine.mixGain) {
+      try {
+        const now = engine.graph.ctx.currentTime;
+        engine.outGain.gain.cancelScheduledValues(now);
+        engine.mixGain.gain.cancelScheduledValues(now);
+        engine.outGain.gain.setValueAtTime(0, now);
+        engine.mixGain.gain.setValueAtTime(1, now);
+      } catch { /* ignore */ }
+    } else {
+      try {
+        engine.host.getAudio().volume = 0;
+        if (engine.mix) {
+          const state = engine.host.getState();
+          engine.mix.volume = state.muted ? 0 : state.volume;
+        }
+      } catch { /* ignore */ }
+    }
+
+    const livePosition = () => (engine.mix ? engine.mix.currentTime : pos);
+    const options = {
+      signal,
+      retry: false,
+      livePosition,
+      onStage: traceHandoff,
+    };
+    let result = await attemptAdopt(plan, pos, options);
+    if (gen !== engine.handoffGen || engine.phase !== 'handoff') return;
+
+    if (!result.ok && result.retryable && !signal.aborted && engine.mix && !engine.mix.paused) {
+      traceHandoff('fallback_triggered', { reason: result.reason || 'retry' });
+      const waited = await delay(350, signal);
+      if (!waited) return;
+      if (gen !== engine.handoffGen || engine.phase !== 'handoff') return;
+      const retryPosition = livePosition();
+      traceHandoff('handoff_retry', { position: retryPosition, reason: result.reason || 'retry' });
+      result = await attemptAdopt(plan, retryPosition, {
+        ...options,
+        retry: true,
+        livePosition,
+      });
+      if (gen !== engine.handoffGen || engine.phase !== 'handoff') return;
+    }
+
+    if (!result.ok) {
+      if (signal.aborted) return;
+      if (!engine.mix || engine.mix.paused) {
+        cleanupMix(true);
+        resetOutputLevels();
+        engine.handoffController = null;
+        engine.phase = 'idle';
+        engine.plan = null;
+        traceHandoff('handoff_failed', { reason: result.reason || 'unknown' });
+        emit();
+        if (engine.host && typeof engine.host.onHandoffCancelled === 'function') {
+          try { engine.host.onHandoffCancelled('fallback_unavailable'); } catch { /* ignore */ }
+        }
+        return;
       }
-      emit();
-      if (engine.settings.enabled) {
-        const state = engine.host.getState();
-        if (state && state.current) onTrack(state);
-      }
-    }, 240);
+      engine.handoffController = null;
+      enterFallback(plan, result.reason);
+      return;
+    }
+
+    let faded = true;
+    if (engine.graph && engine.mixGain) {
+      try { startGraphFade(); } catch { faded = false; }
+      if (faded) await delay(HANDOFF_FADE * 1000 + 60, signal);
+    } else {
+      faded = await startElementFade();
+    }
+    if (gen !== engine.handoffGen || engine.phase !== 'handoff' || signal.aborted) return;
+    if (!faded) {
+      engine.handoffController = null;
+      enterFallback(plan, 'fade_failed');
+      return;
+    }
+
+    // Даже после короткого fade основной источник обязан продолжать звучать.
+    // Если он снова ушёл в буферизацию, mix возвращается на полную громкость.
+    let stable = false;
+    try {
+      stable = await confirmPrimaryAfterFade(engine.host.getAudio());
+    } catch {
+      stable = false;
+    }
+    if (gen !== engine.handoffGen || engine.phase !== 'handoff' || signal.aborted) return;
+    if (!stable) {
+      engine.handoffController = null;
+      enterFallback(plan, 'post_fade_stall');
+      return;
+    }
+
+    const retiredPreload = engine.preload;
+    engine.preload = null;
+    retirePreload(retiredPreload);
+    cleanupMix(true);
+    resetOutputLevels();
+    engine.handoffController = null;
+    engine.phase = 'idle';
+    engine.plan = null;
+    engine.fallback = false;
+    traceHandoff('mix_cleanup_started', { position: engine.host.getAudio().currentTime || 0 });
+    traceHandoff('handoff_completed', { position: engine.host.getAudio().currentTime || 0 });
+    emit();
+    if (engine.settings.enabled) {
+      const state = engine.host.getState();
+      if (state && state.current) onTrack(state);
+    }
   }
 
   function nextTrackFor(state) {
@@ -1072,7 +1718,7 @@
 
   function onTime(state) {
     if (!engine.settings.enabled) return;
-    if (engine.phase === 'running' || engine.phase === 'handoff') return;
+    if (engine.phase === 'running' || engine.phase === 'handoff' || engine.phase === 'fallback') return;
     if (!state || !state.current) return;
     if (engine.currentTrack && String(engine.currentTrack.id) !== String(state.current.id)) {
       onTrack(state);
@@ -1198,6 +1844,11 @@
         retries: engine.preload.retries,
       } : null,
       retired: engine.retired.length,
+      fallback: engine.phase === 'fallback',
+      handoff: engine.handoffTrace.length ? {
+        last: engine.handoffTrace[engine.handoffTrace.length - 1],
+        stages: engine.handoffTrace.slice(),
+      } : null,
       plan: engine.plan ? {
         mode: engine.plan.mode,
         startAt: engine.plan.startAt,
@@ -1208,10 +1859,12 @@
         duration: engine.plan.duration,
       } : null,
     }),
-    isPlaying: () => engine.phase === 'running' || engine.phase === 'handoff',
+    isPlaying: () => engine.phase === 'running' || engine.phase === 'handoff' || engine.phase === 'fallback',
+    isFallback: () => engine.phase === 'fallback',
     _internal: {
       detectTempo, analyzeAudioBuffer, planTransition, barsToSeconds,
       sanitizeSettings, clamp, bufferAhead, networkProfile,
+      adoptPrimary, waitForTargetBuffer, playAndConfirm,
     },
   };
 

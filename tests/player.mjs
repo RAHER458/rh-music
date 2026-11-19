@@ -88,7 +88,7 @@ check('playIndex сохраняет выбранный трек', !!playMatch &&
 const bootMatch = source.match(/\(async function boot\(\) \{[\s\S]*?\n\}\)\(\);/);
 check('boot восстанавливает сохранённый трек', !!bootMatch && /restorePlayerState\(\)/.test(bootMatch[0]));
 
-check('пауза сохраняет позицию', /addEventListener\('pause', \(\) => savePlayerState\(\)\)/.test(source));
+check('пауза сохраняет позицию', /addEventListener\('pause', \(\) => \{ if \(!smartMixAdopting\) savePlayerState\(\); \}\)/.test(source));
 check('уход со страницы сохраняет позицию', /pagehide', \(\) => \{ flushPlayback\(true\); savePlayerState\(\); \}/.test(source));
 check('hidePlayer не останавливает и не сбрасывает воспроизведение',
   (() => {

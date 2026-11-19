@@ -133,6 +133,22 @@ function runTimers(minMs = 0) {
 async function flush(times = 30) {
   for (let i = 0; i < times; i += 1) await Promise.resolve();
 }
+async function settle(minMs = 0, rounds = 30, maxMs = 1000) {
+  for (let round = 0; round < rounds; round += 1) {
+    const ready = timers.filter((timer) => timer.ms >= minMs && timer.ms <= maxMs).sort((a, b) => a.ms - b.ms);
+    if (!ready.length) {
+      await flush(5);
+      if (!timers.some((timer) => timer.ms >= minMs && timer.ms <= maxMs)) return;
+      continue;
+    }
+    for (const timer of ready) {
+      const index = timers.indexOf(timer);
+      if (index >= 0) timers.splice(index, 1);
+      timer.fn();
+      await flush(8);
+    }
+  }
+}
 
 const windowShim = {
   localStorage: storage,
@@ -168,7 +184,16 @@ api.init({
   getState: () => ({ ...state }),
   getAudio: () => primary,
   streamUrl: (track) => `/api/stream/${track.id}?quality=mid`,
-  adoptTrack: async (index, position) => { adopted = { index, position }; return true; },
+  adoptTrack: async (index, position) => {
+    adopted = { index, position };
+    primary.paused = false;
+    primary.currentTime = position;
+    fakeSetTimeout(() => {
+      primary.currentTime += 0.4;
+      primary.dispatch('timeupdate');
+    }, 260);
+    return { ok: true, position };
+  },
   toast: (text) => { toastText = text; },
   onChange: () => {},
 });
@@ -195,13 +220,14 @@ await flush();
   check('движок: финализация передала следующий трек приложению', adopted && adopted.index === 1);
   check('движок: переход не завис после финала', api.getState().phase !== 'running');
 
-  runTimers(0);
+  await settle(0, 30, 1000);
   await flush(80);
   check('движок: второй поток остановлен после перехода', mixElements[0].paused === true);
   check('движок: второй поток освобождён', mixElements[0].src === '');
 }
 
 {
+  timers.length = 0;
   state.currentTime = 170;
   state.current.id = 'a';
   state.index = 0;
@@ -217,6 +243,7 @@ await flush();
 }
 
 {
+  timers.length = 0;
   state.currentTime = 170;
   await api.onTrack();
   await flush(80);
@@ -229,6 +256,7 @@ await flush();
 }
 
 {
+  timers.length = 0;
   state.queue = [{ id: 'a', title: 'A', duration: 200 }];
   state.currentTime = 170;
   await api.onTrack();
@@ -237,6 +265,7 @@ await flush();
 }
 
 {
+  timers.length = 0;
   state.repeat = 'one';
   state.queue = [{ id: 'a', title: 'A', duration: 200 }, { id: 'b', title: 'B', duration: 200 }];
   state.currentTime = 170;

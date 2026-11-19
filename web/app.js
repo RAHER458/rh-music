@@ -2061,45 +2061,127 @@ function smartMixState() {
   };
 }
 
-async function adoptSmartMixTrack(index, position) {
-  if (index < 0 || index >= S.queue.length) return false;
-  flushPlayback(true);
-  const track = S.queue[index];
-  S.index = index;
-  S.current = track;
-  S.retried = false;
-  updateNowPlayingMeta(track);
-  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
-  renderQueue();
-  markCurrentRow();
-  S.loading = true;
-  updateTransport();
-  audio.src = streamUrl(track);
-  audio.load();
-  const ready = await new Promise((resolve) => {
-    let settled = false;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      audio.removeEventListener('canplay', onCan);
-      resolve(value);
-    };
-    const onCan = () => finish(true);
-    audio.addEventListener('canplay', onCan, { once: true });
-    setTimeout(() => finish(false), 2500);
-  });
-  if (!ready) return false;
+let smartMixAdoptionToken = 0;
+let smartMixAdopting = false;
+
+function smartMixHandoffActive() {
+  if (!window.RH_SMARTMIX || typeof window.RH_SMARTMIX.getState !== 'function') return false;
   try {
-    if (position > 0) audio.currentTime = position;
-  } catch { /* ignore */ }
-  try {
-    await audio.play();
+    const state = window.RH_SMARTMIX.getState();
+    return !!(state && state.phase === 'handoff');
   } catch {
     return false;
   }
-  startPlaybackSession(track, 'smartmix');
+}
+
+function smartMixAdoptFailure(reason, retryable) {
+  return { ok: false, reason: reason || 'adopt_failed', retryable: retryable !== false };
+}
+
+/**
+ * Передаёт Smart Mix-трек основному <audio>. Состояние интерфейса меняется
+ * сразу (mix уже играет этот трек), а успехом считается только подтверждённая
+ * стабильность: буфер около целевой позиции, playing, рост currentTime и
+ * отсутствие повторного stall.
+ *
+ * options.retry === true используется движком для одной повторной попытки:
+ * src уже установлен, повторный load() запрещён.
+ */
+async function adoptSmartMixTrack(index, position, options = {}) {
+  if (index < 0 || index >= S.queue.length) return smartMixAdoptFailure('bad_index', false);
+  const resume = options.retry === true || options.resume === true;
+  const track = S.queue[index];
+  const token = ++smartMixAdoptionToken;
+
+  if (resume && (!S.current || String(S.current.id) !== String(track.id) || !audio.src)) {
+    return smartMixAdoptFailure('stale_retry', true);
+  }
+
+  if (!resume) {
+    flushPlayback(true);
+    S.index = index;
+    S.current = track;
+    S.retried = false;
+    updateNowPlayingMeta(track);
+    if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
+    renderQueue();
+    markCurrentRow();
+    S.loading = true;
+    updateTransport();
+    // load() может вызвать pause старого источника: это внутренняя операция,
+    // а не пользовательская пауза.
+    smartMixAdopting = true;
+    audio.src = streamUrl(track);
+    audio.load();
+  } else {
+    smartMixAdopting = true;
+  }
+
+  const expectedSrc = audio.src;
+  try {
+    const handoff = window.RH_SMARTMIX && window.RH_SMARTMIX._internal;
+    if (!handoff || typeof handoff.adoptPrimary !== 'function') {
+      return smartMixAdoptFailure('handoff_unavailable', false);
+    }
+    const result = await handoff.adoptPrimary(audio, {
+      position,
+      signal: options.signal,
+      livePosition: options.livePosition,
+      onStage: options.onStage,
+      expectedSrc,
+    });
+    if (token !== smartMixAdoptionToken || (options.signal && options.signal.aborted)) {
+      return smartMixAdoptFailure('cancelled', false);
+    }
+    if (!result || !result.ok) {
+      S.loading = false;
+      updateTransport();
+      return {
+        ok: false,
+        reason: (result && result.reason) || 'adopt_failed',
+        retryable: !result || result.retryable !== false,
+        ahead: result && result.ahead,
+      };
+    }
+    if (!resume || !S.playback || String(S.playback.trackId) !== String(track.id)) {
+      startPlaybackSession(track, 'smartmix');
+    }
+    savePlayerState(audio.currentTime);
+    S.loading = false;
+    S.playing = true;
+    updateTransport();
+    markCurrentRow();
+    return { ok: true, reason: 'stable', position: audio.currentTime, ahead: result.ahead };
+  } catch (error) {
+    S.loading = false;
+    updateTransport();
+    return smartMixAdoptFailure(error && error.name === 'AbortError' ? 'cancelled' : 'adopt_exception', false);
+  } finally {
+    // Одновременно выполняется только один adopt; старый вызов обязан снять
+    // защитный флаг даже если пользователь уже переключил трек.
+    smartMixAdopting = false;
+  }
+}
+
+/** Резервный режим: звучит engine.mix, основной источник ещё не стабилен. */
+function onSmartMixFallback(index, position) {
+  if (!S.current || (index >= 0 && index !== S.index)) return;
+  S.loading = false;
+  S.playing = true;
+  updateTransport();
+  markCurrentRow();
+  if (!S.playback || String(S.playback.trackId) !== String(S.current.id)) {
+    startPlaybackSession(S.current, 'smartmix');
+  }
   savePlayerState(position);
-  return true;
+}
+
+/** Отмена handoff не должна оставлять кнопки в состоянии «играет». */
+function onSmartMixCancelled() {
+  S.loading = false;
+  S.playing = !audio.paused;
+  updateTransport();
+  markCurrentRow();
 }
 
 function initSmartMix() {
@@ -2109,6 +2191,8 @@ function initSmartMix() {
     getAudio: () => audio,
     streamUrl,
     adoptTrack: adoptSmartMixTrack,
+    onHandoffFallback: onSmartMixFallback,
+    onHandoffCancelled: onSmartMixCancelled,
     toast,
     onChange: refreshSmartMixUI,
   });
@@ -2444,6 +2528,7 @@ async function updateAmbient(coverUrl) {
 
 function playIndex(index, { autoplay = true, source = 'player', reveal = true } = {}) {
   if (index < 0 || index >= S.queue.length) return;
+  smartMixAdoptionToken += 1;
   flushPlayback(true);
   S.index = index;
   const track = S.queue[index];
@@ -2517,6 +2602,17 @@ function handleAudioFailure(detail) {
 function togglePlay() {
   if (!S.current) return;
   if (!audio.src) return playIndex(S.index >= 0 ? S.index : 0, { reveal: false });
+  if (window.RH_SMARTMIX && window.RH_SMARTMIX.isPlaying && window.RH_SMARTMIX.isPlaying()) {
+    // Пользовательская пауза важнее внутреннего состояния handoff/fallback:
+    // сначала останавливаем переход и mix, затем основной элемент.
+    window.RH_SMARTMIX.cancel('pause');
+    try { audio.pause(); } catch { /* ignore */ }
+    S.loading = false;
+    S.playing = false;
+    updateTransport();
+    markCurrentRow();
+    return;
+  }
   if (audio.paused) {
     S.loading = true;
     updateTransport();
@@ -2528,6 +2624,10 @@ function togglePlay() {
   } else {
     if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('pause');
     audio.pause();
+    S.loading = false;
+    S.playing = false;
+    updateTransport();
+    markCurrentRow();
   }
 }
 
@@ -3485,6 +3585,7 @@ audio.addEventListener('playing', () => {
   markCurrentRow();
 });
 audio.addEventListener('pause', () => {
+  if (smartMixAdopting) return;
   S.playing = false;
   updateTransport();
   markCurrentRow();
@@ -3496,17 +3597,20 @@ audio.addEventListener('ended', () => {
   nextTrack(true);
 });
 audio.addEventListener('error', () => {
+  if (smartMixAdopting || smartMixHandoffActive()) return;
   if (audio.error && audio.error.code === 1) return;
   handleAudioFailure(audio.error ? 'код ' + audio.error.code : null);
 });
 
 audio.addEventListener('pause', () => {
+  if (smartMixAdopting) return;
   if (window.RH_SMARTMIX && window.RH_SMARTMIX.isPlaying()) window.RH_SMARTMIX.cancel('pause');
 });
 
-audio.addEventListener('pause', () => savePlayerState());
+audio.addEventListener('pause', () => { if (!smartMixAdopting) savePlayerState(); });
 
 audio.addEventListener('seeking', () => {
+  if (smartMixAdopting || smartMixHandoffActive()) return;
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
 });
 
@@ -3563,7 +3667,10 @@ audio.addEventListener('loadedmetadata', () => {
 if ('mediaSession' in navigator) {
   try {
     navigator.mediaSession.setActionHandler('play', () => togglePlay());
-    navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('pause');
+      audio.pause();
+    });
     navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
     navigator.mediaSession.setActionHandler('seekto', (d) => {

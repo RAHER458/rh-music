@@ -124,6 +124,22 @@ function runTimersAtLeast(ms) {
     timer.fn();
   }
 }
+async function settleUntil(maxMs = 1000) {
+  for (let round = 0; round < 30; round += 1) {
+    const ready = timers.filter((t) => t.ms <= maxMs).sort((a, b) => a.ms - b.ms);
+    if (!ready.length) {
+      await flush(5);
+      if (!timers.some((t) => t.ms <= maxMs)) return;
+      continue;
+    }
+    for (const timer of ready) {
+      const i = timers.indexOf(timer);
+      if (i >= 0) timers.splice(i, 1);
+      timer.fn();
+      await flush(8);
+    }
+  }
+}
 
 const windowShim = {
   localStorage: storage,
@@ -160,7 +176,13 @@ api.init({
     state.index = index;
     state.current = state.queue[index];
     state.currentTime = position;
-    return true;
+    primary.paused = false;
+    primary.currentTime = position;
+    setT(() => {
+      primary.currentTime += 0.4;
+      primary.dispatch('timeupdate');
+    }, 260);
+    return { ok: true, position };
   },
   toast: () => {},
   onChange: () => {},
@@ -193,7 +215,7 @@ await flush(40);
 check('переход: использует подготовленный поток без повторного load', mixEl.loadCount === 1, String(mixEl.loadCount));
 check('переход: передан следующий трек', adopted && adopted.index === 1);
 
-runTimersAtLeast(200);
+await settleUntil(1000);
 await flush(40);
 check('очистка: после перехода предзагрузка переключена на C', api.getState().preload && api.getState().preload.trackId === 'c');
 
