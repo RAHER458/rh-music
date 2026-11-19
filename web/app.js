@@ -51,6 +51,7 @@ const S = {
   playback: { historyId: null, trackId: null, pending: 0, lastTick: 0, completed: false, source: 'player' },
   restorePosition: 0,
   lastStateSave: 0,
+  playerHidden: false,
   discoveryLoadedFor: null,
 };
 
@@ -345,7 +346,10 @@ function emptyState(title, text, icon = 'note', hint = '', actions = '') {
 
 function setNav(name) {
   document.querySelectorAll('[data-nav]').forEach((el) => {
-    el.classList.toggle('is-active', !!name && el.dataset.nav === name);
+    const active = !!name && el.dataset.nav === name;
+    el.classList.toggle('is-active', active);
+    if (active) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
   });
 }
 
@@ -1451,7 +1455,14 @@ function openDeleteSheet() {
 /* ───────────────────────────── листы действий ───────────────────────────── */
 
 function sheetOpen(html) {
-  sheetPanel.innerHTML = html;
+  sheetPanel.style.transform = '';
+  sheetPanel.classList.remove('is-dragging');
+  sheetPanel.innerHTML = `
+    <div class="sheet-grab" data-sheet-grab aria-hidden="true"><span></span></div>
+    <button class="sheet-close" type="button" data-sheet-close aria-label="Закрыть">
+      <svg viewBox="0 0 24 24"><path d="M6.2 6.2a1 1 0 0 1 1.4 0L12 10.6l4.4-4.4a1 1 0 1 1 1.4 1.4L13.4 12l4.4 4.4a1 1 0 0 1-1.4 1.4L12 13.4l-4.4 4.4a1 1 0 0 1-1.4-1.4L10.6 12 6.2 7.6a1 1 0 0 1 0-1.4Z"/></svg>
+    </button>
+    ${html}`;
   sheet.classList.add('is-open');
   sheet.setAttribute('aria-hidden', 'false');
   scrim.hidden = false;
@@ -1463,9 +1474,23 @@ function sheetOpen(html) {
 function sheetClose() {
   sheet.classList.remove('is-open');
   sheet.setAttribute('aria-hidden', 'true');
+  sheetPanel.classList.remove('is-dragging');
+  sheetPanel.style.transform = '';
   S.sheetOpen = false;
+  S.sheetTrack = null;
   if (!S.drawerOpen && !S.npOpen) hideScrim();
   document.body.classList.toggle('is-locked', S.drawerOpen || S.npOpen);
+}
+
+/**
+ * Решение о закрытии по жесту: либо достаточная дистанция, либо достаточная
+ * скорость. Чистая функция — используется и панелью, и мини-плеером.
+ */
+function swipeCloses(dy, velocity, distance = 90, speed = 0.5) {
+  const delta = Number(dy);
+  if (!Number.isFinite(delta) || delta <= 0) return false;
+  if (delta >= distance) return true;
+  return Number(velocity) >= speed && delta >= 24;
 }
 
 function hideScrim() {
@@ -1610,10 +1635,16 @@ const PLAYER_STATE_KEY = 'rh_player_v1';
  * Показывать ли мини-плеер. Источник истины — выбранный трек в состоянии
  * приложения, а не наличие HTML-элемента или старое название в разметке.
  */
-function shouldShowPlayer(state = S) {
+function hasSelectedTrack(state = S) {
   const track = state && state.current;
-  if (!track || !track.id) return false;
-  return String(track.id).length > 0;
+  return !!(track && track.id && String(track.id).length > 0);
+}
+
+function shouldShowPlayer(state = S) {
+  if (!hasSelectedTrack(state)) return false;
+  // Ручное скрытие важнее состояния воспроизведения: пауза его не отменяет.
+  if (state.playerHidden) return false;
+  return true;
 }
 
 /** Прячет/показывает плеер и освобождает место под ним. */
@@ -1622,12 +1653,41 @@ function syncPlayerVisibility() {
   player.hidden = !visible;
   player.classList.toggle('is-hidden', !visible);
   document.body.classList.toggle('has-player', visible);
+  updateRestoreButton();
   syncLayoutHeight();
+}
+
+/** Кнопка возврата скрытого плеера в шапке. */
+function updateRestoreButton() {
+  const button = $('playerRestore');
+  if (!button) return;
+  button.hidden = !(S.playerHidden && hasSelectedTrack());
+}
+
+/**
+ * Скрывает панель плеера, НЕ трогая воспроизведение: аудио, очередь, позиция
+ * и сохранённое состояние остаются как были.
+ */
+function hidePlayer(notify = true) {
+  if (!hasSelectedTrack()) return;
+  S.playerHidden = true;
+  player.style.transform = '';
+  player.classList.remove('is-dragging');
+  syncPlayerVisibility();
+  if (notify) toast('Плеер скрыт. Вернуть — кнопкой в шапке.', 'info');
+}
+
+function showPlayer() {
+  S.playerHidden = false;
+  player.style.transform = '';
+  player.classList.remove('is-dragging');
+  syncPlayerVisibility();
 }
 
 function savePlayerState(position) {
   try {
-    if (!shouldShowPlayer()) { localStorage.removeItem(PLAYER_STATE_KEY); return; }
+    // Ручное скрытие панели не должно стирать сохранённый трек и позицию.
+    if (!hasSelectedTrack()) { localStorage.removeItem(PLAYER_STATE_KEY); return; }
     const queue = (S.queue.length ? S.queue : [S.current]).slice(0, 80);
     let offset = Math.max(0, Math.round(Number(position != null ? position : audio.currentTime) || 0));
     // Пока трек после перезагрузки ещё не запущен, позиция берётся из
@@ -1790,6 +1850,7 @@ function playIndex(index, { autoplay = true, source = 'player' } = {}) {
   const track = S.queue[index];
   S.current = track;
   S.retried = false;
+  S.playerHidden = false;
 
   updateNowPlayingMeta(track);
   renderQueue();
@@ -2014,8 +2075,8 @@ function route() {
 /* ───────────────────────────── события ───────────────────────────── */
 
 document.addEventListener('click', async (event) => {
-  const closeSheetTarget = event.target.closest('[data-close-sheet]');
-  if (closeSheetTarget) sheetClose();
+  const closeSheetTarget = event.target.closest('[data-close-sheet], [data-sheet-close]');
+  if (closeSheetTarget) { sheetClose(); return; }
 
   const link = event.target.closest('[data-link]');
   if (link) {
@@ -2398,15 +2459,97 @@ scrim.addEventListener('click', () => {
 
 /* поиск/плеер: клавиатура на десктопе */
 document.addEventListener('keydown', (event) => {
-  const tag = (event.target.tagName || '').toLowerCase();
-  if (tag === 'input' || tag === 'textarea') return;
-  if (event.key === ' ' && tag !== 'button') { event.preventDefault(); togglePlay(); }
-  else if (event.key === 'Escape') {
+  // Escape закрывает оверлеи всегда, в том числе когда фокус в поле ввода.
+  if (event.key === 'Escape') {
     if (S.sheetOpen) sheetClose();
     else if (S.drawerOpen) openDrawer(false);
     else if (S.npOpen) openNowPlaying(false);
+    return;
   }
+  const tag = (event.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+  if (event.key === ' ' && tag !== 'button') { event.preventDefault(); togglePlay(); }
 });
+
+/* ───────────────────────────── жесты ───────────────────────────── */
+
+/* Свайп вниз по ручке bottom sheet. Только ручка — содержимое прокручивается свободно. */
+let sheetDrag = null;
+sheetPanel.addEventListener('pointerdown', (event) => {
+  if (!S.sheetOpen || !event.target.closest('[data-sheet-grab]')) return;
+  sheetDrag = { id: event.pointerId, y: event.clientY, t: performance.now(), dy: 0 };
+  sheetPanel.classList.add('is-dragging');
+  try { sheetPanel.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+});
+sheetPanel.addEventListener('pointermove', (event) => {
+  if (!sheetDrag || event.pointerId !== sheetDrag.id) return;
+  const dy = Math.max(0, event.clientY - sheetDrag.y);
+  sheetDrag.dy = dy;
+  sheetPanel.style.transform = dy ? `translateY(${dy}px)` : '';
+}, { passive: true });
+function endSheetDrag(event) {
+  if (!sheetDrag || event.pointerId !== sheetDrag.id) return;
+  const { dy, t, id } = sheetDrag;
+  sheetDrag = null;
+  sheetPanel.classList.remove('is-dragging');
+  try { sheetPanel.releasePointerCapture(id); } catch { /* ignore */ }
+  const velocity = dy / Math.max(1, performance.now() - t);
+  if (swipeCloses(dy, velocity, 84, 0.45)) {
+    sheetPanel.style.transform = 'translateY(110%)';
+    setTimeout(() => {
+      sheetPanel.style.transform = '';
+      sheetClose();
+    }, 170);
+  } else {
+    sheetPanel.style.transform = '';
+  }
+}
+sheetPanel.addEventListener('pointerup', endSheetDrag);
+sheetPanel.addEventListener('pointercancel', endSheetDrag);
+
+/* Свайп вниз по мини-плееру скрывает панель, не останавливая воспроизведение. */
+let playerDrag = null;
+let suppressPlayerClick = false;
+player.addEventListener('pointerdown', (event) => {
+  if (!shouldShowPlayer()) return;
+  if (event.target.closest('input, .seek, .player-hide, .player-desktop-controls, .play-mobile')) return;
+  playerDrag = { id: event.pointerId, y: event.clientY, t: performance.now(), dy: 0, moved: false };
+  player.classList.add('is-dragging');
+  try { player.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+});
+player.addEventListener('pointermove', (event) => {
+  if (!playerDrag || event.pointerId !== playerDrag.id) return;
+  const dy = Math.max(0, event.clientY - playerDrag.y);
+  playerDrag.dy = dy;
+  if (dy > 6) playerDrag.moved = true;
+  player.style.transform = dy ? `translateY(${dy}px)` : '';
+}, { passive: true });
+function endPlayerDrag(event) {
+  if (!playerDrag || event.pointerId !== playerDrag.id) return;
+  const { dy, t, id, moved } = playerDrag;
+  playerDrag = null;
+  player.classList.remove('is-dragging');
+  try { player.releasePointerCapture(id); } catch { /* ignore */ }
+  const velocity = dy / Math.max(1, performance.now() - t);
+  if (moved && swipeCloses(dy, velocity, 56, 0.45)) {
+    suppressPlayerClick = true;
+    player.style.transform = '';
+    hidePlayer();
+  } else {
+    player.style.transform = '';
+  }
+}
+player.addEventListener('pointerup', endPlayerDrag);
+player.addEventListener('pointercancel', endPlayerDrag);
+player.addEventListener('click', (event) => {
+  if (!suppressPlayerClick) return;
+  suppressPlayerClick = false;
+  event.stopPropagation();
+  event.preventDefault();
+}, true);
+
+$('playerHide').addEventListener('click', () => hidePlayer());
+$('playerRestore').addEventListener('click', () => showPlayer());
 
 /* ───────────────────────────── аудио-события ───────────────────────────── */
 
@@ -2528,6 +2671,7 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   renderSidePlaylists();
   restorePlayerState();
   updateTransport();
+  updateRestoreButton();
   await refreshMe();
   await loadProviders();
   route();

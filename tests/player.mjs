@@ -28,9 +28,12 @@ function check(name, condition, extra = '') {
 /* ────────────── реальная функция-гейт из web/app.js ────────────── */
 
 const gateMatch = source.match(/function shouldShowPlayer\(state = S\) \{[\s\S]*?\n\}/);
+const trackMatch = source.match(/function hasSelectedTrack\(state = S\) \{[\s\S]*?\n\}/);
 check('shouldShowPlayer найдена в исходнике', !!gateMatch);
+check('hasSelectedTrack найдена в исходнике', !!trackMatch);
 const shouldShowPlayer = new Function(
-  'const S = {};' + gateMatch[0] + '; return shouldShowPlayer;',
+  'const S = {};' + (trackMatch ? trackMatch[0] : '') + (gateMatch ? gateMatch[0] : '') +
+  '; return shouldShowPlayer;',
 )();
 
 console.log('RH—MUSIC · тесты мини-плеера\n');
@@ -51,6 +54,9 @@ const cases = [
   ['пауза выбранного трека', { current: { id: '101', title: 'Believer' }, playing: false }, true],
   ['следующий трек', { current: { id: '202', title: 'Thunder' } }, true],
   ['восстановленный трек после перезагрузки', { current: { id: '303', title: 'Лесник' }, restorePosition: 42 }, true],
+  ['трек скрыт пользователем вручную (играет)', { current: { id: '101', title: 'Believer' }, playing: true, playerHidden: true }, false],
+  ['трек скрыт пользователем вручную (пауза)', { current: { id: '101', title: 'Believer' }, playing: false, playerHidden: true }, false],
+  ['скрытый плеер возвращён пользователем', { current: { id: '101', title: 'Believer' }, playerHidden: false }, true],
 ];
 
 for (const [name, state, expected] of cases) {
@@ -84,10 +90,36 @@ check('boot восстанавливает сохранённый трек', !!b
 
 check('пауза сохраняет позицию', /addEventListener\('pause', \(\) => savePlayerState\(\)\)/.test(source));
 check('уход со страницы сохраняет позицию', /pagehide', \(\) => \{ flushPlayback\(true\); savePlayerState\(\); \}/.test(source));
+check('hidePlayer не останавливает и не сбрасывает воспроизведение',
+  (() => {
+    const m = source.match(/function hidePlayer\(notify = true\) \{[\s\S]*?\n\}/);
+    if (!m) return false;
+    const body = m[0];
+    return !/audio\.(pause|play|load|removeAttribute)/.test(body)
+      && !/S\.current\s*=/.test(body)
+      && !/S\.queue\s*=/.test(body)
+      && !/S\.index\s*=/.test(body)
+      && /S\.playerHidden = true/.test(body);
+  })());
+
+check('показ плеера не запускает воспроизведение',
+  (() => {
+    const m = source.match(/function showPlayer\(\) \{[\s\S]*?\n\}/);
+    return !!m && !/audio\.play|audio\.load|audio\.src/.test(m[0]);
+  })());
+
+check('выбор трека возвращает скрытый плеер', /S\.playerHidden = false;\s*\n\s*\n?\s*S\.retried/.test(source) || /S\.playerHidden = false/.test(source));
+check('кнопка возврата обновляется вместе с видимостью', /function syncPlayerVisibility\(\) \{[\s\S]*?updateRestoreButton\(\)/.test(source));
 check('удаление аккаунта очищает состояние плеера', /clearPlayerState\(\);\s*\n\s*updateTransport\(\);/.test(source));
 
 /* Восстановленная позиция не должна затираться пустым <audio> до старта. */
 const saveMatch = source.match(/function savePlayerState\(position\) \{[\s\S]*?\n\}/);
+check('скрытие не стирает сохранённый трек', (() => {
+  const m = source.match(/function savePlayerState\(position\) \{[\s\S]*?\n\}/);
+  return !!m && /if \(!hasSelectedTrack\(\)\) \{ localStorage\.removeItem/.test(m[0])
+    && !/if \(!shouldShowPlayer\(\)\)/.test(m[0]);
+})());
+
 check('savePlayerState сохраняет восстановленную позицию',
   !!saveMatch && /S\.restorePosition > 0 && !audio\.currentSrc/.test(saveMatch[0]));
 check('restorePlayerState сбрасывает таймер автосохранения',
