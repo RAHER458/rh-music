@@ -90,9 +90,25 @@
         <button class="search-clear" id="searchClear" type="button" aria-label="Очистить">✕</button>
       </form>
 
-      <button class="icon-btn player-restore" id="playerRestore" type="button" aria-label="Показать плеер" hidden>
-        <svg viewBox="0 0 24 24"><path d="M9 18.5a3.5 3.5 0 1 1-2-3.16V6.4a1 1 0 0 1 .76-.97l9-2.25A1 1 0 0 1 18 4.15v10.1a3.5 3.5 0 1 1-2-3.16V8.3l-7 1.75v8.45Z"/></svg>
-      </button>
+      <div class="mini-now" id="miniNow" hidden>
+        <button class="mini-now-open" id="miniNowOpen" type="button" aria-label="Открыть плеер">
+          <span class="mini-now-cover">
+            <img id="miniNowCover" alt="" decoding="async">
+            <span class="cover-fallback">♪</span>
+          </span>
+          <span class="mini-now-text">
+            <span class="mini-now-title" id="miniNowTitleWrap">
+              <span class="mini-now-run" id="miniNowRun"><span class="mini-now-line" id="miniNowTitle">—</span></span>
+            </span>
+            <span class="mini-now-artist" id="miniNowArtist"></span>
+          </span>
+        </button>
+        <button class="mini-now-play" id="miniNowPlay" type="button" aria-label="Воспроизвести" disabled>
+          <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.2c0-1 1.1-1.6 2-1.1l9.4 6.3a1.3 1.3 0 0 1 0 2.2L10 19c-.9.5-2-.1-2-1.1V5.2Z"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Zm7 0a1.5 1.5 0 0 1 3 0v14a1.5 1.5 0 0 1-3 0V5Z"/></svg>
+          <span class="spinner"></span>
+        </button>
+      </div>
 
       <button class="icon-btn account-btn" id="accountBtn" type="button" aria-label="Аккаунт">
         <span class="avatar" id="topAvatar">?</span>

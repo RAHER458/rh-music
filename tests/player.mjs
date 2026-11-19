@@ -109,7 +109,7 @@ check('показ плеера не запускает воспроизведе�
   })());
 
 check('выбор трека возвращает скрытый плеер', /S\.playerHidden = false;\s*\n\s*\n?\s*S\.retried/.test(source) || /S\.playerHidden = false/.test(source));
-check('кнопка возврата обновляется вместе с видимостью', /function syncPlayerVisibility\(\) \{[\s\S]*?updateRestoreButton\(\)/.test(source));
+check('компактный плеер обновляется вместе с видимостью', /function syncPlayerVisibility\(\) \{[\s\S]*?updateCompactPlayer\(\)/.test(source));
 check('удаление аккаунта очищает состояние плеера', /clearPlayerState\(\);\s*\n\s*updateTransport\(\);/.test(source));
 
 /* Восстановленная позиция не должна затираться пустым <audio> до старта. */

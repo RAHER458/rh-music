@@ -1124,9 +1124,76 @@ body.auth-route .page { padding-bottom: calc(28px + var(--safe-bottom)); }
 .player-hide:active { background: rgba(255, 255, 255, 0.09); }
 .player.is-dragging { transition: none; }
 
-.player-restore { color: var(--blue); }
-.player-restore svg { width: 20px; height: 20px; fill: currentColor; }
-.player-restore:active { background: rgba(108, 140, 255, 0.16); }
+/* ── Компактный плеер в шапке (когда нижний скрыт) ── */
+.mini-now {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 240px;
+  margin-left: auto;
+  padding: 4px 4px 4px 5px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--glass);
+}
+body.has-mini-now .account-btn { margin-left: 0; }
+body.has-mini-now .brand-mobile-text { display: none; }
+.mini-now-open {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0; flex: 1 1 auto; text-align: left;
+}
+.mini-now-cover {
+  position: relative;
+  width: 32px; height: 32px; flex: none;
+  border-radius: 9px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(91,124,255,.35), rgba(168,85,247,.3));
+}
+.mini-now-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mini-now-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.mini-now-title {
+  display: block; overflow: hidden; white-space: nowrap;
+  font-size: 12.5px; font-weight: 650; line-height: 1.3; color: var(--text);
+}
+.mini-now-run { display: inline-flex; max-width: none; }
+.mini-now-line { display: inline-block; padding-right: 26px; }
+.mini-now.is-scrolling .mini-now-run { animation: mini-marquee 12s linear infinite; will-change: transform; }
+@keyframes mini-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.mini-now-artist {
+  display: block;
+  font-size: 11px; line-height: 1.2; color: var(--muted-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mini-now-play {
+  width: 32px; height: 32px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  background: var(--grad);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(91,124,255,.28);
+}
+.mini-now-play svg { width: 16px; height: 16px; fill: currentColor; }
+.mini-now-play .i-pause { display: none; }
+.mini-now.is-playing .mini-now-play .i-play { display: none; }
+.mini-now.is-playing .mini-now-play .i-pause { display: block; }
+.mini-now-play .spinner { display: none; }
+.mini-now.is-loading .mini-now-play svg { display: none; }
+.mini-now.is-loading .mini-now-play .spinner { display: block; }
+.mini-now-play:disabled { opacity: .45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-now.is-scrolling .mini-now-run { animation: none; }
+  .mini-now-title { text-overflow: ellipsis; }
+}
+
+@media (min-width: 700px) {
+  .mini-now { max-width: 260px; flex: 0 0 240px; }
+}
 
 /* Плеер не прокручивается — вертикальный жест целиком наш. */
 .player { touch-action: none; }

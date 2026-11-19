@@ -90,9 +90,19 @@ check('атрибут hidden всегда скрывает элемент', /\[h
 /* ───────────────────────────── мини-плеер ───────────────────────────── */
 
 check('в плеере есть кнопка скрытия', /id="playerHide"/.test(html));
-check('в шапке есть кнопка возврата плеера', /id="playerRestore"/.test(html));
+check('в шапке есть компактный плеер', /id="miniNow"/.test(html));
+check('компактный плеер содержит обложку, название и исполнителя',
+  /id="miniNowCover"/.test(html) && /id="miniNowRun"/.test(html) && /id="miniNowArtist"/.test(html));
+check('в компактном плеере отдельная кнопка play/pause', /id="miniNowPlay"/.test(html));
+check('в проекте ровно один <audio>', (html.match(/<audio/g) || []).length === 1);
+check('старая кнопка-иконка убрана', !/id="playerRestore"/.test(html));
 check('кнопка скрытия вызывает hidePlayer', /\$\('playerHide'\)\.addEventListener\('click', \(\) => hidePlayer\(\)\)/.test(app));
-check('кнопка возврата вызывает showPlayer', /\$\('playerRestore'\)\.addEventListener\('click', \(\) => showPlayer\(\)\)/.test(app));
+check('клик по компактному блоку раскрывает нижний плеер',
+  /\$\('miniNowOpen'\)\.addEventListener\('click', \(\) => showPlayer\(\)\)/.test(app));
+check('play/pause в шапке не всплывает до раскрытия',
+  /\$\('miniNowPlay'\)\.addEventListener\('click',[\s\S]{0,120}stopPropagation[\s\S]{0,80}togglePlay/.test(app));
+check('play/pause в шапке управляет реальным аудио',
+  /\$\('miniNowPlay'\)\.addEventListener\('click',[\s\S]{0,160}togglePlay\(\)/.test(app));
 check('скрытый плеер не участвует в hit testing',
   /player\.hidden = !visible/.test(app) && /\[hidden\] \{ display: none !important; \}/.test(css));
 check('жест плеера игнорирует кнопки и слайдер',
@@ -107,6 +117,45 @@ check('скрытие не трогает аудио и очередь', (() => 
   const m = app.match(/function hidePlayer\(notify = true\) \{[\s\S]*?\n\}/);
   return !!m && !/audio\.(play|pause|load|src)/.test(m[0]) && !/S\.current\s*=/.test(m[0]) && !/S\.queue\s*=/.test(m[0]);
 })());
+
+/* ───────────────────────────── компактный плеер в шапке ───────────────────────────── */
+
+check('бегущая строка объявлена в CSS',
+  /@keyframes mini-marquee \{[\s\S]*?translateX\(-50%\)/.test(css));
+check('анимация включается только классом is-scrolling',
+  /\.mini-now\.is-scrolling \.mini-now-run \{[^}]*animation:/.test(css));
+check('две копии строки дают бесшовный цикл',
+  /\.mini-now-line \{[^}]*padding-right/.test(css));
+check('при prefers-reduced-motion анимация выключается',
+  /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?mini-now\.is-scrolling[\s\S]*?animation: none/.test(css));
+check('при reduced-motion заголовок обрезается многоточием',
+  /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?mini-now-title \{[^}]*text-overflow: ellipsis/.test(css));
+check('шапка не переполняется: блок ужимается',
+  /\.mini-now \{[^}]*min-width: 0/.test(css) && /\.mini-now \{[^}]*max-width:/.test(css));
+check('в компактном блоке отдельная кнопка play/pause',
+  /\.mini-now-play \{/.test(css));
+
+const compactMatch = app.match(/function renderCompactTrack\(track\) \{[\s\S]*?\n\}/);
+check('renderCompactTrack найдена', !!compactMatch);
+const compactSrc = compactMatch ? compactMatch[0] : '';
+check('бегущая строка включается только при переполнении',
+  /textWidth > available \+ 1/.test(compactSrc));
+check('длинное название дублируется для бесшовности',
+  /aria-hidden="true"/.test(compactSrc));
+check('длина анимации зависит от ширины текста',
+  /animationDuration/.test(compactSrc));
+check('исполнитель скрывается, если его нет', /artist\.hidden = !track\.artist/.test(compactSrc));
+
+const visibilityMatch = app.match(/function updateCompactPlayer\(\) \{[\s\S]*?\n\}/);
+check('компактный блок показывается только при скрытом нижнем плеере',
+  !!visibilityMatch && /S\.playerHidden && hasSelectedTrack\(\)/.test(visibilityMatch[0]));
+
+check('выбор трека раскрывает нижний плеер, а resume — нет',
+  /if \(reveal\) S\.playerHidden = false;/.test(app));
+check('возобновление из компактного блока не раскрывает панель',
+  /playIndex\(S\.index >= 0 \? S\.index : 0, \{ reveal: false \}\)/.test(app));
+check('переключение трека не раскрывает панель принудительно',
+  /playIndex\(next, \{ reveal: false \}\)/.test(app));
 
 console.log(`\nПройдено: ${passed}, провалено: ${failures.length}`);
 if (failures.length) {

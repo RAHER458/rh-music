@@ -1653,15 +1653,69 @@ function syncPlayerVisibility() {
   player.hidden = !visible;
   player.classList.toggle('is-hidden', !visible);
   document.body.classList.toggle('has-player', visible);
-  updateRestoreButton();
+  updateCompactPlayer();
   syncLayoutHeight();
 }
 
-/** Кнопка возврата скрытого плеера в шапке. */
-function updateRestoreButton() {
-  const button = $('playerRestore');
-  if (!button) return;
-  button.hidden = !(S.playerHidden && hasSelectedTrack());
+/** Показывает компактный плеер в шапке, когда нижний скрыт. */
+function updateCompactPlayer() {
+  const box = $('miniNow');
+  if (!box) return;
+  const show = S.playerHidden && hasSelectedTrack();
+  box.hidden = !show;
+  document.body.classList.toggle('has-mini-now', show);
+  if (show) renderCompactTrack(S.current);
+}
+
+/**
+ * Заполняет компактный блок: обложка, название, исполнитель.
+ * Бегущая строка включается только если текст не помещается.
+ */
+let compactRenderId = 0;
+
+function renderCompactTrack(track) {
+  if (!track) return;
+  const cover = $('miniNowCover');
+  if (cover) {
+    if (track.cover) { cover.src = pic(track.cover, 120); cover.hidden = false; }
+    else { cover.removeAttribute('src'); cover.hidden = true; }
+  }
+  const artist = $('miniNowArtist');
+  if (artist) {
+    artist.textContent = track.artist || '';
+    artist.hidden = !track.artist;
+  }
+
+  const box = $('miniNow');
+  const run = $('miniNowRun');
+  const wrap = $('miniNowTitleWrap');
+  if (!box || !run) return;
+  const title = track.title || 'Без названия';
+
+  const reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  run.style.animationDuration = '';
+  box.classList.remove('is-scrolling');
+  run.innerHTML = `<span class="mini-now-line">${esc(title)}</span>`;
+
+  const renderId = ++compactRenderId;
+
+  // Замер синхронный: clientWidth/offsetWidth сами вызывают layout, и результат
+  // не зависит от кадров анимации (которые могут не прийти в фоновой вкладке).
+  const measure = () => {
+    if (renderId !== compactRenderId || box.hidden || reduced) return;
+    const available = wrap ? wrap.clientWidth : 0;
+    const line = run.firstElementChild;
+    const textWidth = line ? Math.max(0, line.offsetWidth - 26) : 0;
+    if (available <= 0) return;
+    if (textWidth > available + 1) {
+      run.innerHTML = `<span class="mini-now-line">${esc(title)}</span><span class="mini-now-line" aria-hidden="true">${esc(title)}</span>`;
+      run.style.animationDuration = Math.max(7, Math.min(24, (textWidth + 26) / 34)).toFixed(1) + 's';
+      box.classList.add('is-scrolling');
+    }
+  };
+  measure();
+  // Если блок только что показан и ширина ещё не посчитана — один повторный замер.
+  if (wrap && wrap.clientWidth <= 0) requestAnimationFrame(measure);
 }
 
 /**
@@ -1674,7 +1728,7 @@ function hidePlayer(notify = true) {
   player.style.transform = '';
   player.classList.remove('is-dragging');
   syncPlayerVisibility();
-  if (notify) toast('Плеер скрыт. Вернуть — кнопкой в шапке.', 'info');
+  if (notify) toast('Плеер скрыт — управление в шапке.', 'info');
 }
 
 function showPlayer() {
@@ -1751,6 +1805,16 @@ function updateTransport() {
   ['seekMini', 'seekBig'].forEach((id) => { const el = $(id); if (el) el.disabled = !hasTrack; });
   player.classList.toggle('is-playing', S.playing);
   player.classList.toggle('is-loading', S.loading);
+  const mini = $('miniNow');
+  if (mini) {
+    mini.classList.toggle('is-playing', S.playing);
+    mini.classList.toggle('is-loading', S.loading);
+    const miniPlay = $('miniNowPlay');
+    if (miniPlay) {
+      miniPlay.disabled = !hasTrack;
+      miniPlay.setAttribute('aria-label', S.playing ? 'Пауза' : 'Воспроизвести');
+    }
+  }
   nowPlaying.classList.toggle('is-playing', S.playing);
   nowPlaying.classList.toggle('is-loading', S.loading);
   $('shuffle').classList.toggle('is-on', S.shuffle);
@@ -1784,6 +1848,7 @@ function updateNowPlayingMeta(track) {
   $('npCur').textContent = '0:00';
   syncSeek(0, 0);
   updateNpLike();
+  renderCompactTrack(track);
 
   if ('mediaSession' in navigator && track) {
     try {
@@ -1843,14 +1908,16 @@ async function updateAmbient(coverUrl) {
   } catch { /* остаются базовые свечения */ }
 }
 
-function playIndex(index, { autoplay = true, source = 'player' } = {}) {
+function playIndex(index, { autoplay = true, source = 'player', reveal = true } = {}) {
   if (index < 0 || index >= S.queue.length) return;
   flushPlayback(true);
   S.index = index;
   const track = S.queue[index];
   S.current = track;
   S.retried = false;
-  S.playerHidden = false;
+  // Раскрываем нижний плеер только при осознанном выборе трека,
+  // а не при возобновлении из компактного блока или Media Session.
+  if (reveal) S.playerHidden = false;
 
   updateNowPlayingMeta(track);
   renderQueue();
@@ -1913,7 +1980,7 @@ function handleAudioFailure(detail) {
 
 function togglePlay() {
   if (!S.current) return;
-  if (!audio.src) return playIndex(S.index >= 0 ? S.index : 0);
+  if (!audio.src) return playIndex(S.index >= 0 ? S.index : 0, { reveal: false });
   if (audio.paused) {
     S.loading = true;
     updateTransport();
@@ -1933,15 +2000,15 @@ function nextTrack(auto = false) {
   const next = S.index + 1;
   if (next >= S.queue.length) {
     if (auto && S.repeat === 'off') { S.playing = false; updateTransport(); return; }
-    return playIndex(0);
+    return playIndex(0, { reveal: false });
   }
-  playIndex(next);
+  playIndex(next, { reveal: false });
 }
 
 function prevTrack() {
   if (!S.queue.length) return;
   if (audio.currentTime > 4) { audio.currentTime = 0; return; }
-  playIndex(S.index <= 0 ? S.queue.length - 1 : S.index - 1);
+  playIndex(S.index <= 0 ? S.queue.length - 1 : S.index - 1, { reveal: false });
 }
 
 function toggleShuffle() {
@@ -2549,7 +2616,11 @@ player.addEventListener('click', (event) => {
 }, true);
 
 $('playerHide').addEventListener('click', () => hidePlayer());
-$('playerRestore').addEventListener('click', () => showPlayer());
+$('miniNowOpen').addEventListener('click', () => showPlayer());
+$('miniNowPlay').addEventListener('click', (event) => {
+  event.stopPropagation();
+  togglePlay();
+});
 
 /* ───────────────────────────── аудио-события ───────────────────────────── */
 
@@ -2671,7 +2742,6 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   renderSidePlaylists();
   restorePlayerState();
   updateTransport();
-  updateRestoreButton();
   await refreshMe();
   await loadProviders();
   route();
