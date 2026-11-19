@@ -49,6 +49,8 @@ const S = {
   sheetOpen: false,
   recentSearches: readJson('rh_searches_v1', []),
   playback: { historyId: null, trackId: null, pending: 0, lastTick: 0, completed: false, source: 'player' },
+  restorePosition: 0,
+  lastStateSave: 0,
   discoveryLoadedFor: null,
 };
 
@@ -1319,6 +1321,7 @@ async function renderAccount() {
   const user = data.user;
   const name = user.displayName || user.username;
   const hasPassword = !!S.security.password;
+  const currentMethod = S.security.currentMethod || null;
   const methods = S.identities;
   const totalMethods = methods.length + (hasPassword ? 1 : 0);
 
@@ -1338,6 +1341,7 @@ async function renderAccount() {
             ? `<button class="btn-mini" type="button" data-action="unlink-provider" data-provider="${esc(id)}">Отвязать</button>`
             : '<span class="badge">единственный</span>')
           : `<button class="btn-mini primary" type="button" data-action="link-provider" data-provider="${esc(id)}">Привязать</button>`}
+        ${linked && currentMethod === id ? '<span class="badge ok">текущий вход</span>' : ''}
       </div>`;
   }).join('');
 
@@ -1373,6 +1377,7 @@ async function renderAccount() {
             <small>${hasPassword ? esc(user.email) : 'пароль не задан'}</small>
           </span>
           <span class="badge ${hasPassword ? 'ok' : ''}">${hasPassword ? 'включён' : 'нет'}</span>
+          ${hasPassword && currentMethod === 'password' ? '<span class="badge ok">текущий вход</span>' : ''}
         </div>
         ${providerRows}
       </div>
@@ -1599,6 +1604,86 @@ function streamUrl(track) {
   return API + '/api/stream/' + encodeURIComponent(track.id) + '?quality=mid';
 }
 
+const PLAYER_STATE_KEY = 'rh_player_v1';
+
+/**
+ * Показывать ли мини-плеер. Источник истины — выбранный трек в состоянии
+ * приложения, а не наличие HTML-элемента или старое название в разметке.
+ */
+function shouldShowPlayer(state = S) {
+  const track = state && state.current;
+  if (!track || !track.id) return false;
+  return String(track.id).length > 0;
+}
+
+/** Прячет/показывает плеер и освобождает место под ним. */
+function syncPlayerVisibility() {
+  const visible = shouldShowPlayer();
+  player.hidden = !visible;
+  player.classList.toggle('is-hidden', !visible);
+  document.body.classList.toggle('has-player', visible);
+  syncLayoutHeight();
+}
+
+function savePlayerState(position) {
+  try {
+    if (!shouldShowPlayer()) { localStorage.removeItem(PLAYER_STATE_KEY); return; }
+    const queue = (S.queue.length ? S.queue : [S.current]).slice(0, 80);
+    let offset = Math.max(0, Math.round(Number(position != null ? position : audio.currentTime) || 0));
+    // Пока трек после перезагрузки ещё не запущен, позиция берётся из
+    // восстановленного состояния, а не из пустого <audio> (0:00).
+    if (offset === 0 && S.restorePosition > 0 && !audio.currentSrc) offset = Math.round(S.restorePosition);
+    writeJson(PLAYER_STATE_KEY, {
+      track: S.current,
+      index: S.index,
+      queue,
+      position: offset,
+      shuffle: !!S.shuffle,
+      repeat: S.repeat,
+      savedAt: Date.now(),
+    });
+  } catch { /* localStorage может быть недоступен */ }
+}
+
+function clearPlayerState() {
+  try { localStorage.removeItem(PLAYER_STATE_KEY); } catch { /* ignore */ }
+}
+
+/**
+ * Восстанавливает последний выбранный трек (без автозапуска).
+ * Возвращает false, если сохранённое состояние непригодно.
+ */
+function restorePlayerState() {
+  const saved = readJson(PLAYER_STATE_KEY, null);
+  if (!saved || !saved.track || !saved.track.id || !saved.track.title) return false;
+  const queue = Array.isArray(saved.queue) && saved.queue.length
+    ? saved.queue.filter((item) => item && item.id && item.title).slice(0, 80)
+    : [saved.track];
+  if (!queue.length) { clearPlayerState(); return false; }
+
+  let index = Number(saved.index);
+  if (!Number.isInteger(index) || index < 0 || index >= queue.length) index = 0;
+
+  S.queue = queue;
+  S.index = index;
+  S.current = queue[index];
+  S.shuffle = !!saved.shuffle;
+  S.repeat = ['off', 'all', 'one'].includes(saved.repeat) ? saved.repeat : 'off';
+  S.restorePosition = Math.max(0, Number(saved.position) || 0);
+  S.lastStateSave = Date.now();
+
+  updateNowPlayingMeta(S.current);
+  renderQueue();
+  updateTransport();
+
+  if (S.restorePosition > 0) {
+    const duration = Number(S.current.duration) || 0;
+    $('npCur').textContent = fmt(S.restorePosition);
+    if (duration > 0) syncSeek(S.restorePosition, duration);
+  }
+  return true;
+}
+
 function updateTransport() {
   const hasTrack = !!S.current;
   ['play', 'playMini', 'npPlay'].forEach((id) => { const el = $(id); if (el) el.disabled = !hasTrack; });
@@ -1614,6 +1699,7 @@ function updateTransport() {
     el.classList.toggle('is-on', S.repeat !== 'off');
     el.classList.toggle('is-one', S.repeat === 'one');
   });
+  syncPlayerVisibility();
 }
 
 function updateNowPlayingMeta(track) {
@@ -1712,8 +1798,24 @@ function playIndex(index, { autoplay = true, source = 'player' } = {}) {
   updateTransport();
 
   audio.src = streamUrl(track);
+
+  // Продолжение с места, где остановились после перезагрузки страницы.
+  if (S.restorePosition > 0) {
+    const target = S.restorePosition;
+    S.restorePosition = 0;
+    const resume = () => {
+      try {
+        const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+        audio.currentTime = duration > 1 ? Math.min(target, duration - 0.5) : target;
+      } catch { /* ignore */ }
+      audio.removeEventListener('loadedmetadata', resume);
+    };
+    audio.addEventListener('loadedmetadata', resume);
+  }
+
   audio.load();
   startPlaybackSession(track, source);
+  savePlayerState(0);
 
   if (autoplay) {
     const promise = audio.play();
@@ -2221,6 +2323,9 @@ document.addEventListener('click', async (event) => {
       S.current = null;
       S.index = -1;
       S.lists = {};
+      S.restorePosition = 0;
+      clearPlayerState();
+      updateTransport();
       try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch { /* ignore */ }
       renderSidePlaylists();
       toast('Аккаунт и все данные удалены', 'ok');
@@ -2331,6 +2436,8 @@ audio.addEventListener('error', () => {
   handleAudioFailure(audio.error ? 'код ' + audio.error.code : null);
 });
 
+audio.addEventListener('pause', () => savePlayerState());
+
 audio.addEventListener('timeupdate', () => {
   const current = audio.currentTime || 0;
   const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? S.current.duration : 0);
@@ -2340,6 +2447,11 @@ audio.addEventListener('timeupdate', () => {
   if (delta > 0 && delta < 5) S.playback.pending += delta;
   S.playback.lastTick = current;
   if (S.playback.pending >= 25) flushPlayback(true);
+
+  if (Date.now() - (S.lastStateSave || 0) > 10000) {
+    S.lastStateSave = Date.now();
+    savePlayerState(current);
+  }
 
   if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && duration > 0) {
     try {
@@ -2384,7 +2496,7 @@ if ('mediaSession' in navigator) {
 }
 
 document.addEventListener('visibilitychange', () => { if (document.hidden) flushPlayback(true); });
-window.addEventListener('pagehide', () => flushPlayback(true));
+window.addEventListener('pagehide', () => { flushPlayback(true); savePlayerState(); });
 
 /* ───────────────────────────── вспомогательное ───────────────────────────── */
 
@@ -2396,8 +2508,9 @@ function markCurrentRow() {
 }
 
 function syncLayoutHeight() {
-  const playerHeight = player.getBoundingClientRect().height || 60;
-  document.documentElement.style.setProperty('--player-h', Math.round(playerHeight) + 'px');
+  const hidden = player.hidden || !shouldShowPlayer();
+  const playerHeight = hidden ? 0 : Math.round(player.getBoundingClientRect().height || 0);
+  document.documentElement.style.setProperty('--player-h', playerHeight + 'px');
 }
 
 window.addEventListener('hashchange', route);
@@ -2413,6 +2526,8 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   updateTransport();
   renderQueue();
   renderSidePlaylists();
+  restorePlayerState();
+  updateTransport();
   await refreshMe();
   await loadProviders();
   route();
