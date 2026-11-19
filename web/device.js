@@ -76,10 +76,17 @@
     if (sig.macTouch && touchPoints > 1 && coarse) reasons.push('macintel+touch');
     if (reasons.length) return { kind: 'mobile', device: 'tablet', reasons };
 
-    // 3. Сенсорное устройство без явного UA: сенсорный указатель без hover.
+    // 3. Сенсорный указатель без hover. Но на настольной ОС (Windows/macOS/Linux)
+    //    с сенсорным экраном это по-прежнему компьютер: ноутбуки-трансформеры и
+    //    моноблоки с тачскрином не должны получать мобильный интерфейс.
+    const desktopOs = /Windows NT|Macintosh|Mac OS X|X11|CrOS|Linux x86_64|Linux i686/i.test(ua);
     if (coarse && noHover && touchPoints > 0) {
-      reasons.push('coarse+no-hover+touch');
-      return { kind: 'mobile', device: shortest <= 820 ? 'phone' : 'tablet', reasons };
+      if (desktopOs && shortest > 820) {
+        reasons.push('coarse-touch-on-desktop-os');
+      } else {
+        reasons.push('coarse+no-hover+touch');
+        return { kind: 'mobile', device: shortest <= 820 ? 'phone' : 'tablet', reasons };
+      }
     }
 
     // 4. Десктоп: точный указатель и hover даже при наличии касаний
@@ -91,6 +98,10 @@
 
     // 5. Ничего не совпало: решаем по доступному признаку касаний.
     if (touchPoints > 0 && coarse) {
+      if (desktopOs && shortest > 820) {
+        reasons.push('fallback:desktop-os-touch');
+        return { kind: 'desktop', device: 'desktop', reasons };
+      }
       reasons.push('fallback:touch');
       return { kind: 'mobile', device: 'tablet', reasons };
     }

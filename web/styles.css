@@ -1456,75 +1456,6 @@ body.queue-open .queue-panel { display: flex; }
 html[data-ui="desktop"] [data-ui-only="mobile"],
 html[data-ui="mobile"] [data-ui-only="desktop"] { display: none !important; }
 
-/* ───────────────────────── Desktop UI ───────────────────────── */
-html[data-ui="desktop"] { --tabbar-h: 0px; }
-
-html[data-ui="desktop"] .app {
-  display: grid;
-  grid-template-columns: var(--sidebar-w, 252px) minmax(0, 1fr);
-  min-height: 100dvh;
-  align-items: start;
-}
-html[data-ui="desktop"] body.queue-open .app {
-  grid-template-columns: var(--sidebar-w, 252px) minmax(0, 1fr) var(--queue-w, 336px);
-}
-html[data-ui="desktop"] .sidebar {
-  display: flex; flex-direction: column; gap: 16px;
-  position: sticky; top: 0; height: 100dvh;
-  padding: 20px 14px 16px;
-  background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.028) 40%, rgba(16,20,38,.72));
-  border-right: 1px solid var(--border);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  z-index: 30;
-}
-html[data-ui="desktop"] .side-brand { display: flex; align-items: center; gap: 11px; padding: 2px 6px 4px; }
-html[data-ui="desktop"] .side-brand-text { display: flex; flex-direction: column; min-width: 0; }
-html[data-ui="desktop"] .side-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; overflow-y: auto; }
-html[data-ui="desktop"] .side-item {
-  display: flex; align-items: center; gap: 11px;
-  padding: 9px 11px; border-radius: 13px;
-  color: var(--muted); font-weight: 600; font-size: 13.5px;
-  border: 1px solid transparent; transition: all .18s ease;
-}
-html[data-ui="desktop"] .side-item svg { width: 18px; height: 18px; fill: currentColor; }
-html[data-ui="desktop"] .side-item:hover { color: var(--text); background: var(--glass); border-color: var(--border); }
-html[data-ui="desktop"] .side-item.is-active {
-  color: #fff;
-  background: linear-gradient(135deg, rgba(108,140,255,.24), rgba(168,85,247,.2));
-  border-color: rgba(139,92,246,.42);
-}
-html[data-ui="desktop"] .side-block { display: flex; flex-direction: column; max-height: 34vh; }
-html[data-ui="desktop"] .side-block-title { font-size: 10.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--muted-2); margin: 6px 6px 8px; font-weight: 700; }
-html[data-ui="desktop"] .side-playlists { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
-html[data-ui="desktop"] .side-account { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 15px; background: var(--glass); border: 1px solid var(--border); }
-html[data-ui="desktop"] .side-foot { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
-html[data-ui="desktop"] .side-foot-actions { display: flex; gap: 6px; }
-html[data-ui="desktop"] .brand-mobile { display: none; }
-html[data-ui="desktop"] .tabbar { display: none; }
-html[data-ui="desktop"] .topbar { height: auto; padding: 14px clamp(18px, 3vw, 32px); gap: 14px; }
-html[data-ui="desktop"] .searchbar {
-  position: relative; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
-  padding: 6px 6px 6px 40px; border-radius: 15px; background: var(--glass); border: 1px solid var(--border);
-}
-html[data-ui="desktop"] .searchbar .search-ico { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; fill: var(--muted); }
-html[data-ui="desktop"] .searchbar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); padding: 9px 0; font-size: 15px; }
-html[data-ui="desktop"] .page { max-width: 1720px; padding: 20px clamp(18px, 2.4vw, 34px) calc(var(--player-h) + 30px); }
-html[data-ui="desktop"] .grid-cards { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 18px; }
-html[data-ui="desktop"] .player { bottom: 0; padding: 0 clamp(16px, 1.6vw, 26px) 10px; }
-html[data-ui="desktop"] .player-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 1.1fr) minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-items: center;
-  gap: 2px 18px;
-  padding: 2px 0 4px;
-}
-html[data-ui="desktop"] .np-cover { width: 52px; height: 52px; border-radius: 12px; }
-html[data-ui="desktop"] .player-desktop-controls { display: flex; }
-html[data-ui="desktop"] .play-mobile { display: none; }
-html[data-ui="desktop"] .drawer { bottom: calc(var(--player-h) + 24px); }
-
 /* ───────────────────────── Mobile UI ───────────────────────── */
 html[data-ui="mobile"] { --tabbar-h: 58px; }
 
@@ -1557,34 +1488,8 @@ html[data-ui="mobile"] .queue-panel {
   box-shadow: var(--shadow-md);
 }
 
-/* Desktop UI остаётся работоспособным и при узком окне: сайдбар сам
-   сворачивается в иконки, содержимое не выходит за пределы экрана. */
-html[data-ui="desktop"] .topbar-nav { display: flex; gap: 4px; }
-html[data-ui="desktop"] .topbar-title { display: block; font-size: 17px; font-weight: 750; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22vw; }
-html[data-ui="desktop"] .sidebar-toggle,
-html[data-ui="desktop"] .queue-toggle { display: grid; }
-html[data-ui="desktop"] .player-right { display: flex; align-items: center; gap: 10px; grid-column: 3; grid-row: 1 / span 2; justify-self: end; }
-html[data-ui="desktop"] .player-like { display: grid; grid-column: 1; grid-row: 1 / span 2; justify-self: end; }
-html[data-ui="desktop"] .volume { display: block; }
-html[data-ui="desktop"] .player-time { display: block; grid-column: 2; grid-row: 2; justify-self: center; }
-html[data-ui="desktop"] .player-desktop-controls { grid-column: 2; grid-row: 1; justify-self: center; align-items: center; }
-html[data-ui="desktop"] .player-hide { display: grid; grid-column: 2; grid-row: 2; justify-self: end; align-self: center; }
-
+/* Ниже 1024 px прежняя адаптивная раскладка остаётся: десктопная среда
+   показывает навигацию таббаром (сайдбар в этой ширине скрыт), как и раньше. */
 @media (max-width: 1023px) {
-  html[data-ui="desktop"] { --sidebar-w: 76px; }
-  html[data-ui="desktop"] .side-brand-text,
-  html[data-ui="desktop"] .side-group-title,
-  html[data-ui="desktop"] .side-item span,
-  html[data-ui="desktop"] .side-block,
-  html[data-ui="desktop"] .side-account-text { display: none; }
-  html[data-ui="desktop"] .side-brand,
-  html[data-ui="desktop"] .side-item,
-  html[data-ui="desktop"] .side-account { justify-content: center; padding-left: 0; padding-right: 0; }
-  html[data-ui="desktop"] .side-foot-actions { flex-direction: column; }
-  html[data-ui="desktop"] .topbar-title { display: none; }
-  html[data-ui="desktop"] .track { grid-template-columns: 40px minmax(0, 1fr) auto; }
-  html[data-ui="desktop"] .grid-cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  html[data-ui="desktop"] .player-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); }
-  html[data-ui="desktop"] .topbar { padding-left: 12px; padding-right: 12px; gap: 8px; }
-  html[data-ui="desktop"] .searchbar { display: none; }
+  html[data-ui="desktop"] .tabbar { display: grid; }
 }

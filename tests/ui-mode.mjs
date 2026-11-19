@@ -94,6 +94,12 @@ function sandbox({ ua = '', uaDataMobile = null, coarse = false, noHover = false
   const desktop = sandbox({ ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36', fine: true, hover: true, touch: 0, screenW: 1920, screenH: 1080 });
   check('обычный десктоп → Desktop UI', desktop.api.kind === 'desktop');
 
+  const desktopTouchOs = sandbox({ ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36', coarse: true, noHover: true, fine: false, hover: false, touch: 10, screenW: 1920, screenH: 1080 });
+  check('ПК с тачскрином без мыши остаётся Desktop UI', desktopTouchOs.api.kind === 'desktop', JSON.stringify(desktopTouchOs.api.reasons));
+
+  const desktopTouchOsSmall = sandbox({ ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120', coarse: true, noHover: true, fine: false, hover: false, touch: 10, screenW: 800, screenH: 600 });
+  check('маленький экран на Windows с касанием — мобильная среда', desktopTouchOsSmall.api.kind === 'mobile');
+
   const touchPc = sandbox({ ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36', fine: true, hover: true, touch: 10, screenW: 1920, screenH: 1080 });
   check('ПК с сенсорным экраном → Desktop UI', touchPc.api.kind === 'desktop', JSON.stringify(touchPc.api.reasons));
 
@@ -134,18 +140,30 @@ check('ровно девять элементов размечены по сре
 
 check('элементы чужой среды скрыты жёстко',
   /html\[data-ui="desktop"\] \[data-ui-only="mobile"\],\s*\nhtml\[data-ui="mobile"\] \[data-ui-only="desktop"\] \{ display: none !important; \}/.test(css));
-check('Desktop UI показывает сайдбар', /html\[data-ui="desktop"\] \.sidebar \{[^}]*display: flex/.test(css));
-check('Desktop UI скрывает таббар', /html\[data-ui="desktop"\] \.tabbar \{ display: none; \}/.test(css));
+// Прежняя десктопная раскладка живёт в медиазапросах (как до разделения сред)
+// и НЕ дублируется scoped-правилами, чтобы вид не менялся.
+const desktopMedia = css.slice(css.indexOf('@media (min-width: 1024px)'));
+check('Desktop UI: сайдбар из прежней медиараскладки', /\.sidebar \{[\s\S]{0,120}display: flex/.test(desktopMedia));
+check('Desktop UI: таббар скрыт прежним медиаправилом', /\.tabbar \{ display: none; \}/.test(desktopMedia));
+check('прежняя десктопная сетка приложения не переопределена', /\.app \{ display: grid; grid-template-columns: 252px minmax\(0, 1fr\)/.test(desktopMedia));
+check('десктопные правила не дублируются scoped-селекторами',
+  !/html\[data-ui="desktop"\] \.sidebar \{/.test(css)
+  && !/html\[data-ui="desktop"\] \.player-row \{/.test(css)
+  && !/html\[data-ui="desktop"\] \.grid-cards \{/.test(css)
+  && !/html\[data-ui="desktop"\] \.page \{/.test(css));
+check('scoped-правил для десктопа ровно два (изоляция и узкий таббар)',
+  (css.match(/html\[data-ui="desktop"\]/g) || []).length === 2,
+  String((css.match(/html\[data-ui="desktop"\]/g) || []).length));
 check('Mobile UI скрывает сайдбар', /html\[data-ui="mobile"\] \.sidebar \{ display: none; \}/.test(css));
 check('Mobile UI показывает таббар', /html\[data-ui="mobile"\] \.tabbar \{ display: grid; \}/.test(css));
 check('Mobile UI не показывает десктопные контролы плеера',
   /html\[data-ui="mobile"\] \.player-desktop-controls,\s*\nhtml\[data-ui="mobile"\] \.player-time \{ display: none; \}/.test(css));
-check('Desktop UI разворачивает плеер в три зоны',
-  /html\[data-ui="desktop"\] \.player-row \{[\s\S]{0,220}grid-template-columns: minmax\(0, 1fr\) minmax\(300px, 1.1fr\) minmax\(0, 1fr\)/.test(css));
+check('Desktop UI: плеер в три зоны из прежней раскладки',
+  /\.player-row \{[\s\S]{0,240}grid-template-columns: minmax\(0, 1fr\) minmax\(300px, 1.1fr\) minmax\(0, 1fr\)/.test(desktopMedia));
 check('Mobile UI переводит плеер в компактный режим',
   /html\[data-ui="mobile"\] \.player-row \{ display: flex/.test(css));
 check('сетка карточек различается между средами',
-  /html\[data-ui="desktop"\] \.grid-cards \{ grid-template-columns: repeat\(auto-fill, minmax\(176px/.test(css)
+  /grid-template-columns: repeat\(auto-fill, minmax\(190px, 1fr\)\)/.test(desktopMedia)
   && /html\[data-ui="mobile"\] \.grid-cards \{ grid-template-columns: repeat\(auto-fill, minmax\(140px/.test(css));
 check('Mobile UI сбрасывает ширину контента и отступы',
   /html\[data-ui="mobile"\] \.page \{ max-width: none;/.test(css));
@@ -158,6 +176,8 @@ check('isDesktop читает интерфейсную среду, а не ши�
   /window\.RH_UI && typeof window\.RH_UI\.isDesktop === 'function'/.test(app)
   && !/function isDesktop\(\) \{\s*\n\s*return !!\(window\.matchMedia/.test(app));
 check('есть обработчик смены среды', /document\.addEventListener\('rh:ui-change'/.test(app));
+check('при отсутствии device.js десктоп определяется по прежнему признаку ширины',
+  /device\.js не загрузился/.test(app) && /matchMedia\('\(min-width: 1024px\)'\)\.matches/.test(app));
 
 const handler = (app.match(/document\.addEventListener\('rh:ui-change',[\s\S]*?\n\}\);/) || [''])[0];
 check('смена среды не трогает аудио, трек и очередь',

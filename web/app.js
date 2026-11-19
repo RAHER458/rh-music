@@ -2463,7 +2463,11 @@ function renderQueuePanel() {
  */
 function isDesktop() {
   if (window.RH_UI && typeof window.RH_UI.isDesktop === 'function') return window.RH_UI.isDesktop();
-  return document.documentElement.dataset.ui === 'desktop';
+  const attr = document.documentElement.dataset.ui;
+  if (attr) return attr === 'desktop';
+  // device.js не загрузился — ведём себя как прежняя адаптивная версия,
+  // чтобы на широком экране десктопный интерфейс не пропадал.
+  return !!(window.matchMedia && window.matchMedia('(min-width: 1024px)').matches);
 }
 
 function currentUi() {
