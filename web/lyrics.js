@@ -211,13 +211,22 @@
     const top = node.offsetTop - view.scroll.clientHeight * 0.44 + node.offsetHeight / 2;
     const target = Math.max(0, top);
     const mode = behavior === 'smooth' && reducedMotion() ? 'auto' : behavior;
+    const before = view.scroll.scrollTop;
     view.programmatic = true;
     try {
       view.scroll.scrollTo({ top: target, behavior: mode });
     } catch {
       view.scroll.scrollTop = target;
     }
-    window.setTimeout(() => { view.programmatic = false; }, mode === 'smooth' ? 700 : 60);
+    // В WebKit без поддержки плавного scrollTo позиция может не измениться —
+    // тогда доводим её вручную, чтобы автопрокрутка и возврат работали всегда.
+    window.setTimeout(() => {
+      if (mode === 'smooth' && Math.abs(view.scroll.scrollTop - before) < 2
+        && Math.abs(before - target) > 2) {
+        view.scroll.scrollTop = target;
+      }
+      view.programmatic = false;
+    }, mode === 'smooth' ? 340 : 60);
   }
 
   function setUserScroll(view, value) {

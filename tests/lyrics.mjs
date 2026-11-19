@@ -507,6 +507,22 @@ function linesPayload(trackId, lines, extra = {}) {
   check('движок: offset сдвигает момент подсветки', before === -1 && api.getState().active === 0);
 }
 
+{
+  const { api, audio, registry } = makeEngineSandbox();
+  const lines = Array.from({ length: 12 }, (_, i) => ({ t: i * 1000, text: 'Строка ' + (i + 1) }));
+  globalThis.fetch = async () => linesPayload('S1', lines);
+  await api.setTrack({ id: 'S1', title: 'Scroll' });
+  // Эмулируем WebKit, где smooth-scroll молча ничего не делает.
+  registry.lyricsScrollDesktop.scrollTo = () => {};
+  registry.lyricsScrollMobile.scrollTo = () => {};
+  registry.lyricsScrollDesktop.clientHeight = 100;
+  audio.currentTime = 8;
+  audio.dispatch('seeked');
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  check('движок: позиция доводится вручную, если плавный scrollTo не сработал',
+    registry.lyricsScrollDesktop.scrollTop > 0);
+}
+
 restoreFetch();
 
 console.log(`\nПройдено: ${passed}, провалено: ${failures.length}`);
