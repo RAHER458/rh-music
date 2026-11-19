@@ -155,15 +155,10 @@
     return box;
   }
 
-  function setMeta(view, badge, source) {
+  function setMeta(view, badge) {
     if (view.badgeEl) {
       view.badgeEl.textContent = badge || '';
       view.badgeEl.hidden = !badge;
-    }
-    if (view.sourceEl) {
-      view.sourceEl.textContent = source || '';
-      view.sourceEl.hidden = !source;
-      view.sourceEl.title = (state.data && state.data.attribution) || '';
     }
     if (view.titleEl) {
       const track = state.track;
@@ -183,13 +178,13 @@
 
     if (state.status === 'loading') {
       view.scroll.appendChild(skeleton());
-      setMeta(view, 'Загрузка', '');
+      setMeta(view, 'Загрузка');
       return;
     }
 
     if (state.status === 'error') {
       view.scroll.appendChild(messageBlock('Не удалось загрузить текст', 'Источник временно недоступен. Попробуйте ещё раз.', true));
-      setMeta(view, 'Ошибка', '');
+      setMeta(view, 'Ошибка');
       return;
     }
 
@@ -197,17 +192,17 @@
     if (state.status === 'ready' && data) {
       if (data.syncLevel === 'none') {
         view.scroll.appendChild(messageBlock('Текст не найден', 'Для этой композиции текста нет ни в одном из источников.', false));
-        setMeta(view, '', '');
+        setMeta(view, '');
         return;
       }
       if (data.syncLevel === 'instrumental' || data.instrumental) {
         view.scroll.appendChild(messageBlock('Инструментальная композиция', 'Источник подтверждает, что вокального текста нет.', false));
-        setMeta(view, 'Инструментал', data.sourceLabel);
+        setMeta(view, 'Инструментал');
         return;
       }
       if (data.syncLevel === 'plain') {
         view.scroll.appendChild(createElement('div', 'lyrics-plain', data.plain || ''));
-        setMeta(view, 'Без синхронизации', data.sourceLabel);
+        setMeta(view, 'Без синхронизации');
         return;
       }
 
@@ -234,14 +229,12 @@
         view.nodes.push(node);
       });
       view.scroll.appendChild(fragment);
-      setMeta(view, '', data.wordSourceLabel
-        ? `${data.sourceLabel} · слова ${data.wordSourceLabel}`
-        : data.sourceLabel);
+      setMeta(view, '');
       return;
     }
 
     view.scroll.appendChild(messageBlock('Текст не выбран', 'Включите трек, чтобы увидеть текст.', false));
-    setMeta(view, '', '');
+    setMeta(view, '');
   }
 
   function renderAll() {
@@ -555,7 +548,6 @@
 
   bindView({
     scroll: document.getElementById('lyricsScrollDesktop'),
-    sourceEl: document.getElementById('lyricsSourceDesktop'),
     badgeEl: document.getElementById('lyricsBadgeDesktop'),
     titleEl: document.getElementById('lyricsTitleDesktop'),
     returnEl: document.getElementById('lyricsReturnDesktop'),
@@ -563,7 +555,6 @@
 
   bindView({
     scroll: document.getElementById('lyricsScrollMobile'),
-    sourceEl: document.getElementById('lyricsSourceMobile'),
     badgeEl: document.getElementById('lyricsBadgeMobile'),
     titleEl: document.getElementById('lyricsTitleMobile'),
     returnEl: document.getElementById('lyricsReturnMobile'),

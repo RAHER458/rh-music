@@ -141,6 +141,17 @@ check('движок не прокручивает при ручном чтени
 check('есть кнопка возврата к текущей строке',
   /view\.returnEl\.addEventListener\('click'/.test(engine));
 
+/* ─────────────────────── атрибуция провайдеров ─────────────────────── */
+
+check('в lyrics-разметке нет элементов источника',
+  !/lyricsSource|lyrics-source/.test(html));
+check('движок не выводит название источника и не собирает «· слова …»',
+  !/sourceEl/.test(engine) && !/ · слова /.test(engine) && !/\.title = .*attribution/.test(engine));
+check('CSS больше не содержит элемент источника',
+  !/\.lyrics-source/.test(css));
+check('в веб-интерфейсе нет названий внешних провайдеров текстов',
+  !/Apple Music|LiriQo|NetEase|KuGou|QQ Music|Kuwo|Migu|PetitLyrics/i.test(html + css + app + engine));
+
 /* ───────────────────────────── word-level ───────────────────────────── */
 
 check('движок запрашивает слова отдельным маршрутом',

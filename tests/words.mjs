@@ -447,6 +447,12 @@ const wordsData = {
 
   const scroll = registry.lyricsScrollDesktop;
   const lineNodes = scroll.children.filter((c) => c.classList.contains('lyrics-line'));
+  const visible = [scroll.textContent, registry.lyricsBadgeDesktop.textContent,
+    registry.lyricsTitleDesktop.textContent, registry.lyricsSourceDesktop.textContent].join(' ');
+  check('UI: названия провайдеров не выводятся в Desktop',
+    !/Zvuk|LRCLIB|LiriQo|Apple|NetEase|KuGou|QQ|Kuwo|Migu|PetitLyrics|слова/i.test(visible), visible);
+  check('UI: элемент источника остаётся пустым',
+    registry.lyricsSourceDesktop.textContent === '' && registry.lyricsSourceMobile.textContent === '');
   check('движок: word-строки отрисованы словами', scroll.children.filter((c) => c.classList.contains('has-words')).length === 2);
   check('движок: у строки есть span-слова', (lineNodes[0]._wordNodes || []).length === 4);
 
@@ -499,6 +505,10 @@ const wordsData = {
   check('движок: нет word-данных — остаётся построчный режим',
     api.getState().syncLevel === 'line'
     && registry.lyricsScrollDesktop.children.every((c) => !c.classList.contains('has-words')));
+  const fallbackVisible = [registry.lyricsScrollDesktop.textContent,
+    registry.lyricsBadgeDesktop.textContent, registry.lyricsTitleDesktop.textContent].join(' ');
+  check('UI: в fallback-режиме источник не подписывается',
+    !/Zvuk|LRCLIB|LiriQo|Apple|NetEase|KuGou|PetitLyrics/i.test(fallbackVisible), fallbackVisible);
 }
 
 {
