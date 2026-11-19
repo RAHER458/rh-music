@@ -291,7 +291,7 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.1.1',
+      version: '2.1.2',
       features: ['catalog', 'accounts', 'oauth', 'library', 'playlists', 'history', 'recommendations', 'home'],
     });
   }
@@ -318,7 +318,7 @@ async function route(request, env) {
     return json({
       ok: true,
       service: 'rh-music-api',
-      version: '2.1.1',
+      version: '2.1.2',
       tokenConfigured: !!env.ZVUK_TOKEN,
       database,
       upstream,
