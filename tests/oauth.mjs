@@ -1,5 +1,5 @@
 /**
- * Тесты внешней авторизации RH—MUSIC (Google / VK ID / Apple ID).
+ * Тесты внешней авторизации RH—MUSIC (Google Identity Services).
  *
  * Запуск:  node tests/oauth.mjs
  *
@@ -69,22 +69,10 @@ function applyMigrations(D1) {
 const D1 = makeD1();
 applyMigrations(D1);
 
-// Настоящий P-256 ключ для подписи Apple client_secret (как .p8 из Apple Developer).
-const APPLE_KEY = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
-const applePkcs8 = Buffer.from(await crypto.subtle.exportKey('pkcs8', APPLE_KEY.privateKey)).toString('base64');
-const APPLE_PEM = '-----BEGIN PRIVATE KEY-----\n' +
-  applePkcs8.match(/.{1,64}/g).join('\n') + '\n-----END PRIVATE KEY-----\n';
-
 const env = {
   DB: D1,
   SITE_URL: 'https://rh-music.pages.dev',
   GOOGLE_CLIENT_ID: 'test-google-client.apps.googleusercontent.com',
-  VK_CLIENT_ID: '51999999',
-  VK_CLIENT_SECRET: 'test-vk-secret',
-  APPLE_CLIENT_ID: 'com.rh.music.service',
-  APPLE_TEAM_ID: 'TEAM123456',
-  APPLE_KEY_ID: 'KEY1234567',
-  APPLE_PRIVATE_KEY: APPLE_PEM,
 };
 
 /* ───────────────────────────── ключи и JWT ───────────────────────────── */
@@ -129,9 +117,6 @@ function googleClaims(overrides = {}) {
 /* ───────────────────────────── подмена fetch ───────────────────────────── */
 
 let fetchLog = [];
-let vkTokenResponse = { access_token: 'vk-access', refresh_token: 'vk-refresh', user_id: '777001', expires_in: 3600 };
-let vkUserInfo = { user: { user_id: 777001, first_name: 'Иван', last_name: 'Тестов', email: '' } };
-let appleIdTokenFactory = null;
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
@@ -139,19 +124,6 @@ globalThis.fetch = async (input, init = {}) => {
   fetchLog.push(url);
   if (url.includes('googleapis.com/oauth2')) {
     return new Response(JSON.stringify({ keys: [publicJwk] }), { headers: { 'content-type': 'application/json' } });
-  }
-  if (url.includes('appleid.apple.com/auth/keys')) {
-    return new Response(JSON.stringify({ keys: [publicJwk] }), { headers: { 'content-type': 'application/json' } });
-  }
-  if (url.includes('id.vk.com/oauth2/auth')) {
-    return new Response(JSON.stringify(vkTokenResponse), { headers: { 'content-type': 'application/json' } });
-  }
-  if (url.includes('id.vk.com/oauth2/user_info')) {
-    return new Response(JSON.stringify(vkUserInfo), { headers: { 'content-type': 'application/json' } });
-  }
-  if (url.includes('appleid.apple.com/auth/token')) {
-    const idToken = await appleIdTokenFactory();
-    return new Response(JSON.stringify({ id_token: idToken, access_token: 'apple-access' }), { headers: { 'content-type': 'application/json' } });
   }
   return realFetch(input, init);
 };
@@ -398,85 +370,6 @@ let emailCookie = null;
   check('привязка удалена', left.n === 0);
 }
 
-/* ───────────────────────────── 5. VK ID ───────────────────────────── */
-
-{
-  const start = await (await oauth.handleVkStart(request('/api/auth/oauth/vk/start', { body: { mode: 'login' } }), env)).json();
-  check('VK: ссылка авторизации сформирована', start.ok && start.url.includes('id.vk.com/authorize'));
-  const startUrl = new URL(start.url);
-  check('VK: state и PKCE присутствуют',
-    !!startUrl.searchParams.get('state') && startUrl.searchParams.get('code_challenge_method') === 'S256');
-  check('VK: redirect_uri фиксирован', startUrl.searchParams.get('redirect_uri') === 'https://rh-music.pages.dev/api/auth/oauth/vk/callback');
-
-  const callbackUrl = new URL('https://rh-music.pages.dev/api/auth/oauth/vk/callback');
-  callbackUrl.searchParams.set('code', 'vk-code');
-  callbackUrl.searchParams.set('state', startUrl.searchParams.get('state'));
-  const response = await oauth.handleVkCallback(request(callbackUrl.pathname + callbackUrl.search, { method: 'GET' }), env, callbackUrl);
-  check('VK: callback выдаёт сессию', response.status === 302 && !!cookieOf(response));
-  const vkIdentity = await one('SELECT * FROM oauth_identities WHERE provider = ?1 AND provider_subject = ?2', 'vk', '777001');
-  check('VK: создана привязка по устойчивому user_id', !!vkIdentity);
-
-  // Replay того же state.
-  const replay = await oauth.handleVkCallback(request(callbackUrl.pathname + callbackUrl.search, { method: 'GET' }), env, callbackUrl);
-  check('VK: повторный callback отклоняется', replay.headers.get('Location').includes('oauth=error'), replay.headers.get('Location'));
-
-  // Повторный вход тем же VK — тот же аккаунт.
-  const start2 = await (await oauth.handleVkStart(request('/api/auth/oauth/vk/start', { body: { mode: 'login' } }), env)).json();
-  const url2 = new URL(start2.url);
-  const cb2 = new URL('https://rh-music.pages.dev/api/auth/oauth/vk/callback');
-  cb2.searchParams.set('code', 'vk-code-2');
-  cb2.searchParams.set('state', url2.searchParams.get('state'));
-  await oauth.handleVkCallback(request(cb2.pathname + cb2.search, { method: 'GET' }), env, cb2);
-  const vkUsers = await one('SELECT COUNT(*) AS n FROM users WHERE id = ?1', vkIdentity.user_id);
-  check('VK: повторный вход не создал дубликат', vkUsers.n === 1);
-}
-
-/* ───────────────────────────── 6. Apple ID ───────────────────────────── */
-
-{
-  appleIdTokenFactory = async () => signJwt({
-    iss: 'https://appleid.apple.com',
-    aud: env.APPLE_CLIENT_ID,
-    sub: 'apple-subject-1',
-    email: 'relay@privaterelay.appleid.com',
-    email_verified: 'true',
-    iat: now(),
-    exp: now() + 3600,
-    nonce: 'pending',
-  });
-
-  const start = await (await oauth.handleAppleStart(request('/api/auth/oauth/apple/start', { body: { mode: 'login' } }), env)).json();
-  check('Apple: ссылка авторизации сформирована', start.ok && start.url.includes('appleid.apple.com/auth/authorize'));
-  const startUrl = new URL(start.url);
-  check('Apple: response_mode=form_post и nonce', startUrl.searchParams.get('response_mode') === 'form_post' && !!startUrl.searchParams.get('nonce'));
-
-  // Apple присылает form_post. Подписываем id_token с тем же nonce.
-  const nonce = startUrl.searchParams.get('nonce');
-  appleIdTokenFactory = async () => signJwt({
-    iss: 'https://appleid.apple.com',
-    aud: env.APPLE_CLIENT_ID,
-    sub: 'apple-subject-1',
-    email: 'relay@privaterelay.appleid.com',
-    email_verified: 'true',
-    iat: now(),
-    exp: now() + 3600,
-    nonce,
-  });
-  const form = new URLSearchParams({ state: startUrl.searchParams.get('state'), code: 'apple-code' });
-  const formRequest = new Request('https://rh-music.pages.dev/api/auth/oauth/apple/callback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://appleid.apple.com' },
-    body: form.toString(),
-  });
-  const response = await oauth.handleAppleCallback(formRequest, env);
-  check('Apple: callback выдаёт сессию', response.status === 302 && !!cookieOf(response), response.headers.get('Location'));
-  const appleIdentity = await one('SELECT * FROM oauth_identities WHERE provider = ?1 AND provider_subject = ?2', 'apple', 'apple-subject-1');
-  check('Apple: привязка по subject, а не по email', !!appleIdentity);
-  const appleUser = await one('SELECT * FROM users WHERE id = ?1', appleIdentity.user_id);
-  check('Apple: скрытый email сохранён как есть', appleUser.email === 'relay@privaterelay.appleid.com');
-  check('Apple: публичного пароля нет', appleUser.password_hash === '');
-}
-
 /* ───────────────────────────── 7. Удаление и чистая повторная регистрация ───────────────────────────── */
 
 {
@@ -565,105 +458,82 @@ let emailCookie = null;
   check('второй аккаунт не затронут удалением', other.n === 1);
 }
 
-/* ───────────────────────────── 8. Совпадение email не объединяет аккаунты ───────────────────────────── */
+/* ───────────────────────────── 8. Google: совпадение email и негативные сценарии ───────────────────────────── */
 
-async function googleAuth(sub, email, { cookie, mode = 'login', emailVerified = true } = {}) {
-  const gate = await (await oauth.handleGoogleNonce(
-    request('/api/auth/oauth/google/nonce', { body: { mode }, cookie }), env)).json();
-  const credential = await signJwt(googleClaims({ nonce: gate.nonce, sub, email, email_verified: emailVerified }));
+async function googleAuth(sub, email, { cookie, mode = 'login', emailVerified = true, state = null, credential = null } = {}) {
+  let gate = null;
+  if (!credential || state === null) {
+    gate = await (await oauth.handleGoogleNonce(
+      request('/api/auth/oauth/google/nonce', { body: { mode }, cookie }), env)).json();
+  }
+  const token = credential || await signJwt(googleClaims({
+    nonce: gate.nonce, sub, email, email_verified: emailVerified,
+  }));
   try {
     const response = await oauth.handleGoogleLogin(
-      request('/api/auth/oauth/google', { body: { state: gate.state, credential }, cookie }), env);
+      request('/api/auth/oauth/google', { body: { state: state === null ? gate.state : state, credential: token }, cookie }), env);
     return { status: response.status, json: await response.json(), cookie: cookieOf(response) };
   } catch (error) {
     return { status: error.status || 500, json: { error: { code: error.code, message: error.message } }, cookie: null };
   }
 }
 
-async function vkAuth(subject, email, { cookie, mode = 'login' } = {}) {
-  // subject передаём через мок user_info + токен-ответ.
-  vkTokenResponse = { access_token: 'vk-token', refresh_token: 'vk-refresh', user_id: String(subject), expires_in: 3600 };
-  vkUserInfo = { user: { user_id: Number(subject), first_name: 'VK', last_name: 'User', email } };
-  const start = await (await oauth.handleVkStart(
-    request('/api/auth/oauth/vk/start', { body: { mode }, cookie }), env)).json();
-  const url = new URL(start.url);
-  const cb = new URL('https://rh-music.pages.dev/api/auth/oauth/vk/callback');
-  cb.searchParams.set('code', 'vk-code-' + subject);
-  cb.searchParams.set('state', url.searchParams.get('state'));
-  const response = await oauth.handleVkCallback(
-    request(cb.pathname + cb.search, { method: 'GET' }), env, cb);
-  return { status: response.status, location: response.headers.get('Location'), cookie: cookieOf(response) };
-}
-
-async function appleAuth(sub, email, { cookie, mode = 'login' } = {}) {
-  const start = await (await oauth.handleAppleStart(
-    request('/api/auth/oauth/apple/start', { body: { mode }, cookie }), env)).json();
-  const url = new URL(start.url);
-  const nonce = url.searchParams.get('nonce');
-  appleIdTokenFactory = async () => signJwt({
-    iss: 'https://appleid.apple.com',
-    aud: env.APPLE_CLIENT_ID,
-    sub,
-    email,
-    email_verified: 'true',
-    iat: now(),
-    exp: now() + 3600,
-    nonce,
-  });
-  const form = new URLSearchParams({ state: url.searchParams.get('state'), code: 'apple-code-' + sub });
-  const formRequest = new Request('https://rh-music.pages.dev/api/auth/oauth/apple/callback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://appleid.apple.com' },
-    body: form.toString(),
-  });
-  const response = await oauth.handleAppleCallback(formRequest, env);
-  return { status: response.status, location: response.headers.get('Location'), cookie: cookieOf(response) };
-}
-
 {
-  // Email-аккаунт с адресом, который затем «придёт» от Google.
   const sameEmail = 'collision@example.com';
   const reg = await auth.handleRegister(request('/api/auth/register', {
     body: { username: 'collision', email: sameEmail, password: 'StrongPass1', confirmPassword: 'StrongPass1' },
   }), env);
-  const regJson = await reg.json();
-  const emailUser = regJson.user.id;
+  const emailUser = (await reg.json()).user.id;
 
-  // Google с тем же email НЕ должен войти в этот аккаунт и не должен к нему привязаться.
+  // Google с тем же email НЕ входит в email-аккаунт и не привязывается к нему.
   const google = await googleAuth('google-collision-sub', sameEmail);
   check('Google с совпадающим email создаёт отдельный аккаунт',
     google.status === 200 && google.json.user.id !== emailUser, JSON.stringify(google.json));
   const googleUser = google.json.user.id;
   check('Google-аккаунт не получил email существующего пользователя',
     google.json.user.email !== sameEmail, google.json.user.email);
-  const identitiesOfEmailUser = await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', emailUser);
-  check('к email-аккаунту ничего не привязалось', identitiesOfEmailUser.n === 0);
-  const emailUserAfter = await one('SELECT email FROM users WHERE id = ?1', emailUser);
-  check('email-аккаунт не изменён', emailUserAfter.email === sameEmail);
+  check('к email-аккаунту ничего не привязалось',
+    (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', emailUser)).n === 0);
+  check('email-аккаунт не изменён',
+    (await one('SELECT email FROM users WHERE id = ?1', emailUser)).email === sameEmail);
 
-  // Повторный вход тем же Google — тот же новый аккаунт (не email-аккаунт).
-  const googleAgain = await googleAuth('google-collision-sub', sameEmail);
-  check('повторный Google-вход остаётся в своём аккаунте', googleAgain.json.user.id === googleUser);
-  check('email-аккаунт по-прежнему недоступен через Google', googleAgain.json.user.id !== emailUser);
+  // Повторный вход тем же Google — тот же аккаунт, без дубликатов.
+  const usersBefore = (await one('SELECT COUNT(*) AS n FROM users')).n;
+  const again = await googleAuth('google-collision-sub', sameEmail);
+  check('повторный Google-вход остаётся в своём аккаунте', again.json.user.id === googleUser);
+  check('дубликат пользователя не создан',
+    (await one('SELECT COUNT(*) AS n FROM users')).n === usersBefore, `было ${usersBefore}`);
 
-  // VK с тем же email — тоже отдельный аккаунт.
-  const vk = await vkAuth(880001, sameEmail);
-  const vkUser = await one('SELECT user_id FROM oauth_identities WHERE provider = ?1 AND provider_subject = ?2', 'vk', '880001');
-  check('VK с совпадающим email создаёт отдельный аккаунт',
-    vk.status === 302 && vkUser && vkUser.user_id !== emailUser, String(vk.location));
-  const vkRow = await one('SELECT email FROM users WHERE id = ?1', vkUser.user_id);
-  check('VK-аккаунт не получил чужой email', vkRow.email !== sameEmail);
-
-  // Apple с тем же email — отдельный аккаунт (в т.ч. Private Relay).
-  const apple = await appleAuth('apple-collision-sub', sameEmail);
-  const appleUser = await one('SELECT user_id FROM oauth_identities WHERE provider = ?1 AND provider_subject = ?2', 'apple', 'apple-collision-sub');
-  check('Apple с совпадающим email создаёт отдельный аккаунт',
-    apple.status === 302 && appleUser && appleUser.user_id !== emailUser);
-
-  // Вход с неподтверждённым email у Google отклоняется (нельзя полагаться на email).
-  const unverified = await googleAuth('google-unverified-sub', 'unverified@example.com', { emailVerified: false });
+  // Негативные сценарии.
   check('Google с email_verified=false отклоняется',
-    unverified.json.error && unverified.json.error.code === 'EMAIL_NOT_VERIFIED', JSON.stringify(unverified.json));
+    (await googleAuth('google-unverified', 'u@example.com', { emailVerified: false })).json.error.code === 'EMAIL_NOT_VERIFIED');
+  check('credential без state отклоняется',
+    (await googleAuth('google-nostate', 'n@example.com', { state: '', credential: 'x.y.z' })).json.error.code === 'VALIDATION');
+  const bogus = await signJwt(googleClaims({ nonce: 'nope', sub: 'google-bogus', email: 'b@example.com' }));
+  check('несуществующий state отклоняется',
+    (await googleAuth('google-bogus', 'b@example.com', { state: 'deadbeefdeadbeef', credential: bogus })).json.error.code === 'BAD_STATE');
+
+  // Replay: тот же state и credential второй раз не проходят.
+  const gate = await (await oauth.handleGoogleNonce(
+    request('/api/auth/oauth/google/nonce', { body: { mode: 'login' } }), env)).json();
+  const token = await signJwt(googleClaims({ nonce: gate.nonce, sub: 'google-replay', email: 'r@example.com' }));
+  const first = await googleAuth('google-replay', 'r@example.com', { state: gate.state, credential: token });
+  const second = await googleAuth('google-replay', 'r@example.com', { state: gate.state, credential: token });
+  check('первый вход по credential проходит', first.json.ok === true);
+  check('повторная отправка того же state/credential отклоняется',
+    second.json.error && second.json.error.code === 'BAD_STATE', JSON.stringify(second.json));
+
+  // Провайдер не настроен — честная ошибка, без «имитации» входа.
+  let disabled = null;
+  try {
+    await oauth.handleGoogleNonce(request('/api/auth/oauth/google/nonce', { body: { mode: 'login' } }),
+      { ...env, GOOGLE_CLIENT_ID: undefined });
+  } catch (error) { disabled = error; }
+  check('без GOOGLE_CLIENT_ID вход отключён (503)', disabled && disabled.code === 'PROVIDER_DISABLED', disabled && disabled.code);
+
+  const providers = await (await oauth.handleProviders(request('/api/auth/providers', { method: 'GET' }), env)).json();
+  check('список провайдеров содержит только Google',
+    providers.providers.length === 1 && providers.providers[0].id === 'google', JSON.stringify(providers));
 }
 
 /* ───────────────────────────── 9. Последний способ входа ───────────────────────────── */
@@ -674,88 +544,78 @@ async function appleAuth(sub, email, { cookie, mode = 'login' } = {}) {
   const soloCookie = solo.cookie;
   const soloId = solo.json.user.id;
 
-  const reauthFor = async (cookie, mode = 'link') => {
+  const refreshReauth = async (cookie, sub, email) => {
     const gate = await (await oauth.handleGoogleNonce(
-      request('/api/auth/oauth/google/nonce', { body: { mode }, cookie }), env)).json();
-    return gate;
+      request('/api/auth/oauth/google/nonce', { body: { mode: 'link' }, cookie }), env)).json();
+    const credential = await signJwt(googleClaims({ nonce: gate.nonce, sub, email }));
+    await oauth.handleGoogleLogin(request('/api/auth/oauth/google', {
+      body: { state: gate.state, credential }, cookie,
+    }), env);
   };
 
-  const gate = await reauthFor(soloCookie);
-  const credential = await signJwt(googleClaims({ nonce: gate.nonce, sub: 'solo-google-sub', email: 'solo@example.com' }));
-  await oauth.handleGoogleLogin(request('/api/auth/oauth/google', {
-    body: { state: gate.state, credential }, cookie: soloCookie,
-  }), env); // освежаем reauth-событие
-
+  await refreshReauth(soloCookie, 'solo-google-sub', 'solo@example.com');
   let lastMethod = null;
   try {
-    await oauth.handleUnlink(request('/api/auth/identities/unlink', {
-      body: { provider: 'google' }, cookie: soloCookie,
-    }), env);
-  } catch (e) { lastMethod = e; }
-  check('единственный способ входа нельзя отвязать', lastMethod && lastMethod.code === 'LAST_AUTH_METHOD', lastMethod && lastMethod.code);
-  const stillLinked = await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', soloId);
-  check('привязка осталась на месте', stillLinked.n === 1);
+    await oauth.handleUnlink(request('/api/auth/identities/unlink', { body: { provider: 'google' }, cookie: soloCookie }), env);
+  } catch (error) { lastMethod = error; }
+  check('единственный способ входа нельзя отвязать',
+    lastMethod && lastMethod.code === 'LAST_AUTH_METHOD', lastMethod && lastMethod.code);
+  check('привязка осталась на месте',
+    (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', soloId)).n === 1);
 
-  // Параллельная отвязка: у аккаунта два провайдера, оба запроса одновременно.
-  const duo = await googleAuth('duo-sub', 'duo@example.com');
-  const duoId = duo.json.user.id;
-  const duoCookie = duo.cookie;
-  // Привязываем VK к тому же аккаунту.
-  const vkStart = await (await oauth.handleVkStart(
-    request('/api/auth/oauth/vk/start', { body: { mode: 'link' }, cookie: duoCookie }), env)).json();
-  const vkUrl = new URL(vkStart.url);
-  const vkCb = new URL('https://rh-music.pages.dev/api/auth/oauth/vk/callback');
-  vkCb.searchParams.set('code', 'vk-duo');
-  vkCb.searchParams.set('state', vkUrl.searchParams.get('state'));
-  vkTokenResponse = { access_token: 'vk', refresh_token: 'r', user_id: '880002', expires_in: 3600 };
-  vkUserInfo = { user: { user_id: 880002, first_name: 'Дуо', last_name: 'Тест', email: '' } };
-  await oauth.handleVkCallback(request(vkCb.pathname + vkCb.search, { method: 'GET' }), env, vkCb);
-  check('второй провайдер привязан', (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', duoId)).n === 2);
-
-  // Свежее подтверждение через OAuth, затем два параллельных unlink.
-  const gate2 = await (await oauth.handleGoogleNonce(
-    request('/api/auth/oauth/google/nonce', { body: { mode: 'link' }, cookie: duoCookie }), env)).json();
-  const cred2 = await signJwt(googleClaims({ nonce: gate2.nonce, sub: 'duo-sub', email: 'duo@example.com' }));
-  await oauth.handleGoogleLogin(request('/api/auth/oauth/google', {
-    body: { state: gate2.state, credential: cred2 }, cookie: duoCookie,
-  }), env);
-
-  const attempt = (provider) => oauth.handleUnlink(request('/api/auth/identities/unlink', {
-    body: { provider }, cookie: duoCookie,
-  }), env).then(() => 'ok').catch((e) => e.code);
-
-  // Каждому запросу нужно своё reauth-событие: добавляем два и пробуем параллельно.
-  await store.addReauth(env, duoId, 'provider');
-  await store.addReauth(env, duoId, 'provider');
-  const results = await Promise.all([attempt('google'), attempt('vk')]);
-  const left = await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', duoId);
-  check('параллельная отвязка не оставляет аккаунт без входа',
-    left.n === 1, 'results=' + JSON.stringify(results) + ' left=' + left.n);
-  check('ровно один параллельный запрос отклонён',
-    results.filter((r) => r === 'ok').length === 1 && results.includes('LAST_AUTH_METHOD'),
-    JSON.stringify(results));
-
-  // Добавили второй способ — старый можно отвязать.
+  // Две Google-идентичности без пароля: отвязка тоже запрещена, ничего не удаляется.
+  await refreshReauth(soloCookie, 'solo-google-second', 'solo2@example.com');
+  check('вторая Google-идентичность привязана',
+    (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', soloId)).n === 2);
   await store.addReauth(env, soloId, 'provider');
-  const linkStart = await (await oauth.handleVkStart(
-    request('/api/auth/oauth/vk/start', { body: { mode: 'link' }, cookie: soloCookie }), env)).json();
-  const linkUrl = new URL(linkStart.url);
-  const linkCb = new URL('https://rh-music.pages.dev/api/auth/oauth/vk/callback');
-  linkCb.searchParams.set('code', 'vk-solo-link');
-  linkCb.searchParams.set('state', linkUrl.searchParams.get('state'));
-  vkTokenResponse = { access_token: 'vk', refresh_token: 'r', user_id: '880003', expires_in: 3600 };
-  vkUserInfo = { user: { user_id: 880003, first_name: 'Соло', last_name: 'Линк', email: '' } };
-  const vkLinked = await oauth.handleVkCallback(request(linkCb.pathname + linkCb.search, { method: 'GET' }), env, linkCb);
-  check('VK привязан к OAuth-аккаунту из сессии', vkLinked.status === 302 &&
+  let lastMethod2 = null;
+  try {
+    await oauth.handleUnlink(request('/api/auth/identities/unlink', { body: { provider: 'google' }, cookie: soloCookie }), env);
+  } catch (error) { lastMethod2 = error; }
+  check('две OAuth-идентичности без пароля тоже нельзя отвязать',
+    lastMethod2 && lastMethod2.code === 'LAST_AUTH_METHOD', lastMethod2 && lastMethod2.code);
+  check('обе привязки сохранены',
     (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', soloId)).n === 2);
 
-  await store.addReauth(env, soloId, 'provider');
-  const unlinkOld = await (await oauth.handleUnlink(request('/api/auth/identities/unlink', {
-    body: { provider: 'google' }, cookie: soloCookie,
+  // Аккаунт с паролем: Google привязывается и отвязывается свободно.
+  const reg = await auth.handleRegister(request('/api/auth/register', {
+    body: { username: 'withpass', email: 'withpass@example.com', password: 'StrongPass1', confirmPassword: 'StrongPass1' },
+  }), env);
+  const passUser = (await reg.json()).user.id;
+  const passCookie = cookieOf(reg);
+  const gate = await (await oauth.handleGoogleNonce(
+    request('/api/auth/oauth/google/nonce', { body: { mode: 'link' }, cookie: passCookie }), env)).json();
+  const credential = await signJwt(googleClaims({ nonce: gate.nonce, sub: 'pass-google-sub', email: 'pass-google@example.com' }));
+  const linked = await (await oauth.handleGoogleLogin(request('/api/auth/oauth/google', {
+    body: { state: gate.state, credential }, cookie: passCookie,
   }), env)).json();
-  check('после привязки второго способа старый отвязывается', unlinkOld.ok && unlinkOld.removed === 'google');
-  check('остался ровно один способ входа',
-    (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', soloId)).n === 1);
+  check('Google привязывается к аккаунту с паролем', linked.linked === true && linked.user.id === passUser);
+  const unlinked = await (await oauth.handleUnlink(request('/api/auth/identities/unlink', {
+    body: { provider: 'google', password: 'StrongPass1' }, cookie: passCookie,
+  }), env)).json();
+  check('Google отвязывается, пока остаётся пароль', unlinked.ok === true && unlinked.removed === 'google');
+  check('привязок не осталось',
+    (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', passUser)).n === 0);
+
+  // Параллельная отвязка: второй запрос не должен оставить аккаунт без входа.
+  const gate2 = await (await oauth.handleGoogleNonce(
+    request('/api/auth/oauth/google/nonce', { body: { mode: 'link' }, cookie: passCookie }), env)).json();
+  const credential2 = await signJwt(googleClaims({ nonce: gate2.nonce, sub: 'parallel-google-sub', email: 'parallel@example.com' }));
+  await oauth.handleGoogleLogin(request('/api/auth/oauth/google', {
+    body: { state: gate2.state, credential: credential2 }, cookie: passCookie,
+  }), env);
+  const attempt = () => oauth.handleUnlink(request('/api/auth/identities/unlink', {
+    body: { provider: 'google', password: 'StrongPass1' }, cookie: passCookie,
+  }), env).then(() => 'ok').catch((error) => error.code);
+  const results = await Promise.all([attempt(), attempt()]);
+  check('параллельная отвязка не оставляет аккаунт без способа входа',
+    (await one('SELECT COUNT(*) AS n FROM oauth_identities WHERE user_id = ?1', passUser)).n === 0
+    && (await one('SELECT password_hash FROM users WHERE id = ?1', passUser)).password_hash !== '',
+    JSON.stringify(results));
+  check('ровно один параллельный запрос выполнен',
+    results.filter((item) => item === 'ok').length === 1
+    && results.every((item) => item === 'ok' || item === 'LAST_AUTH_METHOD' || item === 'NOT_LINKED'),
+    JSON.stringify(results));
 }
 
 /* ───────────────────────────── 10. Повторная аутентификация ───────────────────────────── */
@@ -765,48 +625,43 @@ async function appleAuth(sub, email, { cookie, mode = 'login' } = {}) {
   const id = account.json.user.id;
   const cookie = account.cookie;
 
-  // 5 минут: событие старше 5 минут не принимается.
   await store.addReauth(env, id, 'provider');
   await D1.prepare('UPDATE reauth_events SET created_at = ?1 WHERE user_id = ?2')
     .bind(new Date(Date.now() - 6 * 60000).toISOString(), id).run();
   let expired = null;
   try {
     await oauth.handleUnlink(request('/api/auth/identities/unlink', { body: { provider: 'google' }, cookie }), env);
-  } catch (e) { expired = e; }
-  check('подтверждение старше 5 минут не принимается', expired && expired.code === 'REAUTH_REQUIRED', expired && expired.code);
+  } catch (error) { expired = error; }
+  check('подтверждение старше 5 минут не принимается',
+    expired && expired.code === 'REAUTH_REQUIRED', expired && expired.code);
 
-  // Свежее событие расходуется один раз.
   await store.addReauth(env, id, 'provider');
-  const first = await store.consumeReauth(env, id, 300);
-  const second = await store.consumeReauth(env, id, 300);
-  check('reauth-событие одноразовое', !!first && second === null, String(first) + '/' + String(second));
+  const firstUse = await store.consumeReauth(env, id, 300);
+  const secondUse = await store.consumeReauth(env, id, 300);
+  check('reauth-событие одноразовое', !!firstUse && secondUse === null, String(firstUse) + '/' + String(secondUse));
 
-  // Событие другого пользователя не подходит.
   const otherAccount = await googleAuth('reauth-other-sub', 'reauth-other@example.com');
   const otherId = otherAccount.json.user.id;
   await store.addReauth(env, id, 'provider');
-  const beforeForId = await one('SELECT COUNT(*) AS n FROM reauth_events WHERE user_id = ?1 AND used_at IS NULL', id);
+  const before = await one('SELECT COUNT(*) AS n FROM reauth_events WHERE user_id = ?1 AND used_at IS NULL', id);
   await store.consumeReauth(env, otherId, 300);
-  const afterForId = await one('SELECT COUNT(*) AS n FROM reauth_events WHERE user_id = ?1 AND used_at IS NULL', id);
-  check('reauth другого пользователя недоступен',
-    beforeForId.n === afterForId.n && afterForId.n >= 1, `${beforeForId.n} → ${afterForId.n}`);
+  const after = await one('SELECT COUNT(*) AS n FROM reauth_events WHERE user_id = ?1 AND used_at IS NULL', id);
+  check('reauth другого пользователя недоступен', before.n === after.n && after.n >= 1, `${before.n} → ${after.n}`);
 
-  // У OAuth-аккаунта без подтверждения удаление отклоняется.
   let noReauthDelete = null;
   try {
     await auth.handleDeleteAccount(request('/api/auth/account', {
       method: 'DELETE', body: { confirm: 'DELETE' }, cookie: otherAccount.cookie,
     }), env);
-  } catch (e) { noReauthDelete = e; }
+  } catch (error) { noReauthDelete = error; }
   check('удаление OAuth-аккаунта без свежего подтверждения отклоняется',
     noReauthDelete && noReauthDelete.code === 'REAUTH_REQUIRED', noReauthDelete && noReauthDelete.code);
 
-  // После реального входа через Google подтверждение появляется и удаление проходит.
   const fresh = await googleAuth('reauth-other-sub', 'reauth-other@example.com');
-  const del = await auth.handleDeleteAccount(request('/api/auth/account', {
+  const deleted = await auth.handleDeleteAccount(request('/api/auth/account', {
     method: 'DELETE', body: { confirm: 'DELETE' }, cookie: fresh.cookie,
   }), env);
-  check('после повторного OAuth-входа удаление работает', del.status === 200);
+  check('после повторного входа через Google удаление работает', deleted.status === 200);
   check('аккаунт удалён из D1', (await one('SELECT COUNT(*) AS n FROM users WHERE id = ?1', otherId)).n === 0);
 }
 

@@ -157,6 +157,33 @@ check('возобновление из компактного блока не р
 check('переключение трека не раскрывает панель принудительно',
   /playIndex\(next, \{ reveal: false \}\)/.test(app));
 
+/* ───────────────────────────── авторизация: только Google и email ───────────────────────────── */
+
+const appWithoutVendor = app.replace(/AppleWebKit/g, '');
+check('во фронтенде нет VK ID', !/vk[_-]?id|VK ID|id\.vk\.com/i.test(appWithoutVendor));
+check('во фронтенде нет Apple ID', !/apple[_-]?(id|signin)|Sign in with Apple/i.test(appWithoutVendor));
+check('в разметке нет VK/Apple', !/vk|apple/i.test(html.replace(/apple-mobile-web-app|apple-touch|AppleWebKit/gi, '')));
+check('в стилях нет VK/Apple-провайдеров', !/btn-provider|\.provider-text/.test(css));
+check('слот Google Identity Services присутствует', /id="googleSlot"/.test(app));
+check('официальная кнопка Google рендерится через GIS',
+  /accounts\.id\.renderButton/.test(app) && /theme: 'filled_black'/.test(app));
+check('One Tap только на широких экранах',
+  /matchMedia\('\(min-width: 700px\)'\)[\s\S]{0,200}accounts\.id\.prompt\(\)/.test(app));
+check('состояния Google-входа отображаются пользователю',
+  /function setGoogleStatus/.test(app) && /is-loading/.test(css) && /is-error/.test(css) && /is-ok/.test(css));
+check('защита от двойной отправки credential',
+  /googleFlow\.busy/.test(app) && /googleFlow\.lastCredential === response\.credential/.test(app));
+check('nonce запрашивается заново после ошибки',
+  /catch \(error\) \{[\s\S]{0,400}fetchGoogleGate\(googleFlow\.mode\)/.test(app));
+check('клиент не содержит client secret',
+  !/client_secret|clientSecret/i.test(app) && !/client_secret|clientSecret/i.test(html));
+check('в приложении остался один внешний провайдер',
+  (app.match(/PROVIDER_LABEL = \{([^}]*)\}/) || ['', ''])[1].split(',').filter((x) => x.trim()).length === 1);
+check('привязка Google открывается в существующей шторке',
+  /function openGoogleLinkSheet/.test(app) && /sheetOpen\(/.test(app));
+check('в аккаунте показывается только строка Google',
+  /const providerRows = \['google'\]/.test(app));
+
 console.log(`\nПройдено: ${passed}, провалено: ${failures.length}`);
 if (failures.length) {
   console.log('Провалы:');

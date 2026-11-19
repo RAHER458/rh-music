@@ -30,8 +30,7 @@ Cloudflare Worker  rh-music-api
 
 ## Возможности
 
-**Аккаунты.** Один внутренний аккаунт RH—MUSIC на несколько способов входа: email и пароль,
-Google, VK ID, Apple ID. Регистрация, вход, выход, профиль, смена пароля, привязка и отвязка
+**Аккаунты.** Один внутренний аккаунт RH—MUSIC на два способа входа: email с паролем и Google. Регистрация, вход, выход, профиль, смена пароля, привязка и отвязка
 провайдеров, полное удаление аккаунта с повторным подтверждением личности. Сессия
 восстанавливается автоматически при повторном открытии сайта.
 
@@ -149,10 +148,8 @@ Play/Pause; нажатие на обложку или название возв�
 | GET | `/api/auth/providers` | какие внешние способы входа настроены |
 | GET | `/api/auth/identities` | привязанные способы входа |
 | POST | `/api/auth/identities/unlink` | отвязать провайдера (нужно подтверждение) |
-| POST | `/api/auth/oauth/google/nonce` | одноразовый nonce для Google Identity Services |
-| POST | `/api/auth/oauth/google` | вход/привязка по Google ID Token |
-| POST | `/api/auth/oauth/vk/start`, GET `/api/auth/oauth/vk/callback` | VK ID (OAuth 2.1 + PKCE) |
-| POST | `/api/auth/oauth/apple/start`, POST `/api/auth/oauth/apple/callback` | Apple ID (form_post) |
+| POST | `/api/auth/oauth/google/nonce` | одноразовый state/nonce для GIS |
+| POST | `/api/auth/oauth/google` | проверка Google ID Token, вход или привязка |
 
 ## Безопасность
 
@@ -163,12 +160,11 @@ Play/Pause; нажатие на обложку или название возв�
 * Ограничение частоты: регистрация ≤ 6 / 30 мин, вход ≤ 12 / 15 мин на IP.
 * Единый ответ «Неверный логин или пароль» и выравнивание времени ответа (защита от перебора аккаунтов).
 * Все данные фильтруются по `user_id`; обращение к чужому плейлисту или треку возвращает 404.
-* Внешний вход: ID Token проверяется на сервере по JWKS (подпись, `iss`, `aud`, `exp`, `iat`, `nonce`);
-  для Google дополнительно требуется `email_verified`. Данные, пришедшие из frontend, не считаются доказательством личности.
-* `state` и `nonce` одноразовые (таблица `oauth_states`, TTL 10 минут), для VK используется PKCE (S256),
-  `redirect_uri` не берётся из запроса, а фиксируется сервером.
-* Повторный OAuth-callback с тем же `state` отклоняется; привязка чужого внешнего аккаунта невозможна
-  (`UNIQUE (provider, provider_subject)` + проверка `IDENTITY_TAKEN`).
+* Внешний вход (Google): ID Token проверяется на сервере по JWKS (подпись, `iss`, `aud`, `exp`, `iat`, `nonce`),
+  обязателен `email_verified`. Данные, пришедшие из frontend, не считаются доказательством личности.
+* `state` и `nonce` одноразовые (таблица `oauth_states`, TTL 10 минут): повторная отправка того же
+  `state`/credential отклоняется, двойная отправка из интерфейса дополнительно блокируется на клиенте.
+* Привязка чужого Google-аккаунта невозможна (`UNIQUE (provider, provider_subject)` + проверка `IDENTITY_TAKEN`).
 * Аккаунты **не объединяются по совпадению email**: вход через провайдера находит только привязанный
   аккаунт, остальное — явная привязка из настроек после подтверждения личности.
 * Отвязка провайдера и удаление аккаунта требуют свежего подтверждения личности (5 минут, одноразово,
@@ -180,59 +176,38 @@ Play/Pause; нажатие на обложку или название возв�
 
 ## Внешняя авторизация
 
-Код всех трёх провайдеров реализован и проверен тестами (`node tests/oauth.mjs`), но **ключи
-приложений не заданы** — поэтому в интерфейсе кнопки помечены «пока не подключён», а сервер
-возвращает `503 PROVIDER_DISABLED`. Никакой «имитации» входа нет: без ключей вход невозможен.
+В RH—MUSIC два способа входа: **email + пароль** и **Google** (Google Identity Services).
+VK ID и Apple ID не используются и удалены из интерфейса и кода.
 
-Публичные параметры передаются как `plain_text`-биндинги Worker, секреты — как `secret_text`:
+Как работает Google:
 
-| Переменная | Тип | Где взять |
+1. на клиенте официальная кнопка GIS (`renderButton`) получает Google ID Token;
+2. frontend отправляет `credential` и одноразовый `state` на `POST /api/auth/oauth/google`;
+3. сервер проверяет подпись по официальным JWKS Google, `iss`, `aud` (точное совпадение с
+   Client ID), `exp`/`iat`, `nonce` и `email_verified`;
+4. по паре `(provider, provider_subject)` находится существующий аккаунт RH—MUSIC или создаётся
+   новый; выдаётся обычная сессия RH—MUSIC в HttpOnly cookie.
+
+Client secret не нужен и не хранится. Redirect-flow не используется.
+
+| Переменная | Тип | Значение |
 |---|---|---|
-| `GOOGLE_CLIENT_ID` | public | Google Cloud Console → OAuth client (Web) |
-| `VK_CLIENT_ID` | public | id.vk.com → приложение |
-| `VK_CLIENT_SECRET` | secret | id.vk.com → приложение |
-| `APPLE_CLIENT_ID` | public | Apple Developer → Services ID |
-| `APPLE_TEAM_ID` | public | Apple Developer → Membership |
-| `APPLE_KEY_ID` | public | Apple Developer → Keys (Sign in with Apple) |
-| `APPLE_PRIVATE_KEY` | secret | содержимое файла `.p8` |
-| `SITE_URL` | public | необязательно, по умолчанию — домен запроса |
+| `GOOGLE_CLIENT_ID` | public (`plain_text`) | `350559220212-e8jd27djhpdt3fqq1e7tjepm8dnjsq2s.apps.googleusercontent.com` |
+| `SITE_URL` | public, необязательно | `https://rh-music.pages.dev` |
 
-### Google
+Authorized JavaScript origin в Google Cloud Console: `https://rh-music.pages.dev`.
+Redirect URI для этой схемы не требуется — не добавляйте выдуманные адреса.
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → новый проект.
-2. «APIs & Services» → «OAuth consent screen»: тип External, заполнить название и контакты, опубликовать.
-3. «Credentials» → «Create credentials» → «OAuth client ID» → Web application.
-4. Authorized JavaScript origins: `https://rh-music.pages.dev`.
-5. Authorized redirect URIs (для серверного fallback): `https://rh-music.pages.dev/api/auth/oauth/google/callback`.
-6. Client ID → `GOOGLE_CLIENT_ID`. Client secret не нужен: используется Google Identity Services
-   с серверной проверкой ID Token.
+Проверить состояние можно так: `GET /api/auth/providers` → `{"providers":[{"id":"google","enabled":true,...}]}`.
+Если `GOOGLE_CLIENT_ID` не задан, сервер отвечает `503 PROVIDER_DISABLED`, а в интерфейсе вместо кнопки
+показывается понятное сообщение — «имитации» входа нет.
 
-### VK ID
-
-1. [id.vk.com](https://id.vk.com/) → «Создать приложение» → тип «Веб».
-2. Redirect URI: `https://rh-music.pages.dev/api/auth/oauth/vk/callback` (должен совпадать посимвольно).
-3. Client ID → `VK_CLIENT_ID`, Client Secret → `VK_CLIENT_SECRET`.
-4. Доступ: базовый профиль + email.
-
-### Apple ID
-
-1. [Apple Developer](https://developer.apple.com/account/) → Identifiers → App ID, включить «Sign in with Apple».
-2. Services ID (например `com.rh.music.service`) → Configure → Domain: `rh-music.pages.dev`,
-   Return URL: `https://rh-music.pages.dev/api/auth/oauth/apple/callback`.
-3. Keys → новый ключ с «Sign in with Apple», скачать `.p8` (даётся один раз).
-4. `APPLE_CLIENT_ID` = Services ID, `APPLE_TEAM_ID` = Team ID, `APPLE_KEY_ID` = Key ID,
-   `APPLE_PRIVATE_KEY` = содержимое `.p8`.
-5. Требуется платный Apple Developer Program — без него вход через Apple работать не будет.
-
-После добавления значений повторите деплой Worker:
+Обновление Worker с Client ID:
 
 ```bash
-GOOGLE_CLIENT_ID=... VK_CLIENT_ID=... VK_CLIENT_SECRET=... \
-APPLE_CLIENT_ID=... APPLE_TEAM_ID=... APPLE_KEY_ID=... APPLE_PRIVATE_KEY="$(cat AuthKey.p8)" \
-node scripts/deploy-worker.mjs
+GOOGLE_CLIENT_ID=350559220212-e8jd27djhpdt3fqq1e7tjepm8dnjsq2s.apps.googleusercontent.com \
+  node scripts/deploy-worker.mjs
 ```
-
-`GET /api/auth/providers` покажет, какие способы уже включены — интерфейс обновится сам.
 
 ## Деплой
 
@@ -276,8 +251,8 @@ node tests/ui.mjs                      # 45 проверок навигации,
   `search`, `getTracks`, `getArtists`, `getReleases`, `playlists(ids)`, `genres(ids)`), поэтому витрина
   собирается из реальных объектов каталога по жанровым запросам. Обложки плейлистов строятся из обложек
   их треков: серверы каталога не отдают статические обложки плейлистов.
-* Внешний вход (Google / VK ID / Apple) требует ключей приложений; без них кнопки честно помечены
-  как неподключённые.
-* Для OAuth-аккаунтов нет отдельной формы «задать пароль»: добавить email-вход к такому аккаунту пока
-  нельзя, поэтому отвязать единственный внешний способ входа такая учётная запись не может — это
-  осознанное ограничение, а не ошибка.
+* Внешний вход — только Google; без `GOOGLE_CLIENT_ID` кнопка не рисуется, а интерфейс честно
+  сообщает, что способ пока недоступен.
+* Для Google-аккаунтов нет отдельной формы «задать пароль»: добавить email-вход к такому аккаунту пока
+  нельзя, поэтому отвязать единственный способ входа такая учётная запись не может — это осознанное
+  ограничение, а не ошибка.
