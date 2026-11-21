@@ -116,7 +116,7 @@
 
   class BetaMixer {
     constructor(ctx, pitchReady = false) {
-      this.ctx = ctx; this.pitchReady = pitchReady; this.out = ctx.createGain(); this.out.gain.value = 0.82;
+      this.ctx = ctx; this.pitchReady = pitchReady; this.out = ctx.createGain(); this.out.gain.value = 0.70;
       const limiter = ctx.createDynamicsCompressor(); limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 12; limiter.attack.value = 0.003; limiter.release.value = 0.18;
       this.out.connect(limiter); limiter.connect(ctx.destination);
       this.a = this.makeDeck(); this.b = this.makeDeck(); this.active = null;

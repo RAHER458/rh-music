@@ -70,6 +70,10 @@ check('crossfade ends fully incoming', Math.abs(curve[curve.length - 1].out) < 1
 check('crossfade is monotonic', curve.every((p, i) => i === 0 || (p.out <= curve[i - 1].out + 1e-9 && p.in >= curve[i - 1].in - 1e-9)));
 check('crossfade equal-power power sum is stable', curve.every((p) => Math.abs(p.out * p.out + p.in * p.in - 1) < 1e-9));
 check('crossfade never exceeds unity', curve.every((p) => p.out <= 1 && p.in <= 1 && p.out >= 0 && p.in >= 0));
+check('beta output has headroom and limiter', source.includes('this.out.gain.value = 0.70') && source.includes('createDynamicsCompressor') && source.includes('threshold.value = -3'));
+check('beta pauses main audio before starting deck sources', source.indexOf('audio.pause()') < source.indexOf('startDeck(a,'));
+check('beta stops previous active source before new transition', source.includes('state.mixer.stopDeck(state.mixer.active)'));
+check('beta aligns incoming offset by phase lead', source.includes('phaseLead') && source.includes('incomingOffset'));
 check('PulseGrid worker and policy are vendored', source.includes('pulsegrid-analysis-worker') && source.includes('pulsegrid-transition-policy') && source.includes('pulsegrid-pitch-processor'));
 const cacheSource = readFileSync(join(here, '../web/ai-mix-beta/cache.js'), 'utf8');
 check('IndexedDB analysis cache is bounded', cacheSource.includes('indexedDB') && cacheSource.includes('MAX_ENTRIES = 80'));
