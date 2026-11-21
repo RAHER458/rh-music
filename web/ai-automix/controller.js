@@ -206,6 +206,11 @@
     }
   }
 
+  function trimCache(keepIds) {
+    const keep = new Set(keepIds.map(String));
+    for (const key of [...state.cache.keys()]) if (!keep.has(String(key))) state.cache.delete(key);
+  }
+
   function queueCandidates() {
     const hostState = state.host.getState();
     const queue = Array.isArray(hostState.queue) ? hostState.queue : [];
@@ -272,20 +277,23 @@
   }
 
   async function takeOverAndMix() {
-    if (!state.pending || !state.currentEntry) return;
+    if (!state.pending) return;
     const host = state.host.getState();
     const position = host.currentTime;
     try {
-      state.deckA.loadBuffer(state.currentEntry.buffer);
+      if (!state.ownsPlayback) {
+        if (!state.currentEntry) return;
+        state.deckA.loadBuffer(state.currentEntry.buffer);
       state.deckA.setEQ(0, 0, 0);
-      state.deckA.setFilter(0);
-      state.deckA.setCrossfader(0.5);
-      state.deckA.fadeTo(1, 0.01);
-      await state.deckA.play(position, 1);
-      if (state.deckA.paused) throw new Error('Deck A не запустился');
-      const audio = state.host.getAudio ? state.host.getAudio() : null;
-      if (audio) audio.pause();
-      state.ownsPlayback = true;
+        state.deckA.setFilter(0);
+        state.deckA.setCrossfader(0.5);
+        state.deckA.fadeTo(1, 0.01);
+        await state.deckA.play(position, 1);
+        if (state.deckA.paused) throw new Error('Deck A не запустился');
+        const audio = state.host.getAudio ? state.host.getAudio() : null;
+        if (audio) audio.pause();
+        state.ownsPlayback = true;
+      }
       await executeTransition();
     } catch (error) {
       if (state.ownsPlayback) {
@@ -320,6 +328,8 @@
       state.deckA = inDeck;
       state.deckB = outDeck;
       state.activeTrack = pending.track;
+      state.currentEntry = pending.entry;
+      trimCache([String(pending.track.id)]);
       const hostState = state.host.getState();
       if (state.host && typeof state.host.onAdopt === 'function') state.host.onAdopt(state.cache.get(String(pending.track.id)).track, pending.plan.strategy);
       state.activeIndex = hostState.index;
