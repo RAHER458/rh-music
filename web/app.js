@@ -2184,6 +2184,71 @@ function onSmartMixCancelled() {
   markCurrentRow();
 }
 
+function refreshAiAutoMixUI() {
+  const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
+  const phase = info ? info.phase : 'OFF';
+  const active = !!(info && info.active);
+  const label = phase === 'OFF' ? 'AI AutoMix' : phase === 'READY' ? 'AI Ready' : phase === 'MIXING' ? 'AI Mixing' : 'AI ' + phase;
+  if (active && window.RH_SMARTMIX) {
+    try { if (window.RH_SMARTMIX.getSettings().enabled) window.RH_SMARTMIX.setSettings({ enabled: false }); } catch (_) {}
+  }
+  document.querySelectorAll('[data-action="ai-automix-toggle"]').forEach((el) => {
+    el.classList.toggle('is-on', active);
+    el.setAttribute('aria-pressed', active ? 'true' : 'false');
+    el.dataset.phase = phase;
+    if (el.id === 'npAiAutomix') el.textContent = label;
+  });
+  const button = $('aiAutomixBtn');
+  if (button) button.title = label;
+}
+
+function adoptAiTrack(track, strategy) {
+  if (!track) return;
+  const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
+  if (index >= 0) { S.index = index; S.current = track; }
+  flushPlayback(true);
+  updateNowPlayingMeta(track);
+  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
+  renderQueue();
+  markCurrentRow();
+  startPlaybackSession(track, 'automix');
+  savePlayerState(0);
+  toast('AI AutoMix: ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
+  refreshAiAutoMixUI();
+}
+
+function initAiAutoMix() {
+  if (!window.RH_AI_AUTOMIX) return;
+  window.RH_AI_AUTOMIX.init({
+    getState: () => ({
+      current: S.current,
+      index: S.index,
+      queue: S.queue,
+      paused: audio.paused,
+      currentTime: audio.currentTime || 0,
+      duration: Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0),
+      volume: S.volume,
+      muted: S.muted,
+    }),
+    streamUrl,
+    onState: refreshAiAutoMixUI,
+    onToast: toast,
+    onAdopt: adoptAiTrack,
+    onExit: () => {
+      S.loading = false;
+      S.playing = false;
+      updateTransport();
+      if (S.current) {
+        audio.src = streamUrl(S.current);
+        audio.load();
+        audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
+      }
+    },
+    log: (message) => console.debug('[AI AutoMix]', message),
+  });
+  refreshAiAutoMixUI();
+}
+
 function initSmartMix() {
   if (!window.RH_SMARTMIX) return;
   window.RH_SMARTMIX.init({
@@ -2545,6 +2610,17 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   S.loading = true;
   updateTransport();
 
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) {
+    try { audio.pause(); } catch (_) {}
+    S.loading = false;
+    S.playing = true;
+    updateTransport();
+    startPlaybackSession(track, 'automix');
+    savePlayerState(0);
+    window.RH_AI_AUTOMIX.onTrackStarted(track);
+    return;
+  }
+
   audio.src = streamUrl(track);
 
   // Продолжение с места, где остановились после перезагрузки страницы.
@@ -2600,6 +2676,19 @@ function handleAudioFailure(detail) {
 }
 
 function togglePlay() {
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) {
+    const state = window.RH_AI_AUTOMIX.getState();
+    if (state.phase === 'MIXING') return;
+    if (audio.paused || !S.playing) {
+      window.RH_AI_AUTOMIX.resume();
+      S.playing = true;
+    } else {
+      window.RH_AI_AUTOMIX.pause();
+      S.playing = false;
+    }
+    updateTransport();
+    return;
+  }
   if (!S.current) return;
   if (!audio.src) return playIndex(S.index >= 0 ? S.index : 0, { reveal: false });
   if (window.RH_SMARTMIX && window.RH_SMARTMIX.isPlaying && window.RH_SMARTMIX.isPlaying()) {
@@ -3041,6 +3130,7 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
+  if (action === 'ai-automix-toggle') { if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle(); refreshAiAutoMixUI(); return; }
   if (action === 'smartmix-open') { openSmartMixSheet(); return; }
   if (action === 'smartmix-toggle') { toggleSmartMix(); return; }
   if (action === 'smartmix-bars') { setSmartMixBars(target.dataset.bars); return; }
@@ -3718,6 +3808,7 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   if (layout && layout.sidebarCollapsed) document.body.classList.add('sidebar-collapsed');
   restorePlayerState();
   initSmartMix();
+  initAiAutoMix();
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   updateTransport();
   await refreshMe();
