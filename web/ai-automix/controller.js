@@ -315,6 +315,7 @@
           if (elapsed >= pending.plan.durationSec) { clearInterval(timer); resolve(); }
         }, 80);
       }), (pending.plan.durationSec + 10) * 1000, 'transition');
+      if (state.phase === 'OFF') return;
       engine.completeTransition(outDeck, inDeck);
       state.deckA = inDeck;
       state.deckB = outDeck;
@@ -326,6 +327,12 @@
       setPhase('ACTIVE');
       await planNext();
     } catch (error) {
+      if (state.ownsPlayback) {
+        const position = state.deckA ? state.deckA.currentTime : 0;
+        state.ownsPlayback = false;
+        try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
+        if (state.host && typeof state.host.onExit === 'function') state.host.onExit({ position });
+      }
       fail(error && error.message ? error.message : String(error));
     }
   }
