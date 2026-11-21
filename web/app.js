@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-18';
+window.RH_BUILD = 'neural-2026-11-21-19';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2974,24 +2974,19 @@ function startNpCinema(track) {
 }
 
 function animateNpText(track) {
+  // Data is authoritative: apply it before any reveal animation starts.
+  applyNpText(track);
   const info = document.querySelector('.np-info');
-  if (!info || npReducedMotion()) { applyNpText(track); info?.classList.remove('is-changing'); return; }
+  if (!info || npReducedMotion()) { info?.classList.remove('is-changing', 'is-cinema-text'); return; }
   const token = ++npTextToken;
-  info.classList.add('is-changing');
+  info.classList.remove('is-changing', 'is-cinema-text');
+  void info.offsetWidth;
+  info.classList.add('is-cinema-text');
   if (npTextTimer) clearTimeout(npTextTimer);
   npTextTimer = setTimeout(() => {
     npTextTimer = 0;
-    if (token !== npTextToken) return;
-    applyNpText(track);
-    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 80);
-    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 900);
-    if (!npReducedMotion()) {
-      info.classList.remove('is-cinema-text');
-      void info.offsetWidth;
-      info.classList.add('is-cinema-text');
-      setTimeout(() => { if (token === npTextToken) info.classList.remove('is-cinema-text'); }, 2400);
-    }
-  }, 380);
+    if (token === npTextToken) info.classList.remove('is-cinema-text');
+  }, 2400);
 }
 
 function animateNpCover(track) {
@@ -3001,48 +2996,44 @@ function animateNpCover(track) {
   const token = ++npCoverToken;
   const current = first.classList.contains('is-active') ? first : second.classList.contains('is-active') ? second : null;
 
-  if (!track || !track.cover) {
-    first.classList.remove('is-active', 'is-leaving');
-    second.classList.remove('is-active', 'is-leaving');
+  const showFallback = () => {
+    first.classList.remove('is-active', 'is-leaving', 'is-cinema-in');
+    second.classList.remove('is-active', 'is-leaving', 'is-cinema-in');
     first.removeAttribute('src');
     second.removeAttribute('src');
     triggerNpBurst($('npArt'));
-    return;
-  }
+  };
+
+  if (!track || !track.cover) { showFallback(); return; }
 
   const url = pic(track.cover, 640);
   const target = current === first ? second : first;
-  if (current && current.getAttribute('src') === url) return;
+  if (current && current.getAttribute('src') === url && current.complete) return;
 
-  const loader = new Image();
-  loader.decoding = 'async';
-  let committed = false;
-  const commit = () => {
-    if (token !== npCoverToken || committed) return;
-    committed = true;
-    target.src = url;
-    target.classList.remove('is-leaving', 'is-cinema-in');
-    target.classList.add('is-active', 'is-cinema-in');
-    target.setAttribute('aria-hidden', 'false');
-    triggerNpBurst($('npArt'));
-    requestAnimationFrame(() => setNpPalette($('npArt'), target));
-    if (current) {
-      current.classList.remove('is-active', 'is-cinema-in');
-      current.classList.add('is-leaving');
-      current.setAttribute('aria-hidden', 'true');
-      setTimeout(() => { if (token === npCoverToken) current.classList.remove('is-leaving'); }, 1200);
-    }
-  };
-  loader.onload = commit;
-  loader.onerror = () => {
+  // Switch metadata/cover immediately. If the image is not decoded yet, the
+  // existing fallback stays visible instead of leaving the previous cover
+  // under the new track title.
+  target.classList.remove('is-leaving', 'is-cinema-in');
+  target.src = url;
+  target.classList.add('is-active', 'is-cinema-in');
+  target.setAttribute('aria-hidden', 'false');
+  if (current) {
+    current.classList.remove('is-active', 'is-cinema-in');
+    current.classList.add('is-leaving');
+    current.setAttribute('aria-hidden', 'true');
+    setTimeout(() => { if (token === npCoverToken) current.classList.remove('is-leaving'); }, 1200);
+  }
+  triggerNpBurst($('npArt'));
+
+  const onReady = () => {
     if (token !== npCoverToken) return;
-    first.classList.remove('is-active', 'is-leaving');
-    second.classList.remove('is-active', 'is-leaving');
-    first.removeAttribute('src');
-    second.removeAttribute('src');
-    triggerNpBurst($('npArt'));
+    try { setNpPalette($('npArt'), target); } catch (_) {}
   };
-  loader.src = url;
+  if (target.complete && target.naturalWidth > 0) onReady();
+  else {
+    target.onload = onReady;
+    target.onerror = () => { if (token === npCoverToken) showFallback(); };
+  }
 }
 
 function updateNowPlayingMeta(track) {

@@ -14,7 +14,9 @@ check('cover crossfade uses opacity and scale', css.includes('img.np-cover-layer
 check('text block fades and shifts', css.includes('.np-info.is-changing') && css.includes('translateY(4px)'));
 check('cinematic duration is about 2.5s', css.includes('np-cover-arrive 1.6s') && css.includes('np-cover-depart 1.05s') && css.includes('np-light-burst 1.45s') && css.includes('np-title-reveal 1.1s'));
 check('text reveal is sequenced title before artist', css.includes('np-title-reveal 1.1s') && css.includes('np-artist-reveal .95s') && css.includes('.28s'));
-check('new cover is preloaded before commit', app.includes('new Image()') && app.includes('loader.onload = commit') && app.includes('loader.onerror'));
+check('metadata is applied before reveal animation', app.includes('applyNpText(track);') && app.indexOf('applyNpText(track);') < app.indexOf('is-cinema-text'));
+check('cover switches immediately, not after image load', app.includes('target.src = url;') && app.includes("target.classList.add('is-active', 'is-cinema-in')"));
+check('palette is extracted after the image is ready', app.includes('const onReady = () =>') && app.includes('setNpPalette'));
 check('stale cover loads are rejected', app.includes('npCoverToken') && app.includes('token !== npCoverToken'));
 check('same track does not restart text animation', app.includes('sameTrack') && app.includes('if (sameTrack) applyNpText'));
 check('rapid track changes cancel text timer', app.includes('clearTimeout(npTextTimer)'));
