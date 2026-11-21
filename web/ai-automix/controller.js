@@ -116,7 +116,7 @@
     if (state.engine) return;
     if (!state.lib) {
       setPhase('LOADING', 0);
-      state.lib = await withTimeout(import('./automix-engine.js?v=3'), 15_000, 'engine module');
+      state.lib = await withTimeout(import('./automix-engine.js?v=4'), 15_000, 'engine module');
       setPhase('LOADING', 1);
       state.core = state.lib.createAutoMixCore({ sessionId: 'rh-music' });
       state.core.initialize();
@@ -480,6 +480,7 @@
       })(),
       deckA: state.deckA ? { time: state.deckA.currentTime, duration: state.deckA.duration, paused: state.deckA.paused } : null,
       deckB: state.deckB ? { time: state.deckB.currentTime, duration: state.deckB.duration, paused: state.deckB.paused } : null,
+      meter: state.engine && typeof state.engine.metrics === 'function' ? state.engine.metrics() : null,
     };
   }
 

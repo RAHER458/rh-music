@@ -2321,6 +2321,20 @@ function equalPowerGain() {
     }
     return { out: automation(out), in: automation(inn) };
 }
+function musicalBlendGain() {
+    // Keep the outgoing record audible through the middle of the blend while
+    // bringing the incoming record in progressively. This avoids the audible
+    // level dip of a symmetric equal-power fade without adding makeup gain.
+    const points = 32;
+    const out = [];
+    const inn = [];
+    for (let i = 0; i <= points; i += 1) {
+        const t = i / points;
+        out.push([t, Math.pow(Math.cos((t * Math.PI) / 2), 0.55)]);
+        inn.push([t, Math.pow(Math.sin((t * Math.PI) / 2), 1.35)]);
+    }
+    return { out: automation(out), in: automation(inn) };
+}
 function buildEq(strategy) {
     const group = META[strategy].group;
     if (strategy === 'bass-swap') {
@@ -2430,13 +2444,13 @@ function buildGain(strategy) {
         return { out: automation([[0, 1], [0.49, 1], [0.5, 0], [1, 0]]), in: automation([[0, 0], [0.5, 0], [0.51, 1], [1, 1]]) };
     }
     if (strategy === 'bass-swap') {
-        return { out: automation([[0, 1], [0.4, 1], [0.55, 0.2], [1, 0]]), in: automation([[0, 0], [0.35, 0], [0.55, 0.7], [1, 1]]) };
+        return { out: automation([[0, 1], [0.55, 1], [0.78, 0.72], [1, 0]]), in: automation([[0, 0], [0.35, 0], [0.62, 0.45], [0.82, 0.82], [1, 1]]) };
     }
     if (strategy === 'frequency-swap') {
-        return { out: automation([[0, 1], [0.5, 1], [0.55, 0], [1, 0]]), in: automation([[0, 0], [0.5, 0], [0.55, 1], [1, 1]]) };
+        return { out: automation([[0, 1], [0.58, 1], [0.82, 0.55], [1, 0]]), in: automation([[0, 0], [0.45, 0], [0.75, 0.6], [1, 1]]) };
     }
     if (strategy === 'vocal-safe') {
-        return { out: automation([[0, 1], [0.2, 0.9], [0.7, 0.4], [1, 0]]), in: automation([[0, 0], [0.5, 0], [0.8, 1], [1, 1]]) };
+        return { out: automation([[0, 1], [0.3, 0.95], [0.7, 0.62], [0.9, 0.35], [1, 0]]), in: automation([[0, 0], [0.5, 0], [0.8, 0.75], [1, 1]]) };
     }
     if (strategy === 'vocal-handoff') {
         return { out: automation([[0, 1], [0.5, 0.8], [1, 0]]), in: automation([[0, 0], [0.5, 0.2], [1, 1]]) };
@@ -2451,7 +2465,7 @@ function buildGain(strategy) {
         return { out: automation([[0, 1], [0.7, 0.8], [1, 0]]), in: automation([[0, 0], [0.3, 0.1], [1, 1]]) };
     }
     if (strategy === 'percussion-blend') {
-        return { out: automation([[0, 1], [0.4, 1], [1, 0]]), in: automation([[0, 0], [0.6, 0], [1, 1]]) };
+        return { out: automation([[0, 1], [0.5, 1], [0.8, 0.65], [1, 0]]), in: automation([[0, 0], [0.45, 0], [0.8, 0.7], [1, 1]]) };
     }
     if (strategy === 'echo-out' || strategy === 'delay-transition') {
         return { out: automation([[0, 1], [0.55, 0.7], [1, 0]]), in: automation([[0, 0], [0.3, 0.2], [0.85, 1], [1, 1]]) };
@@ -2462,12 +2476,12 @@ function buildGain(strategy) {
         const inn = [];
         for (let i = 0; i <= points; i += 1) {
             const t = i / points;
-            out.push([t, Math.cos((t * Math.PI) / 2)]);
-            inn.push([t, Math.sin((t * Math.PI) / 2)]);
+            out.push([t, Math.pow(Math.cos((t * Math.PI) / 2), 0.55)]);
+            inn.push([t, Math.pow(Math.sin((t * Math.PI) / 2), 1.35)]);
         }
         return { out: automation(out), in: automation(inn) };
     }
-    return equalPowerGain();
+    return musicalBlendGain();
 }
 function buildEffects(strategy) {
     if (strategy === 'echo-out')
@@ -3585,10 +3599,17 @@ class AudioEngine {
                     this.stretchMode = 'native';
                 }
             }
+            // Native pitch-preserving playback is used by default. The custom
+            // worklet is kept in the bundle for future experiments, but is not
+            // inserted into the live signal path: on iOS it added audible
+            // granular artefacts during tempo-matched transitions.
+            stretchA = null;
+            stretchB = null;
+            this.stretchMode = 'native';
             this.decks.A.attach(ctx, master, stretchA, this.reverb.input);
             this.decks.B.attach(ctx, master, stretchB, this.reverb.input);
-            this.decks.A.setCrossfader(0.5);
-            this.decks.B.setCrossfader(0.5);
+            if (this.decks.A.cross) this.decks.A.cross.gain.value = 1;
+            if (this.decks.B.cross) this.decks.B.cross.gain.value = 1;
         }
         else if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') {
             // iOS can report interrupted/suspended even after the first gesture; re-run
@@ -3670,6 +3691,9 @@ class AudioEngine {
         // Cancel any stale automation before touching transition-owned params.
         outDeck.cancelAutomation();
         inDeck.cancelAutomation();
+        const safeRate = (value) => Math.abs((Number(value) || 1) - 1) <= 0.02 ? (Number(value) || 1) : 1;
+        plan.rateOut = safeRate(plan.rateOut);
+        plan.rateIn = safeRate(plan.rateIn);
         outDeck.setRate(plan.rateOut);
         inDeck.setRate(plan.rateIn);
         outDeck.setEQ(0, 0, 0);

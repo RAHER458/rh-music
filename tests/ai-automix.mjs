@@ -19,6 +19,7 @@ function check(name, condition, extra = '') {
 const html = readFileSync(join(here, '../web/index.html'), 'utf8');
 const app = readFileSync(join(here, '../web/app.js'), 'utf8');
 const controller = readFileSync(join(here, '../web/ai-automix/controller.js'), 'utf8');
+const engineSource = readFileSync(join(here, '../web/ai-automix/automix-engine.js'), 'utf8');
 
 console.log('RH—MUSIC · тесты AI AutoMix\n');
 
@@ -112,6 +113,13 @@ const decision = core.decide('a', [candidate], { ids: [], artists: [] }, { posit
 check('AutoMixCore analyzes active track', !!active);
 check('AutoMixCore chooses a candidate', !!decision.chosen);
 check('AutoMixCore plans a real strategy', !!decision.plan && typeof decision.plan.strategy === 'string');
+check('outgoing gain keeps musical presence longer', engineSource.includes('function musicalBlendGain') && engineSource.includes('Math.pow(Math.cos'));
+check('deck crossfader is not double-attenuated', engineSource.includes('cross.gain.value = 1') && !engineSource.includes('setCrossfader(0.5);\n            this.decks.B'));
+check('native pitch preservation is used for playback quality', engineSource.includes("this.stretchMode = 'native'") && engineSource.includes('stretchA = null;\n            stretchB = null;'));
+check('unsafe tempo rates fall back to 1x', engineSource.includes('const safeRate') && engineSource.includes('<= 0.02'));
+const gainAt = (points, t) => { const p = points.find((x) => x.at >= t) || points[points.length - 1]; return p.value; };
+check('outgoing gain stays high through the middle', gainAt(decision.plan.gain.out, 0.55) >= 0.9, JSON.stringify(decision.plan.gain.out));
+check('incoming gain rises progressively', gainAt(decision.plan.gain.in, 0.62) >= 0.4 && gainAt(decision.plan.gain.in, 1) === 1, JSON.stringify(decision.plan.gain.in));
 check('transition does not start before the latter half', decision.plan.startAt >= 12 * 0.55 - 0.01, String(decision.plan.startAt));
 check('incoming does not start deep inside the track', decision.plan.inStart <= Math.min(12 * 0.25, 45) + 0.01, String(decision.plan.inStart));
 const strategies = lib.strategyCandidates(lib.analyzeAudioBuffer(clickTrack(120), { id: 'a' }), candidateAnalysis);
