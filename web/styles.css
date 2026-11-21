@@ -1952,3 +1952,59 @@ body[data-ai-ring-done="1"] .ai-ring-dot { opacity: 0; }
   .ai-ring, .ai-ring-orbit, .ai-ring-dot { transition: none; }
   body[data-ai-ring-done="1"] .ai-ring { animation: none; opacity: .6; }
 }
+
+/* ── AutoMix RH AI progress around the three-button Now Playing control ── */
+.np-controls { position: relative; isolation: isolate; }
+.np-mix-ring {
+  position: absolute;
+  left: -12px;
+  top: -8px;
+  width: calc(100% + 24px);
+  height: calc(100% + 16px);
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .28s ease;
+  z-index: 0;
+  filter: drop-shadow(0 0 6px rgba(108,140,255,.35));
+}
+.np-controls > button { position: relative; z-index: 1; }
+.np-mix-base {
+  fill: none;
+  stroke: rgba(140,170,255,.18);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+.np-mix-fill {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--np-mix-progress, 0) * 100);
+  vector-effect: non-scaling-stroke;
+  transition: stroke-dashoffset .18s linear;
+}
+.np-mix-tip {
+  fill: none;
+  stroke: #e8f1ff;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 1.1 98.9;
+  stroke-dashoffset: calc(var(--np-mix-progress, 0) * -100);
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(150,190,255,.9));
+}
+body[data-ai-phase="MIXING"] .np-mix-ring { opacity: 1; }
+body[data-ai-ring-done="1"] .np-mix-ring {
+  opacity: 1;
+  animation: np-ring-finish .65s ease-out forwards;
+}
+@keyframes np-ring-finish {
+  0% { opacity: 1; transform: scale(1); }
+  55% { opacity: .9; transform: scale(1.02); }
+  100% { opacity: 0; transform: scale(1.01); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .np-mix-fill, .np-mix-ring { transition: none; }
+  body[data-ai-ring-done="1"] .np-mix-ring { animation: none; opacity: .6; }
+}

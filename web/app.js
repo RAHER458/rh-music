@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-7';
+window.RH_BUILD = 'neural-2026-11-21-8';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2272,6 +2272,7 @@ function refreshAiAutoMixUI() {
   aiLastPhase = phase;
   document.body.dataset.aiPhase = ringPhase;
   document.body.style.setProperty('--ai-ring-progress', ringProgress.toFixed(3));
+  document.body.style.setProperty('--np-mix-progress', ringProgress.toFixed(3));
   document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
   if (justFinished) {
     document.body.dataset.aiRingDone = '1';

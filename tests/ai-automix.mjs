@@ -61,12 +61,13 @@ check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix
 check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
 check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
-check('AI ring is drawn around the play button', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.ai-ring') && app.includes('--ai-ring-progress'));
-check('AI ring has an orbiting endpoint dot', html.includes('ai-ring-orbit') && html.includes('ai-ring-dot') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--ai-ring-progress'));
-check('AI ring completes at 100% then hides', app.includes('justFinished') && app.includes("dataset.aiRingDone = '1'") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('ai-ring-finish'));
-check('AI ring is invisible outside MIXING', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('body[data-ai-phase="ACTIVE"] .ai-ring'));
-check('AI ring has a real DOM element', html.includes('class="ai-ring"'));
-check('AI ring progress comes from real mix progress', app.includes('Math.max(0, Math.min(1, Number(mix.progress) || 0))') && app.includes('justFinished ? 1'));
+check('mix ring is inside the three-button control block', /id="npPrev"[\s\S]*id="npPlay"[\s\S]*id="npNext"/.test(html) && html.indexOf('np-mix-ring') < html.indexOf('id="npPrev"'));
+check('wrong per-button ring is removed', !html.includes('class="ai-ring"'));
+check('mix ring has base, fill and endpoint', html.includes('np-mix-base') && html.includes('np-mix-fill') && html.includes('np-mix-tip'));
+check('mix ring is styled as a capsule around the control group', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.np-mix-ring') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--np-mix-progress'));
+check('mix ring completes at 100% then hides', app.includes('justFinished') && app.includes("dataset.aiRingDone = '1'") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('np-ring-finish'));
+check('mix ring is invisible outside MIXING', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('body[data-ai-phase="MIXING"] .np-mix-ring'));
+check('mix ring progress comes from real mix progress', app.includes('Math.max(0, Math.min(1, Number(mix.progress) || 0))') && app.includes('justFinished ? 1') && app.includes("--np-mix-progress"));
 check('native pause cannot flip Play during AI mix', app.includes('function aiOwnsPlayback') && app.includes("audio.addEventListener('pause', () => {\n  if (aiOwnsPlayback()) return;"));
 check('native timeupdate cannot overwrite AI timeline', app.includes("audio.addEventListener('timeupdate', () => {\n  if (aiOwnsPlayback()) return;"));
 check('transport follows real AI deck paused state', app.includes('S.playing = !ai.paused') && controller.includes('paused: !!state.paused'));
@@ -74,7 +75,7 @@ check('AI ownership is set before pausing native audio', controller.includes('st
 check('phase stays ACTIVE while next track is prepared', controller.includes('state.preparing = true') && controller.includes("if (!state.currentEntry) setPhase('PREPARING')") && controller.includes("state.preparing = false"));
 check('pause freezes both decks and AudioContext', controller.includes('state.paused = true') && controller.includes('state.ctx.suspend') && controller.includes("state.deckB && state.deckB.pause()"));
 check('resume unfreezes AudioContext and deck', controller.includes('state.paused = false') && controller.includes('state.ctx.resume'));
-check('AI ring is hidden when AI is off', app.includes('document.body.dataset.aiPhase = ringPhase') && app.includes("const ringPhase = active ?") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('opacity: 0'));
+check('mix ring is hidden outside MIXING', app.includes('document.body.dataset.aiPhase = ringPhase') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('opacity: 0'));
 check('AI can continue after user queue ends', app.includes('getFallbackTracks') && controller.includes('fallbackCandidates') && controller.includes('fallbackPool'));
 check('AI fallback uses recommendations, not random tracks', app.includes('loadRecommendations()') && app.includes('data.sections') && !controller.includes('Math.random'));
 check('AI avoids repeating recently played tracks', controller.includes('playedIds') && controller.includes('state.playedIds.has'));
