@@ -31,6 +31,7 @@
     activeTrack: null,
     activeIndex: -1,
     pending: null,
+    activePlan: null,
     currentEntry: null,
     ownsPlayback: false,
     trackToken: 0,
@@ -158,6 +159,7 @@
       try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
     }
     state.pending = null;
+    state.activePlan = null;
     state.currentEntry = null;
     state.activeTrack = null;
     state.activeIndex = -1;
@@ -172,6 +174,7 @@
     const position = state.deckA ? state.deckA.currentTime : 0;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.pending = null;
+    state.activePlan = null;
     state.ownsPlayback = false;
     try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
     if (restart && state.host && typeof state.host.onExit === 'function') state.host.onExit({ position });
@@ -253,7 +256,7 @@
         index: candidate.index, analysis: entry.analysis, context: entry.context,
       }], history, playback, {});
       if (!decision.chosen || !decision.plan) { setPhase('DEGRADED'); log('AI не нашёл переход: ' + decision.reason); return; }
-      state.pending = { track: decision.chosen, entry, plan: decision.plan };
+      state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan: decision.plan };
       state.deckB.loadBuffer(entry.buffer);
       state.deckB.cancelAutomation();
       log('AI выбрал: ' + decision.chosen.title + ' · ' + decision.plan.strategy);
@@ -321,6 +324,7 @@
     const pending = state.pending;
     if (!pending) return;
     state.pending = null;
+    state.activePlan = pending;
     try {
       setPhase('MIXING');
       const engine = state.engine;
@@ -333,17 +337,19 @@
           if (!state.engine || state.phase === 'OFF') { clearInterval(timer); resolve(); return; }
           const elapsed = state.ctx.currentTime - tokenStart;
           if (elapsed >= pending.plan.durationSec) { clearInterval(timer); resolve(); }
+          else if (Math.floor(elapsed * 10) % 2 === 0) emit();
         }, 80);
       }), (pending.plan.durationSec + 10) * 1000, 'transition');
       if (state.phase === 'OFF') return;
       engine.completeTransition(outDeck, inDeck);
+      state.activePlan = null;
       state.deckA = inDeck;
       state.deckB = outDeck;
       state.activeTrack = pending.track;
       state.currentEntry = pending.entry;
       trimCache([String(pending.track.id)]);
       const hostState = state.host.getState();
-      if (state.host && typeof state.host.onAdopt === 'function') state.host.onAdopt(state.cache.get(String(pending.track.id)).track, pending.plan.strategy);
+      if (state.host && typeof state.host.onAdopt === 'function') state.host.onAdopt(pending.track, pending.plan.strategy);
       state.activeIndex = hostState.index;
       log('Переход завершён: ' + pending.track.title);
       setPhase('ACTIVE');
@@ -391,6 +397,12 @@
       activeTrack: state.activeTrack,
       nextTrack: state.pending ? state.pending.track : null,
       strategy: state.pending ? state.pending.plan.strategy : null,
+      mix: (() => {
+        const plan = state.activePlan || state.pending;
+        if (!plan) return null;
+        const progress = state.activePlan && state.deckA ? Math.max(0, Math.min(1, (state.deckA.currentTime - plan.plan.startAt) / Math.max(0.1, plan.plan.durationSec))) : 0;
+        return { startAt: plan.plan.startAt, durationSec: plan.plan.durationSec, endAt: plan.plan.startAt + plan.plan.durationSec, strategy: plan.plan.strategy, progress, incoming: plan.track ? { title: plan.track.title, artist: plan.track.artist } : null };
+      })(),
       deckA: state.deckA ? { time: state.deckA.currentTime, duration: state.deckA.duration, paused: state.deckA.paused } : null,
       deckB: state.deckB ? { time: state.deckB.currentTime, duration: state.deckB.duration, paused: state.deckB.paused } : null,
     };

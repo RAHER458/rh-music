@@ -48,6 +48,14 @@ check('takeover verifies real signal before muting standard audio', controller.i
 check('transition failure restores standard audio', controller.includes('transition') && controller.includes('onExit({ position })'));
 check('Smart Mix setting is restored after AI', app.includes('aiSavedSmartMix'));
 check('buffer cache is bounded after transition', controller.includes('trimCache'));
+check('controller stores full RH-MUSIC track after transition', controller.includes('track: candidate.track'));
+check('controller reports real mix start/duration/progress', controller.includes('startAt: plan.plan.startAt') && controller.includes('durationSec: plan.plan.durationSec') && controller.includes('progress'));
+check('timeline uses TransitionPlan values, not animation', app.includes('function applyAiMixTimeline') && app.includes('mix.startAt') && app.includes('mix.durationSec') && app.includes('mix.progress'));
+check('timeline writes CSS seek-band variables', app.includes("'--mix-start'") && app.includes("'--mix-width'") && app.includes("'--mix-progress'"));
+check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix-opacity', mix ? '1' : '0')"));
+check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
+check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.index = index; S.current = track'));
+check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
 
 const lib = await import('../web/ai-automix/automix-engine.js');
 check('engine ESM exports AutoMixCore', typeof lib.AutoMixCore === 'function');

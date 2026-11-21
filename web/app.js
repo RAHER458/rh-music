@@ -2186,6 +2186,32 @@ function onSmartMixCancelled() {
 
 let aiSavedSmartMix = false;
 
+function applyAiMixTimeline(info) {
+  const mix = info && info.mix ? info.mix : null;
+  const duration = S.current ? Number(S.current.duration) || 0 : (Number.isFinite(audio.duration) ? audio.duration : 0);
+  const start = mix && duration > 0 ? Math.max(0, Math.min(100, (mix.startAt / duration) * 100)) : 0;
+  const width = mix && duration > 0 ? Math.max(0, Math.min(100 - start, (mix.durationSec / duration) * 100)) : 0;
+  const progress = mix && Number.isFinite(mix.progress) ? Math.max(0, Math.min(100, mix.progress * 100)) : 0;
+  document.querySelectorAll('.player-progress, .np-progress').forEach((el) => {
+    el.style.setProperty('--mix-start', start + '%');
+    el.style.setProperty('--mix-width', width + '%');
+    el.style.setProperty('--mix-progress', progress + '%');
+    el.style.setProperty('--mix-opacity', mix ? '1' : '0');
+  });
+  const badge = $('aiMixStatus');
+  if (badge) {
+    if (mix && mix.incoming && (info.phase === 'MIXING' || info.phase === 'PREPARING')) {
+      badge.hidden = false;
+      badge.textContent = info.phase === 'MIXING'
+        ? 'MIXING · ' + (S.current ? S.current.title : '') + ' → ' + mix.incoming.title
+        : 'NEXT · ' + mix.incoming.title;
+    } else {
+      badge.hidden = true;
+      badge.textContent = '';
+    }
+  }
+}
+
 function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
@@ -2205,6 +2231,7 @@ function refreshAiAutoMixUI() {
     el.dataset.phase = phase;
     if (el.id === 'npAiAutomix') el.textContent = label;
   });
+  applyAiMixTimeline(info);
   const button = $('aiAutomixBtn');
   if (button) button.title = label;
 }
