@@ -125,7 +125,7 @@ function sandbox({ ua = '', uaDataMobile = null, coarse = false, noHover = false
 /* ───────────────── разметка: изоляция сред ───────────────── */
 
 check('device.js подключается до app.js',
-  html.indexOf('src="device.js"') !== -1 && html.indexOf('src="device.js"') < html.indexOf('src="app.js"'));
+  html.indexOf('src="device.js"') !== -1 && html.indexOf('src="device.js"') < html.indexOf('src="app.js'));
 check('сайдбар помечен как десктопный', /<aside class="sidebar"[^>]*data-ui-only="desktop"/.test(html));
 check('таббар помечен как мобильный', /<nav class="tabbar"[^>]*data-ui-only="mobile"/.test(html));
 check('десктопная верхняя панель помечена', /class="topbar-nav" data-ui-only="desktop"/.test(html) && /id="pageTitle"[^>]*data-ui-only="desktop"/.test(html));

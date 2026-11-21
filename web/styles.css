@@ -1860,3 +1860,34 @@ body[data-ai-phase="ERROR"] .ctrl.play::before { opacity: .55; }
   body[data-ai-phase="ANALYZING"] .ctrl.play::before,
   body[data-ai-phase="PREPARING"] .ctrl.play::before { animation: none; }
 }
+
+
+/* explicit Neural AI ring element (button pseudo-elements are unreliable in WebKit) */
+.ctrl.play::before { content: none !important; }
+.ai-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ai-ring-color, #7CFFCB) calc(var(--ai-ring-progress, 0) * 1turn), rgba(255,255,255,.08) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .35s ease, background .35s ease;
+  z-index: 3;
+}
+body[data-ai-phase="ACTIVE"] .ai-ring,
+body[data-ai-phase="READY"] .ai-ring { opacity: .45; }
+body[data-ai-phase="ANALYZING"] .ai-ring,
+body[data-ai-phase="PREPARING"] .ai-ring {
+  opacity: 1;
+  background: conic-gradient(var(--ai-ring-color, #6C8CFF) 0 25%, rgba(255,255,255,.12) 25% 100%);
+  animation: ai-ring-spin 1.4s linear infinite;
+}
+body[data-ai-phase="MIXING"] .ai-ring { opacity: 1; }
+body[data-ai-phase="DEGRADED"] .ai-ring { opacity: .7; }
+body[data-ai-phase="ERROR"] .ai-ring { opacity: .55; }
+@media (prefers-reduced-motion: reduce) {
+  body[data-ai-phase="ANALYZING"] .ai-ring,
+  body[data-ai-phase="PREPARING"] .ai-ring { animation: none; }
+}

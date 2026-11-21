@@ -56,7 +56,8 @@ check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix
 check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
 check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
-check('AI ring is drawn around the play button', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.ctrl.play::before') && app.includes('--ai-ring-progress'));
+check('AI ring is drawn around the play button', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.ai-ring') && app.includes('--ai-ring-progress'));
+check('AI ring has a real DOM element', html.includes('class="ai-ring"'));
 check('AI ring progress comes from real mix progress', app.includes('const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0'));
 check('AI ring is hidden when AI is off', app.includes("document.body.dataset.aiPhase = active ? phase : ''") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('opacity: 0'));
 check('AI can continue after user queue ends', app.includes('getFallbackTracks') && controller.includes('fallbackCandidates') && controller.includes('fallbackPool'));

@@ -31,7 +31,7 @@ console.log('RH—MUSIC · тесты интерфейса текстов пес
 
 check('скрипт движка подключён после device.js и до app.js',
   html.indexOf('src="device.js"') < html.indexOf('src="lyrics.js"')
-  && html.indexOf('src="lyrics.js"') < html.indexOf('src="app.js"'));
+  && html.indexOf('src="lyrics.js"') < html.indexOf('src="app.js'));
 check('в приложении по-прежнему один аудиоэлемент',
   (html.match(/<audio\b/g) || []).length === 1);
 check('вкладки панели находятся внутри существующей панели очереди',
