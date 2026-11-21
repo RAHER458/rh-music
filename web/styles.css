@@ -1980,7 +1980,7 @@ body[data-ai-ring-done="1"] .ai-ring-dot { opacity: 0; }
   stroke-width: 3;
   stroke-linecap: round;
   stroke-dasharray: 100;
-  stroke-dashoffset: calc(100 - var(--np-mix-progress, 0) * 100);
+  stroke-dashoffset: calc(100px - var(--np-mix-progress, 0) * 100px);
   vector-effect: non-scaling-stroke;
   transition: stroke-dashoffset .18s linear;
 }
@@ -1990,7 +1990,7 @@ body[data-ai-ring-done="1"] .ai-ring-dot { opacity: 0; }
   stroke-width: 6;
   stroke-linecap: round;
   stroke-dasharray: 1.1 98.9;
-  stroke-dashoffset: calc(var(--np-mix-progress, 0) * -100);
+  stroke-dashoffset: calc(var(--np-mix-progress, 0) * -100px);
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 4px rgba(150,190,255,.9));
 }
