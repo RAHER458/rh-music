@@ -2321,6 +2321,57 @@ function initAiAutoMix() {
   }
 }
 
+function applyBetaTimeline(info) {
+  const plan = info && info.plan ? info.plan : null;
+  const duration = info && info.duration ? info.duration : (S.current ? Number(S.current.duration) || 0 : 0);
+  const start = plan && duration > 0 ? Math.max(0, Math.min(100, plan.startAt / duration * 100)) : 0;
+  const width = plan && duration > 0 ? Math.max(0, Math.min(100 - start, plan.durationSec / duration * 100)) : 0;
+  const progress = plan && info.position != null ? Math.max(0, Math.min(1, (info.position - plan.startAt) / Math.max(0.1, plan.durationSec))) : 0;
+  document.querySelectorAll('.player-progress, .np-progress').forEach((el) => {
+    el.style.setProperty('--beta-mix-start', start + '%');
+    el.style.setProperty('--beta-mix-width', width + '%');
+    el.style.setProperty('--beta-mix-progress', (progress * 100) + '%');
+    el.style.setProperty('--beta-mix-opacity', plan ? '1' : '0');
+  });
+  const badge = $('betaMixStatus');
+  if (badge) {
+    if (plan && info.active && (info.phase === 'MIXING' || info.phase === 'READY' || info.phase === 'ACTIVE')) {
+      badge.hidden = false;
+      badge.textContent = info.phase === 'MIXING'
+        ? 'BETA MIXING · ' + (info.activeTrack ? info.activeTrack.title : '') + ' → ' + (info.nextTrack ? info.nextTrack.title : '')
+        : 'BETA NEXT · ' + (info.nextTrack ? info.nextTrack.title : '') + ' · ' + plan.strategy;
+    } else { badge.hidden = true; badge.textContent = ''; }
+  }
+}
+
+function drawBetaWave(info) {
+  const box = $('betaViz');
+  if (!box) return;
+  const beta = window.RH_AI_MIX_BETA;
+  if (!beta || !info || !info.active) { box.hidden = true; return; }
+  const viz = beta.getVisualization ? beta.getVisualization() : null;
+  if (!viz || !viz.outPeaks) { box.hidden = true; return; }
+  box.hidden = false;
+  const draw = (id, peaks, position, duration, color) => {
+    const canvas = $(id); if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const w = canvas.width, h = canvas.height; ctx.clearRect(0, 0, w, h);
+    const bars = Math.min(320, peaks.length);
+    for (let i = 0; i < bars; i += 1) {
+      const p = peaks[Math.floor(i / bars * peaks.length)] || 0;
+      const bh = Math.max(1, p * h * 0.92);
+      ctx.fillStyle = color; ctx.fillRect(i * (w / bars), (h - bh) / 2, Math.max(1, w / bars - 1), bh);
+    }
+    if (duration > 0) {
+      const x = Math.max(0, Math.min(w, (position / duration) * w));
+      ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.fillRect(x, 0, 1.5, h);
+    }
+  };
+  const duration = info.plan ? (S.current ? Number(S.current.duration) || 0 : 0) : (info.duration || 0);
+  draw('betaWaveOut', viz.outPeaks, viz.outPosition, duration || (S.current ? Number(S.current.duration) || 0 : 0), 'rgba(255,120,70,.85)');
+  if (viz.inPeaks) draw('betaWaveIn', viz.inPeaks, viz.inPosition, info.nextTrack ? Number(info.nextTrack.duration) || 0 : 0, 'rgba(120,170,255,.75)');
+}
+
 function refreshAiMixBetaUI() {
   const info = window.RH_AI_MIX_BETA ? window.RH_AI_MIX_BETA.getState() : null;
   const phase = info ? info.phase : 'OFF';
@@ -2331,6 +2382,8 @@ function refreshAiMixBetaUI() {
     el.dataset.phase = phase;
     if (el.id === 'npAiMixBeta') el.textContent = phase === 'OFF' ? 'AI Mix Beta' : 'Beta ' + phase;
   });
+  applyBetaTimeline(info);
+  drawBetaWave(info);
 }
 
 function initAiMixBeta() {
@@ -2365,6 +2418,15 @@ function initAiMixBeta() {
     log: (message) => console.debug('[AI Mix Beta]', message),
   });
   refreshAiMixBetaUI();
+  if (!window.__rhBetaVizTimer) {
+    window.__rhBetaVizTimer = setInterval(() => {
+      const beta = window.RH_AI_MIX_BETA;
+      if (!beta || !beta.ownsPlayback || !beta.ownsPlayback()) return;
+      const info = beta.getState();
+      if (info.position != null) { syncSeek(info.position, info.duration || 0); $('npCur').textContent = fmt(info.position); $('npDur').textContent = fmt(info.duration || 0); }
+      refreshAiMixBetaUI();
+    }, 250);
+  }
 }
 
 function initSmartMix() {

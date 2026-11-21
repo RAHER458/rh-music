@@ -63,7 +63,7 @@
       sections.push({ start: (i / buckets) * track.duration, end: ((i + 1) / buckets) * track.duration, energy: Number((sum / Math.max(1, to - from)).toFixed(3)) });
     }
     const mixOut = Math.max(track.duration * 0.72, track.duration - Math.max(32, track.duration * 0.18));
-    return { id: String(track.id), bpm: Number(bpm.toFixed(2)), beatSec, offset, downbeats, duration: track.duration, sections, energy: result.energy, mixOut, camelot: result.camelot, key: result.key, analysis: 'pulsegrid' };
+    return { id: String(track.id), bpm: Number(bpm.toFixed(2)), beatSec, offset, downbeats, duration: track.duration, sections, peaks, energy: result.energy, mixOut, camelot: result.camelot, key: result.key, analysis: 'pulsegrid' };
   }
 
   function nearestDownbeat(analysis, time) {
@@ -72,22 +72,36 @@
     return best;
   }
 
+  function camelotDistance(a, b) {
+    const parse = (v) => { const m = /^(\d{1,2})([AB])$/i.exec(String(v || '')); return m ? { n: Number(m[1]), mode: m[2].toUpperCase() } : null; };
+    const x = parse(a), y = parse(b); if (!x || !y) return null;
+    const diff = Math.abs(x.n - y.n); const circle = Math.min(diff, 12 - diff);
+    return circle + (x.mode === y.mode ? 0 : 1);
+  }
+
   function planTransition(out, incoming, position) {
     const bpmGap = Math.abs(incoming.bpm - out.bpm) / Math.max(1, out.bpm);
     const start = Math.max(position + 0.2, nearestDownbeat(out, Math.max(out.mixOut, out.duration * 0.72)));
     const remaining = Math.max(0, out.duration - start);
-    const beats = bpmGap <= 0.06 ? 32 : 16;
+    const keyDist = camelotDistance(out.camelot, incoming.camelot);
+    const outEnergy = out.sections.length ? out.sections.slice(-3).reduce((s, x) => s + x.energy, 0) / Math.min(3, out.sections.length) : 0.5;
+    const inEnergy = incoming.sections.length ? incoming.sections.slice(0, 3).reduce((s, x) => s + x.energy, 0) / Math.min(3, incoming.sections.length) : 0.5;
+    const energyDelta = outEnergy - inEnergy;
+    let beats = 32, strategy = 'beta-bass-swap';
+    if (bpmGap > 0.08) { beats = 8; strategy = 'beta-filter-cut'; }
+    else if (keyDist != null && keyDist > 2) { beats = 16; strategy = 'beta-filter-cut'; }
+    else if (energyDelta > 0.22) { beats = 32; strategy = 'beta-long-blend'; }
+    else if (bpmGap > 0.04) { beats = 24; strategy = 'beta-bass-swap'; }
     const plannedSec = Math.min(remaining - 0.2, Math.max(2, beats * 60 / Math.max(60, out.bpm)));
     const profile = pulsePolicy ? pulsePolicy.transitionDurationProfile({ plannedSec, plannedBeats: beats, remainingOutgoingSec: remaining }) : null;
     const durationSec = profile ? profile.effectiveSec : plannedSec;
     const inStart = Math.max(0, nearestDownbeat(incoming, Math.max(incoming.duration * 0.08, incoming.duration * 0.04)));
-    const strategy = bpmGap <= 0.06 ? 'beta-bass-swap' : 'beta-filter-cut';
     return {
       strategy, startAt: Number(start.toFixed(3)), durationSec: Number(durationSec.toFixed(3)),
       endAt: Number((start + durationSec).toFixed(3)), inStart: Number(inStart.toFixed(3)),
       rateIn: Math.max(0.94, Math.min(1.06, out.bpm / Math.max(60, incoming.bpm))),
-      bpmGap, overlapBeats: beats,
-      reason: `${out.bpm}→${incoming.bpm} BPM, ${beats} beats, ${strategy}`,
+      bpmGap, overlapBeats: beats, keyDistance: keyDist, energyDelta: Number(energyDelta.toFixed(3)),
+      reason: `${out.bpm}→${incoming.bpm} BPM · key ${out.camelot || '—'}→${incoming.camelot || '—'} (${keyDist == null ? 'unknown' : keyDist}) · energy Δ${energyDelta.toFixed(2)} · ${beats} beats · ${strategy}`,
     };
   }
 
@@ -135,7 +149,15 @@
     if (!res.ok) throw new Error('stream HTTP ' + res.status);
     const data = await res.arrayBuffer();
     const buffer = await state.ctx.decodeAudioData(data.slice(0));
-    const analysis = await analyzeTrackBuffer(buffer, track);
+    const cache = window.RH_AI_MIX_BETA_CACHE;
+    const cacheKey = 'pg1:' + String(track.id) + ':' + String(track.duration || 0);
+    let analysis = cache ? await cache.get(cacheKey) : null;
+    if (analysis) {
+      note('cache hit: ' + track.title);
+    } else {
+      analysis = await analyzeTrackBuffer(buffer, track);
+      if (cache) { await cache.put(cacheKey, { analysis, trackId: String(track.id), version: 1 }); cache.prune(); }
+    }
     const entry = { track, buffer, analysis };
     state.cache.set(String(track.id), entry);
     while (state.cache.size > 2) state.cache.delete(state.cache.keys().next().value);
@@ -208,10 +230,17 @@
         a.gain.gain.linearRampToValueAtTime(Math.cos(t * Math.PI / 2), at);
         b.gain.gain.linearRampToValueAtTime(Math.sin(t * Math.PI / 2), at);
       }
-      if (plan.strategy === 'beta-bass-swap') {
+      if (plan.strategy === 'beta-bass-swap' || plan.strategy === 'beta-long-blend') {
         a.low.gain.setValueAtTime(0, now); b.low.gain.setValueAtTime(-24, now);
         a.low.gain.linearRampToValueAtTime(-24, swap);
         b.low.gain.linearRampToValueAtTime(0, swap);
+      }
+      if (plan.strategy === 'beta-filter-cut') {
+        a.filter.frequency.setValueAtTime(22000, now);
+        a.filter.frequency.exponentialRampToValueAtTime(350, now + dur);
+      } else if (plan.strategy === 'beta-long-blend') {
+        a.filter.frequency.setValueAtTime(22000, now);
+        a.filter.frequency.linearRampToValueAtTime(9000, now + dur);
       }
       state.host.getAudio()?.pause();
       state.owns = true;
@@ -308,7 +337,23 @@
     ownsPlayback() { return state.owns; },
     pause() { state.mixer?.pause(); }, resume() { state.mixer?.resume(); },
     seek,
-    getDiagnostics() { return { state: getState(), log: state.log.slice() }; },
+    getVisualization() {
+      const activeDeck = state.mixer ? (state.mixer.active || state.mixer.a) : null;
+      const outPeaks = state.active && state.active.analysis ? state.active.analysis.peaks : null;
+      const inPeaks = state.next && state.next.analysis ? state.next.analysis.peaks : null;
+      return {
+        outPeaks, inPeaks,
+        outPosition: activeDeck ? state.mixer.position(activeDeck) : 0,
+        inPosition: state.mixer && state.mixer.b ? state.mixer.position(state.mixer.b) : 0,
+        plan: state.plan,
+        phase: state.phase,
+      };
+    },
+    getDiagnostics() {
+      const base = { state: getState(), log: state.log.slice() };
+      if (window.RH_AI_MIX_BETA_CACHE) window.RH_AI_MIX_BETA_CACHE.stats().then((cache) => { base.cache = cache; });
+      return base;
+    },
     _internal: { analyzeTrackBuffer, planTransition },
   };
 })();

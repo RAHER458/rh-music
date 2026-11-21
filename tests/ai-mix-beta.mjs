@@ -65,6 +65,17 @@ check('transition has real duration', plan.durationSec >= 2);
 check('transition has tempo rate', plan.rateIn > 0.9 && plan.rateIn < 1.1);
 check('strategy is real', ['beta-bass-swap', 'beta-filter-cut'].includes(plan.strategy));
 check('PulseGrid worker and policy are vendored', source.includes('pulsegrid-analysis-worker') && source.includes('pulsegrid-transition-policy') && source.includes('pulsegrid-pitch-processor'));
+const cacheSource = readFileSync(join(here, '../web/ai-mix-beta/cache.js'), 'utf8');
+check('IndexedDB analysis cache is bounded', cacheSource.includes('indexedDB') && cacheSource.includes('MAX_ENTRIES = 80'));
+check('beta uses persistent analysis cache', source.includes('RH_AI_MIX_BETA_CACHE') && source.includes('cacheKey'));
+check('beta strategy uses key/energy', source.includes('camelotDistance') && source.includes('energyDelta') && source.includes('beta-long-blend'));
+check('beta has seamless filter-cut automation', source.includes("strategy === 'beta-filter-cut'") && source.includes('exponentialRampToValueAtTime'));
+check('beta timeline CSS band exists', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--beta-mix-start'));
+check('beta timeline clears and displays incoming', app.includes('applyBetaTimeline') && app.includes('BETA MIXING ·'));
+check('beta status element exists', html.includes('id="betaMixStatus"'));
+check('beta dual waveform canvases exist', html.includes('betaWaveOut') && html.includes('betaWaveIn'));
+check('beta visualization draws real peaks/positions', app.includes('drawBetaWave') && app.includes('getVisualization') && app.includes('outPeaks'));
+check('beta visualization timer follows deck position', app.includes('__rhBetaVizTimer') && app.includes('syncSeek(info.position'));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

@@ -333,6 +333,11 @@
     <div class="np-info">
       <span class="np-song" id="npSong">Ничего не играет</span>
       <span class="ai-mix-status" id="aiMixStatus" hidden></span>
+      <span class="ai-mix-status beta" id="betaMixStatus" hidden></span>
+      <div class="beta-viz" id="betaViz" hidden>
+        <canvas id="betaWaveOut" width="640" height="34" aria-label="Outgoing waveform"></canvas>
+        <canvas id="betaWaveIn" width="640" height="34" aria-label="Incoming waveform"></canvas>
+      </div>
       <span class="np-singer" id="npSinger">Выберите трек</span>
     </div>
 
@@ -416,6 +421,7 @@
 <script src="lyrics.js"></script>
 <script src="smartmix.js"></script>
 <script src="ai-automix/controller.js"></script>
+<script src="ai-mix-beta/cache.js"></script>
 <script src="ai-mix-beta/controller.js"></script>
 <script src="app.js"></script>
 </body>

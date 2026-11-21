@@ -58,3 +58,34 @@ PulseGrid is MIT. Its LICENSE is vendored as `web/ai-mix-beta/PULSEGRID_LICENSE`
 - no stem separation or vocal model;
 - no server components, no paid APIs;
 - no queue expansion beyond the user's queue.
+
+## Analysis cache
+
+`web/ai-mix-beta/cache.js` provides a bounded IndexedDB cache:
+
+- database `rh_ai_mix_beta`, store `analysis`, version 1;
+- max 80 entries, oldest-first pruning;
+- memory fallback when IndexedDB is unavailable;
+- cache key `pg1:<trackId>:<duration>`;
+- analysis results only, never full AudioBuffers in persistent storage;
+- playback does not depend on cache success.
+
+## Visualization
+
+- dual waveform canvases in Now Playing (`betaWaveOut`, `betaWaveIn`), driven by
+  PulseGrid waveform peaks;
+- playback cursor from actual deck position;
+- transition band on both seek bars using `--beta-mix-*` variables;
+- start, width and progress come from the current Beta plan and deck clock;
+- cleared when the plan is absent/cancelled/completed;
+- no fabricated markers.
+
+## Strategy selection
+
+- BPM gap > 8%: filter cut, 8 beats;
+- key distance > 2 (Camelot): filter cut, 16 beats;
+- outgoing energy > incoming by 0.22: long blend, 32 beats;
+- otherwise bass swap, 24/32 beats;
+- PulseGrid transition policy caps duration by remaining outgoing audio.
+
+The engine remains a comparison mode, not a replacement for Neural AutoMix.
