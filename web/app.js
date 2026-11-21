@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-6';
+window.RH_BUILD = 'neural-2026-11-21-7';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2216,6 +2216,7 @@ function applyAiMixTimeline(info) {
 }
 
 const aiDiagState = { events: [], last: '' };
+let aiLastPhase = '';
 function aiDiag(event, extra = {}) {
   try {
     const info = window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.getState ? window.RH_AI_AUTOMIX.getState() : null;
@@ -2265,11 +2266,19 @@ function refreshAiAutoMixUI() {
     if (el.id === 'npAiAutomix') el.textContent = label;
   });
   const mix = info && info.mix ? info.mix : null;
-  const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0;
-  const ringPhase = active ? (phase === 'MIXING' ? 'MIXING' : (info && info.preparing ? 'PREPARING' : phase)) : '';
+  const justFinished = aiLastPhase === 'MIXING' && phase === 'ACTIVE' && active;
+  const ringProgress = justFinished ? 1 : (mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0);
+  const ringPhase = active ? (justFinished ? 'MIXING' : phase === 'MIXING' ? 'MIXING' : (info && info.preparing ? 'PREPARING' : phase)) : '';
+  aiLastPhase = phase;
   document.body.dataset.aiPhase = ringPhase;
   document.body.style.setProperty('--ai-ring-progress', ringProgress.toFixed(3));
   document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
+  if (justFinished) {
+    document.body.dataset.aiRingDone = '1';
+    setTimeout(() => { document.body.dataset.aiRingDone = ''; }, 650);
+  } else if (phase === 'MIXING') {
+    document.body.dataset.aiRingDone = '';
+  }
   applyAiMixTimeline(info);
   const button = $('aiAutomixBtn');
   if (button) button.title = label;

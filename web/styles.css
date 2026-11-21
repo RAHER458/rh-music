@@ -1891,3 +1891,64 @@ body[data-ai-phase="ERROR"] .ai-ring { opacity: .55; }
   body[data-ai-phase="ANALYZING"] .ai-ring,
   body[data-ai-phase="PREPARING"] .ai-ring { animation: none; }
 }
+
+/* Neural AutoMix circular progress: real MIXING only */
+.ai-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ai-ring-color, #9B6BFF) calc(var(--ai-ring-progress, 0) * 1turn), rgba(120,160,255,.10) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .28s ease;
+  z-index: 3;
+  filter: drop-shadow(0 0 6px rgba(108,140,255,.35));
+}
+.ai-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(140,170,255,.16);
+}
+.ai-ring-orbit {
+  position: absolute;
+  inset: 0;
+  transform: rotate(calc(var(--ai-ring-progress, 0) * 1turn));
+  transition: transform .18s linear;
+}
+.ai-ring-dot {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: #e8f1ff;
+  box-shadow: 0 0 7px 2px rgba(108,140,255,.8);
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+body[data-ai-phase="MIXING"] .ai-ring { opacity: 1; }
+body[data-ai-phase="MIXING"] .ai-ring-dot { opacity: 1; }
+body[data-ai-phase="PREPARING"] .ai-ring,
+body[data-ai-phase="ANALYZING"] .ai-ring { opacity: .22; }
+body[data-ai-phase="ACTIVE"] .ai-ring,
+body[data-ai-phase="READY"] .ai-ring { opacity: 0; }
+body[data-ai-ring-done="1"] .ai-ring {
+  opacity: 1;
+  animation: ai-ring-finish .65s ease-out forwards;
+}
+body[data-ai-ring-done="1"] .ai-ring-dot { opacity: 0; }
+@keyframes ai-ring-finish {
+  0% { opacity: 1; transform: scale(1); }
+  55% { opacity: .9; transform: scale(1.06); }
+  100% { opacity: 0; transform: scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-ring, .ai-ring-orbit, .ai-ring-dot { transition: none; }
+  body[data-ai-ring-done="1"] .ai-ring { animation: none; opacity: .6; }
+}

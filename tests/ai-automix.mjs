@@ -62,8 +62,11 @@ check('MIXING shows both tracks', app.includes('MIXING Â· ') && app.includes('â†
 check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
 check('AI ring is drawn around the play button', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.ai-ring') && app.includes('--ai-ring-progress'));
+check('AI ring has an orbiting endpoint dot', html.includes('ai-ring-orbit') && html.includes('ai-ring-dot') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--ai-ring-progress'));
+check('AI ring completes at 100% then hides', app.includes('justFinished') && app.includes("dataset.aiRingDone = '1'") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('ai-ring-finish'));
+check('AI ring is invisible outside MIXING', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('body[data-ai-phase="ACTIVE"] .ai-ring'));
 check('AI ring has a real DOM element', html.includes('class="ai-ring"'));
-check('AI ring progress comes from real mix progress', app.includes('const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0'));
+check('AI ring progress comes from real mix progress', app.includes('Math.max(0, Math.min(1, Number(mix.progress) || 0))') && app.includes('justFinished ? 1'));
 check('native pause cannot flip Play during AI mix', app.includes('function aiOwnsPlayback') && app.includes("audio.addEventListener('pause', () => {\n  if (aiOwnsPlayback()) return;"));
 check('native timeupdate cannot overwrite AI timeline', app.includes("audio.addEventListener('timeupdate', () => {\n  if (aiOwnsPlayback()) return;"));
 check('transport follows real AI deck paused state', app.includes('S.playing = !ai.paused') && controller.includes('paused: !!state.paused'));
