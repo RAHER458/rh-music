@@ -7,8 +7,10 @@ Candidates examined:
 - **ujjwalredd/AI-DJ** (MIT): full-stack autonomous DJ, server/LLM driven. Rejected for this
   mode: not a browser two-deck Web Audio executor and would require a different runtime.
 - **ysy-ym/pulsegrid** (MIT): local-first browser DJ with transition policy, cue planning and
-  live takeover rules. The transition-duration/safe-window policy was used as a design
-  reference; the controller is an independent implementation for RH-MUSIC.
+  live takeover rules. Its real analysis worker, pitch worklet and transition policy are
+  vendored into AI Mix Beta. Its `app.js` is a 209 KB UI-coupled application, so the full
+  deck/planner app cannot be imported as a library without rewriting its UI; only its
+  modular engine components are reused directly.
 - **CouraLabs/OpenMixing** (GPL-3.0): Python CLI/offline analysis/stems. Rejected: no
   real-time browser two-deck executor; GPL coupling would be inappropriate.
 - **claregartz/dj-mixer** (no license file found): browser AudioBufferSourceNode decks,
@@ -28,7 +30,8 @@ The RH-MUSIC adapter/executor lives in `web/ai-mix-beta/controller.js`:
 - PulseGrid pitch-lock worklet;
 - PulseGrid transition-duration policy;
 - adapter-derived downbeats/sections from PulseGrid output;
-- own transition planner with a late-track policy (`max(duration*0.72, duration - tail)`);
+- RH adapter transition planner with a late-track policy (`max(duration*0.72, duration - tail)`);
+- PulseGrid transition policy is used for duration/remaining-audio safety;
 - two AudioBufferSourceNode decks with independent gain/EQ/filter;
 - equal-power crossfade, bass swap for close BPM, filter cut for large BPM gaps;
 - tempo rate matching within ±6%;
@@ -40,6 +43,14 @@ The RH-MUSIC adapter/executor lives in `web/ai-mix-beta/controller.js`:
 ## Attribution
 
 PulseGrid is MIT. Its LICENSE is vendored as `web/ai-mix-beta/PULSEGRID_LICENSE`.
+
+## What is original PulseGrid vs adapter
+
+- Original PulseGrid code used directly: BPM/beat-grid/key/energy analysis worker,
+  pitch-lock AudioWorklet, transition-duration policy.
+- RH-specific adapter: transition planner/strategy choice, two-deck graph,
+  equal-power/bass-swap executor, queue/history/UI integration.
+- No custom BPM detector remains in the beta.
 
 ## Not done
 
