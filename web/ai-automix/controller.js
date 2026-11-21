@@ -31,6 +31,8 @@
     activeTrack: null,
     activeIndex: -1,
     pending: null,
+    currentEntry: null,
+    ownsPlayback: false,
     cache: new Map(),
     timer: null,
     busy: false,
@@ -61,6 +63,13 @@
     log('ERROR: ' + message);
   }
 
+  function withTimeout(promise, ms, label) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timeout')), ms)),
+    ]);
+  }
+
   function adapter(buffer) {
     return {
       sampleRate: buffer.sampleRate,
@@ -72,6 +81,10 @@
   }
 
   async function decode(track) {
+    return withTimeout(decodeUncached(track), 30_000, 'audio preparation');
+  }
+
+  async function decodeUncached(track) {
     const cached = state.cache.get(String(track.id));
     if (cached) return cached;
     const url = state.host.streamUrl(track);
@@ -95,7 +108,7 @@
     if (state.engine) return;
     if (!state.lib) {
       setPhase('LOADING', 0);
-      state.lib = await import('./automix-engine.js?v=1');
+      state.lib = await withTimeout(import('./automix-engine.js?v=1'), 15_000, 'engine module');
       setPhase('LOADING', 1);
       state.core = state.lib.createAutoMixCore({ sessionId: 'rh-music' });
       state.core.initialize();
@@ -126,7 +139,6 @@
 
   async function enable() {
     if (state.phase !== 'OFF' && state.phase !== 'ERROR') return;
-    try { if (state.host && state.host.getAudio) state.host.getAudio().pause(); } catch (_) {}
     state.error = null;
     try {
       await ensureEngine();
@@ -138,16 +150,33 @@
   }
 
   function disable() {
+    const position = state.deckA ? state.deckA.currentTime : 0;
+    const owned = state.ownsPlayback;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     if (state.engine) {
       try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
     }
     state.pending = null;
+    state.currentEntry = null;
     state.activeTrack = null;
     state.activeIndex = -1;
+    state.ownsPlayback = false;
     setPhase('OFF', -1);
-    if (state.host && typeof state.host.onExit === 'function') state.host.onExit();
+    if (owned && state.host && typeof state.host.onExit === 'function') state.host.onExit({ position });
     log('AI AutoMix выключен');
+  }
+
+  function releaseToStandard(restart = true) {
+    if (!state.ownsPlayback) return;
+    const position = state.deckA ? state.deckA.currentTime : 0;
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    state.pending = null;
+    state.ownsPlayback = false;
+    try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
+    if (restart && state.host && typeof state.host.onExit === 'function') state.host.onExit({ position });
+    state.activeTrack = null;
+    state.currentEntry = null;
+    log('AI AutoMix: управление возвращено стандартному плееру');
   }
 
   function toggle() {
@@ -159,23 +188,21 @@
     if (state.phase === 'OFF' || state.phase === 'ERROR' || !state.engine || !track) return;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.pending = null;
-    if (state.activeTrack && String(state.activeTrack.id) === String(track.id) && state.phase !== 'READY') return;
+    state.currentEntry = null;
+    state.activeTrack = track;
+    state.activeIndex = state.host.getState().index;
+    state.ownsPlayback = false;
+    setPhase('ANALYZING');
+    log('Фоновый анализ: ' + track.title);
     try {
-      setPhase('ANALYZING');
       const entry = await decode(track);
-      state.activeTrack = track;
-      state.activeIndex = state.host.getState().index;
-      state.deckA.loadBuffer(entry.buffer);
-      state.deckA.setEQ(0, 0, 0);
-      state.deckA.setFilter(0);
-      state.deckA.setCrossfader(0.5);
-      state.deckA.fadeTo(1, 0.02);
-      await state.deckA.play(0, 1);
+      if (!state.activeTrack || String(state.activeTrack.id) !== String(track.id)) return;
+      state.currentEntry = entry;
       setPhase('ACTIVE');
-      log('Deck A: ' + track.title);
       await planNext();
     } catch (error) {
-      fail(error && error.message ? error.message : String(error));
+      setPhase('DEGRADED');
+      log('Анализ не удался, обычное воспроизведение продолжается: ' + (error && error.message ? error.message : String(error)));
     }
   }
 
@@ -197,27 +224,35 @@
     if (state.busy || state.phase === 'OFF') return;
     const candidates = queueCandidates();
     if (!candidates.length) { setPhase('DEGRADED'); log('Очередь пуста: нет кандидата'); return; }
+    const candidate = candidates[0];
     state.busy = true;
     try {
       setPhase('PREPARING');
-      const decoded = [];
-      for (const candidate of candidates) {
-        try { decoded.push({ ...candidate, entry: await decode(candidate.track) }); } catch (error) { log('Кандидат пропущен: ' + candidate.track.title + ' · ' + error.message); }
-      }
-      if (!decoded.length) { setPhase('DEGRADED'); return; }
+      const entry = await decode(candidate.track);
+      if (!state.activeTrack) return;
       const history = { ids: [String(state.activeTrack.id)], artists: [state.activeTrack.artist] };
-      const playback = { position: state.deckA.currentTime, duration: state.deckA.duration, activeDeck: 'A', paused: state.deckA.paused, remainingSec: Math.max(0, state.deckA.duration - state.deckA.currentTime) };
-      const decision = state.core.decide(String(state.activeTrack.id), decoded.map((item) => ({
-        id: String(item.track.id), title: item.track.title, artist: item.track.artist, index: item.index,
-        analysis: item.entry.analysis, context: item.entry.context,
-      })), history, playback, {});
+      const hostState = state.host.getState();
+      const playback = {
+        position: hostState.currentTime,
+        duration: hostState.duration,
+        activeDeck: 'A',
+        paused: hostState.paused,
+        remainingSec: Math.max(0, hostState.duration - hostState.currentTime),
+      };
+      const decision = state.core.decide(String(state.activeTrack.id), [{
+        id: String(candidate.track.id), title: candidate.track.title, artist: candidate.track.artist,
+        index: candidate.index, analysis: entry.analysis, context: entry.context,
+      }], history, playback, {});
       if (!decision.chosen || !decision.plan) { setPhase('DEGRADED'); log('AI не нашёл переход: ' + decision.reason); return; }
-      state.pending = { track: decision.chosen, entry: decoded.find((item) => String(item.track.id) === String(decision.chosen.id)).entry, plan: decision.plan };
-      state.deckB.loadBuffer(state.pending.entry.buffer);
+      state.pending = { track: decision.chosen, entry, plan: decision.plan };
+      state.deckB.loadBuffer(entry.buffer);
       state.deckB.cancelAutomation();
-      log('AI выбрал: ' + state.pending.track.title + ' · ' + decision.plan.strategy);
+      log('AI выбрал: ' + decision.chosen.title + ' · ' + decision.plan.strategy);
       setPhase('ACTIVE');
       scheduleWatch();
+    } catch (error) {
+      setPhase('DEGRADED');
+      log('Подготовка следующего трека не удалась; текущий трек продолжает играть: ' + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
     }
@@ -227,13 +262,39 @@
     if (state.timer) clearInterval(state.timer);
     state.timer = setInterval(() => {
       if (state.phase === 'OFF' || state.phase === 'ERROR' || !state.pending) return;
-      const active = state.deckA;
-      if (!active || active.paused) return;
-      if (active.currentTime >= state.pending.plan.startAt - 0.35) {
+      const host = state.host.getState();
+      if (host.paused) return;
+      if (host.currentTime >= state.pending.plan.startAt - 0.35) {
         clearInterval(state.timer); state.timer = null;
-        void executeTransition();
+        void takeOverAndMix();
       }
     }, 120);
+  }
+
+  async function takeOverAndMix() {
+    if (!state.pending || !state.currentEntry) return;
+    const host = state.host.getState();
+    const position = host.currentTime;
+    try {
+      state.deckA.loadBuffer(state.currentEntry.buffer);
+      state.deckA.setEQ(0, 0, 0);
+      state.deckA.setFilter(0);
+      state.deckA.setCrossfader(0.5);
+      state.deckA.fadeTo(1, 0.01);
+      await state.deckA.play(position, 1);
+      if (state.deckA.paused) throw new Error('Deck A не запустился');
+      const audio = state.host.getAudio ? state.host.getAudio() : null;
+      if (audio) audio.pause();
+      state.ownsPlayback = true;
+      await executeTransition();
+    } catch (error) {
+      if (state.ownsPlayback) {
+        state.ownsPlayback = false;
+        try { const audio = state.host.getAudio ? state.host.getAudio() : null; if (audio) audio.play(); } catch (_) {}
+      }
+      setPhase('DEGRADED');
+      log('Переход отложен, стандартный плеер продолжает играть: ' + (error && error.message ? error.message : String(error)));
+    }
   }
 
   async function executeTransition() {
@@ -247,13 +308,13 @@
       const inDeck = state.deckB;
       const startAt = await engine.beginTransition(pending.plan, outDeck, inDeck);
       const tokenStart = startAt;
-      await new Promise((resolve) => {
+      await withTimeout(new Promise((resolve) => {
         const timer = setInterval(() => {
           if (!state.engine || state.phase === 'OFF') { clearInterval(timer); resolve(); return; }
           const elapsed = state.ctx.currentTime - tokenStart;
           if (elapsed >= pending.plan.durationSec) { clearInterval(timer); resolve(); }
         }, 80);
-      });
+      }), (pending.plan.durationSec + 10) * 1000, 'transition');
       engine.completeTransition(outDeck, inDeck);
       state.deckA = inDeck;
       state.deckB = outDeck;
@@ -286,6 +347,8 @@
       steps: LOAD_STEPS,
       error: state.error,
       active: state.phase !== 'OFF' && state.phase !== 'ERROR',
+      ownsPlayback: state.ownsPlayback,
+      currentReady: !!state.currentEntry,
       activeTrack: state.activeTrack,
       nextTrack: state.pending ? state.pending.track : null,
       strategy: state.pending ? state.pending.plan.strategy : null,
@@ -309,6 +372,8 @@
     getState,
     getDiagnostics,
     isActive() { return state.phase !== 'OFF' && state.phase !== 'ERROR'; },
+    ownsPlayback() { return state.ownsPlayback; },
+    releaseToStandard,
     _state: state,
   };
 })();

@@ -2235,13 +2235,16 @@ function initAiAutoMix() {
     onState: refreshAiAutoMixUI,
     onToast: toast,
     onAdopt: adoptAiTrack,
-    onExit: () => {
+    onExit: (info) => {
       S.loading = false;
       S.playing = false;
       updateTransport();
       if (S.current) {
         audio.src = streamUrl(S.current);
         audio.load();
+        const resumeAt = info && Number.isFinite(info.position) ? info.position : 0;
+        const start = () => { try { if (resumeAt > 0) audio.currentTime = resumeAt; } catch (_) {} };
+        audio.addEventListener('loadedmetadata', start, { once: true });
         audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
       }
     },
@@ -2611,15 +2614,8 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   S.loading = true;
   updateTransport();
 
-  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) {
-    try { audio.pause(); } catch (_) {}
-    S.loading = false;
-    S.playing = true;
-    updateTransport();
-    startPlaybackSession(track, 'automix');
-    savePlayerState(0);
-    window.RH_AI_AUTOMIX.onTrackStarted(track);
-    return;
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
+    window.RH_AI_AUTOMIX.releaseToStandard(false);
   }
 
   audio.src = streamUrl(track);
@@ -2642,6 +2638,7 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   startPlaybackSession(track, source);
   savePlayerState(0);
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) window.RH_AI_AUTOMIX.onTrackStarted(track);
 
   if (autoplay) {
     const promise = audio.play();
@@ -2677,7 +2674,7 @@ function handleAudioFailure(detail) {
 }
 
 function togglePlay() {
-  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) {
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
     const state = window.RH_AI_AUTOMIX.getState();
     if (state.phase === 'MIXING') return;
     if (audio.paused || !S.playing) {

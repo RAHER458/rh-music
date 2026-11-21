@@ -32,6 +32,15 @@ check('app routes track start to AI', app.includes('RH_AI_AUTOMIX.onTrackStarted
 check('app routes play/pause to AI', app.includes('RH_AI_AUTOMIX.pause()') && app.includes('RH_AI_AUTOMIX.resume()'));
 check('app adopts AI track for history/UI', app.includes('function adoptAiTrack') && app.includes("startPlaybackSession(track, 'automix')"));
 check('RH Smart Mix bridge remains', app.includes('window.RH_SMARTMIX.init'));
+check('normal play is not gated by AI startup', !app.includes('await window.RH_AI_AUTOMIX.onTrackStarted'));
+check('playIndex releases AI engine before manual start', app.includes('releaseToStandard(false)'));
+check('AI enable does not pause standard audio', !controller.includes("getAudio().pause(); } catch (_) {} }\n    state.error"));
+check('AI background analysis does not play Deck A', !/onTrackStarted[\s\S]{0,1200}deckA\.play/.test(controller));
+check('only one next candidate is prepared', controller.includes('const candidate = candidates[0]'));
+check('preparation has timeout', controller.includes('audio preparation') && controller.includes('30_000'));
+check('transition has timeout', controller.includes("'transition'"));
+check('AI takes over from host position', controller.includes('host.currentTime') && controller.includes('takeOverAndMix'));
+check('AI can release playback to standard player', controller.includes('releaseToStandard') && app.includes('ownsPlayback()'));
 
 const lib = await import('../web/ai-automix/automix-engine.js');
 check('engine ESM exports AutoMixCore', typeof lib.AutoMixCore === 'function');
