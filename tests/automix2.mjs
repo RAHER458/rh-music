@@ -28,6 +28,9 @@ check('Beta2 has queue order after current index', source.includes('(idx + off) 
 check('Beta2 has analysis cache', cache.includes('rh_automix2') && cache.includes('MAX_ENTRIES'));
 check('Beta2 is mutually exclusive with AI AutoMix', app.includes('Сначала выключите Auto Mix Beta 2.0') && app.includes('Сначала выключите AI AutoMix'));
 check('Beta2 routes Play/Pause and seek', app.includes('RH_AUTOMIX2.pause()') && app.includes('RH_AUTOMIX2.seek(target)'));
+check('DEGRADED carries a concrete reason', source.includes('function degrade') && source.includes('reason: state.error'));
+check('empty queue becomes READY with retry', source.includes('Ожидание следующего трека') && source.includes('retryLater'));
+check('no-transition is not forced', source.includes('Planner: no transition') && source.includes("remote.noTransition"));
 check('Beta2 adopts through RH-MUSIC state', app.includes("adoptAiTrack(track, strategy, 'Auto Mix Beta 2.0')"));
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if(failures.length) process.exit(1);

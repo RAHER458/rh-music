@@ -2437,7 +2437,7 @@ function refreshAutoMix2UI() {
     el.classList.toggle('is-on', active);
     el.setAttribute('aria-pressed', active ? 'true' : 'false');
     el.dataset.phase = phase;
-    if (el.id === 'npAutoMix2') el.textContent = phase === 'OFF' ? 'Auto Mix Beta 2.0' : '2.0 ' + phase;
+    if (el.id === 'npAutoMix2') el.textContent = phase === 'OFF' ? 'Auto Mix Beta 2.0' : (info && info.error ? '2.0 ' + phase + ' · ' + String(info.error).slice(0, 80) : '2.0 ' + phase);
   });
 }
 

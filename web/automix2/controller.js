@@ -16,6 +16,19 @@
   function note(m) { state.log.push({ at: Date.now(), m }); if (state.log.length > 60) state.log.shift(); if (state.host?.log) state.host.log(m); }
   function phase(p) { state.phase = p; emit(); }
   function fail(m) { state.error = m; phase('ERROR'); if (state.host?.onToast) state.host.onToast(m); note('ERROR ' + m); }
+  function degrade(m) {
+    state.error = m;
+    phase('DEGRADED');
+    note('DEGRADED: ' + m);
+    if (state.host?.log) state.host.log('Auto Mix Beta 2.0 degraded: ' + m);
+  }
+  function retryLater() {
+    if (state.retryTimer) return;
+    state.retryTimer = setInterval(() => {
+      if (state.phase === 'OFF' || state.phase === 'ERROR') { clearInterval(state.retryTimer); state.retryTimer = null; return; }
+      if (!state.busy && !state.plan && state.active) void planNext();
+    }, 5000);
+  }
 
   let pulsePolicy = null;
   let analysisWorker = null;
@@ -278,22 +291,23 @@
 
   async function planNext() {
     if (state.busy || state.phase === 'OFF') return;
-    const cand = candidates()[0]; if (!cand) { phase('DEGRADED'); note('queue empty'); return; }
+    const cand = candidates()[0];
+    if (!cand) { state.error = null; state.plan = null; phase('READY'); note('Ожидание следующего трека в очереди'); retryLater(); return; }
     state.busy = true;
     try {
       phase('PREPARING');
       const entry = await decodeTrack(cand.track);
       const s = state.host.getState();
       const remote = await planTransitionRemote(state.active.analysis, entry.analysis);
-      if (remote && remote.noTransition) { state.pending = null; phase('DEGRADED'); note('Planner: no transition — ' + (remote.reason || 'incompatible pair')); return; }
+      if (remote && remote.noTransition) { state.pending = null; state.plan = null; state.error = 'Planner: no transition — ' + (remote.reason || 'incompatible pair'); phase('READY'); note(state.error); retryLater(); return; }
       const plan = remote || planTransition(state.active.analysis, entry.analysis, s.currentTime);
-      if (!plan || plan.durationSec <= 0) { phase('DEGRADED'); return; }
+      if (!plan || plan.durationSec <= 0) { degrade('planner returned an invalid transition'); return; }
       state.next = { ...entry, index: cand.index };
       state.plan = plan;
       phase('READY');
       note('Beta plan: ' + plan.reason + ' @ ' + plan.startAt.toFixed(1) + 's');
       schedule();
-    } catch (e) { phase('DEGRADED'); note('beta prepare failed: ' + e.message); }
+    } catch (e) { degrade('prepare failed: ' + (e.message || String(e))); }
     finally { state.busy = false; }
   }
 
@@ -398,7 +412,7 @@
       state.active = entry;
       phase('READY');
       await planNext();
-    } catch (e) { phase('DEGRADED'); note('beta analysis failed: ' + e.message); }
+    } catch (e) { degrade('analysis failed: ' + (e.message || String(e))); }
   }
 
   function disable() {
@@ -409,7 +423,9 @@
     if (state.mixer) state.mixer.stop();
     if (state.ctx) { try { state.ctx.close(); } catch (_) {} }
     state.ctx = null; state.mixer = null; state.active = null; state.next = null; state.plan = null;
-    state.owns = false; phase('OFF');
+    state.owns = false;
+    if (state.retryTimer) { clearInterval(state.retryTimer); state.retryTimer = null; }
+    phase('OFF');
     if (state.host?.onExit) state.host.onExit({ position: pos });
   }
 
@@ -420,7 +436,7 @@
     return {
       phase: state.phase, active: state.phase !== 'OFF' && state.phase !== 'ERROR', ownsPlayback: state.owns,
       activeTrack: state.active?.track || null, nextTrack: state.next?.track || null,
-      plan: state.plan, position: pos, duration, paused: state.ctx ? state.ctx.state !== 'running' : true, error: state.error,
+      plan: state.plan, position: pos, duration, paused: state.ctx ? state.ctx.state !== 'running' : true, error: state.error, reason: state.error,
     };
   }
 
