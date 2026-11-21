@@ -42,15 +42,26 @@ def _late_start(a: TrackAnalysis, duration: float) -> float:
     return _nearest(a.downbeats, start) or start
 
 
-def plan_transition(a: TrackAnalysis, b: TrackAnalysis) -> TransitionPlan:
+def plan_transition(a: TrackAnalysis, b: TrackAnalysis, position: float = 0.0) -> TransitionPlan:
     bpm_gap = abs(b.bpm - a.bpm) / max(1.0, a.bpm)
     key_dist = camelot_distance(a.camelot, b.camelot)
     duration = min(32.0, max(4.0, a.duration * 0.12))
     if bpm_gap > 0.08:
         duration = min(duration, 8.0)
     start = _late_start(a, duration)
+    current = max(0.0, min(float(position), a.duration))
+    if start < current + 0.5:
+        start = min(max(current + 0.3, a.duration * 0.5), max(0.0, a.duration - 0.6))
+        reasons_early = True
+    else:
+        reasons_early = False
     if start > a.duration - duration - 0.2:
         duration = max(2.0, a.duration - start - 0.2)
+    if a.duration - current < 6.0:
+        duration = max(2.0, a.duration - start - 0.2)
+        strategy_override = 'smart-cut'
+    else:
+        strategy_override = None
     incoming_start = _nearest(b.downbeats, max(0.0, b.duration * 0.08)) or 0.0
     out_energy = _at(a.energy_curve, a, start)
     in_energy = _at(b.energy_curve, b, incoming_start)
@@ -82,6 +93,9 @@ def plan_transition(a: TrackAnalysis, b: TrackAnalysis) -> TransitionPlan:
     else:
         strategy = "beatmatched"
         reasons.append("compatible tempo/key/energy")
+    if strategy_override:
+        strategy = strategy_override
+        reasons.append('current position is already inside the transition window')
     if start < a.duration * 0.6:
         strategy = "smooth-blend"
         fallback = "smart-cut"

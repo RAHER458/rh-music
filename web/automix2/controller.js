@@ -9,7 +9,7 @@
   const state = {
     phase: 'OFF', error: null, host: null, ctx: null, mixer: null,
     active: null, next: null, plan: null, timer: null, busy: false,
-    cache: new Map(), log: [], owns: false, token: 0,
+    cache: new Map(), log: [], owns: false, token: 0, misses: 0, retryTimer: null,
   };
 
   function emit() { if (state.host?.onState) state.host.onState(getState()); }
@@ -153,11 +153,12 @@
     return circle + (x.mode === y.mode ? 0 : 1);
   }
 
-  async function planTransitionRemote(out, incoming) {
+  async function planTransitionRemote(out, incoming, position) {
     try {
       const response = await fetch(API_BASE + '/api/v1/transition/plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          position: Number(position) || 0,
           outgoing: out.rawAnalysis || { track_id: out.id, duration: out.duration, bpm: out.bpm, bpm_confidence: out.confidence || 0.5, beat_grid: [], downbeats: out.downbeats, key: out.key || '', camelot: out.camelot || '', key_confidence: 0.5, energy_curve: [], structure: [], vocal_activity: [], bass_activity: [], integrated_lufs: out.energy || 0, true_peak_db: 0, analysis_confidence: out.confidence || 0.5 },
           incoming: incoming.rawAnalysis || { track_id: incoming.id, duration: incoming.duration, bpm: incoming.bpm, bpm_confidence: incoming.confidence || 0.5, beat_grid: [], downbeats: incoming.downbeats, key: incoming.key || '', camelot: incoming.camelot || '', key_confidence: 0.5, energy_curve: [], structure: [], vocal_activity: [], bass_activity: [], integrated_lufs: incoming.energy || 0, true_peak_db: 0, analysis_confidence: incoming.confidence || 0.5 },
         }),
@@ -301,9 +302,19 @@
       phase('PREPARING');
       const entry = await decodeTrack(cand.track);
       const s = state.host.getState();
-      const remote = await planTransitionRemote(state.active.analysis, entry.analysis);
+      const remote = await planTransitionRemote(state.active.analysis, entry.analysis, s.currentTime);
       if (remote && remote.noTransition) { state.pending = null; state.plan = null; state.error = 'Planner: no transition — ' + (remote.reason || 'incompatible pair'); phase('READY'); note(state.error); retryLater(); return; }
-      const plan = remote || planTransition(state.active.analysis, entry.analysis, s.currentTime);
+      let plan = remote || planTransition(state.active.analysis, entry.analysis, s.currentTime);
+      const current = state.host.getState().currentTime;
+      const trackDuration = Number(state.active.analysis.duration || state.active.duration || 0);
+      if (plan && plan.startAt < current + 0.3) {
+        const remaining = trackDuration - current;
+        if (remaining < 2.5) { state.plan = null; state.error = 'Недостаточно времени до конца трека для перехода'; phase('READY'); note(state.error); retryLater(); return; }
+        plan.startAt = current + 0.2;
+        plan.durationSec = Math.max(2, Math.min(plan.durationSec, remaining - 0.3));
+        plan.endAt = plan.startAt + plan.durationSec;
+        plan.reason = (plan.reason || '') + ' · clamped to current position';
+      }
       if (!plan || plan.durationSec <= 0) { degrade('planner returned an invalid transition'); return; }
       state.next = { ...entry, index: cand.index };
       state.plan = plan;
@@ -319,7 +330,13 @@
     state.timer = setInterval(() => {
       if (!state.plan || !state.next || state.phase === 'OFF' || state.phase === 'MIXING') return;
       const s = state.host.getState(); if (s.paused) return;
-      if (s.currentTime > state.plan.startAt + 2) { state.plan = null; note('beta missed window'); void planNext(); return; }
+      if (s.currentTime > state.plan.startAt + 2) {
+        state.misses += 1;
+        state.plan = null;
+        note('beta missed window (' + state.misses + ')');
+        if (state.misses >= 3) { state.error = 'Переход не успел начаться; ожидание следующего трека'; phase('READY'); retryLater(); return; }
+        void planNext(); return;
+      }
       if (s.currentTime >= state.plan.startAt - 0.2) { clearInterval(state.timer); state.timer = null; void execute(); }
     }, 120);
   }
@@ -407,7 +424,7 @@
   async function onTrackStarted(track) {
     if (state.phase === 'OFF' || state.phase === 'ERROR' || !track) return;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
-    state.plan = null; state.next = null; state.owns = false;
+    state.plan = null; state.next = null; state.owns = false; state.misses = 0;
     const token = ++state.token;
     try {
       phase('ANALYZING');

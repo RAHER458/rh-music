@@ -23,6 +23,7 @@ started = time.time()
 class PlanRequest(BaseModel):
     outgoing: dict
     incoming: dict
+    position: float = 0.0
 
 
 @app.get("/health")
@@ -79,7 +80,7 @@ def plan(req: PlanRequest):
     try:
         a = TrackAnalysis(**req.outgoing)
         b = TrackAnalysis(**req.incoming)
-        return plan_transition(a, b).to_dict()
+        return plan_transition(a, b, position=float(req.position or 0.0)).to_dict()
     except Exception as e:
         raise HTTPException(400, f"invalid analysis: {e}")
 
