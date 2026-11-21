@@ -19,6 +19,19 @@ cd automix2/backend
 python3 -m unittest -v test_planner.py
 ```
 
+## Railway deployment
+
+URL: https://automix2-api-production.up.railway.app
+
+Verified:
+
+```json
+GET /health -> {"ok":true,"service":"automix2","version":"2.0.0"}
+GET /api/v1/status -> {"ok":true,...}
+POST /api/v1/analyze -> job complete for a 20 s synthetic WAV
+POST /api/v1/transition/plan -> executable late-window plan, strategy beatmatched
+```
+
 ## Render
 
 `render.yaml` defines a free Python web service. Deployment through the Render
