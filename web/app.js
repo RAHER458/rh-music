@@ -2236,7 +2236,7 @@ function refreshAiAutoMixUI() {
   if (button) button.title = label;
 }
 
-function adoptAiTrack(track, strategy) {
+function adoptAiTrack(track, strategy, label = 'AI AutoMix') {
   if (!track) return;
   const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
   if (index >= 0) S.index = index;
@@ -2262,7 +2262,7 @@ function adoptAiTrack(track, strategy) {
   $('npDur').textContent = fmt(track.duration);
   syncSeek(0, Number(track.duration) || 0);
   updateTransport();
-  toast('AI AutoMix: ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
+  toast(label + ': ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
   refreshAiAutoMixUI();
 }
 
@@ -2319,6 +2319,52 @@ function initAiAutoMix() {
       refreshAiAutoMixUI();
     }, 250);
   }
+}
+
+function refreshAiMixBetaUI() {
+  const info = window.RH_AI_MIX_BETA ? window.RH_AI_MIX_BETA.getState() : null;
+  const phase = info ? info.phase : 'OFF';
+  const active = !!(info && info.active);
+  document.querySelectorAll('[data-action="ai-mix-beta-toggle"]').forEach((el) => {
+    el.classList.toggle('is-on', active);
+    el.setAttribute('aria-pressed', active ? 'true' : 'false');
+    el.dataset.phase = phase;
+    if (el.id === 'npAiMixBeta') el.textContent = phase === 'OFF' ? 'AI Mix Beta' : 'Beta ' + phase;
+  });
+}
+
+function initAiMixBeta() {
+  if (!window.RH_AI_MIX_BETA) return;
+  window.RH_AI_MIX_BETA.init({
+    getState: () => {
+      const beta = window.RH_AI_MIX_BETA;
+      const owned = !!(beta && beta.ownsPlayback());
+      const st = owned ? beta.getState() : null;
+      return {
+        current: S.current, index: S.index, queue: S.queue,
+        paused: owned ? (st ? st.phase === 'READY' || st.phase === 'OFF' : false) : audio.paused,
+        currentTime: owned && st ? st.position : (audio.currentTime || 0),
+        duration: owned && st && st.duration ? st.duration : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0)),
+        volume: S.volume, muted: S.muted,
+      };
+    },
+    streamUrl,
+    getAudio: () => audio,
+    onState: refreshAiMixBetaUI,
+    onToast: toast,
+    onAdopt: (track, strategy) => adoptAiTrack(track, strategy, 'AI Mix Beta'),
+    onExit: (info) => {
+      S.loading = false; S.playing = false; updateTransport();
+      if (S.current) {
+        audio.src = streamUrl(S.current); audio.load();
+        const resumeAt = info && Number.isFinite(info.position) ? info.position : 0;
+        audio.addEventListener('loadedmetadata', () => { try { if (resumeAt > 0) audio.currentTime = resumeAt; } catch (_) {} }, { once: true });
+        audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
+      }
+    },
+    log: (message) => console.debug('[AI Mix Beta]', message),
+  });
+  refreshAiMixBetaUI();
 }
 
 function initSmartMix() {
@@ -2707,6 +2753,7 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   startPlaybackSession(track, source);
   savePlayerState(0);
   if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) window.RH_AI_AUTOMIX.onTrackStarted(track);
+  if (window.RH_AI_MIX_BETA && window.RH_AI_MIX_BETA.isActive()) window.RH_AI_MIX_BETA.onTrackStarted(track);
 
   if (autoplay) {
     const promise = audio.play();
@@ -2742,6 +2789,11 @@ function handleAudioFailure(detail) {
 }
 
 function togglePlay() {
+  if (window.RH_AI_MIX_BETA && window.RH_AI_MIX_BETA.ownsPlayback()) {
+    if (S.playing) { window.RH_AI_MIX_BETA.pause(); S.playing = false; } else { window.RH_AI_MIX_BETA.resume(); S.playing = true; }
+    updateTransport();
+    return;
+  }
   if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
     const state = window.RH_AI_AUTOMIX.getState();
     if (state.phase === 'MIXING') return;
@@ -3196,7 +3248,18 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
-  if (action === 'ai-automix-toggle') { if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle(); refreshAiAutoMixUI(); return; }
+  if (action === 'ai-automix-toggle') {
+    if (window.RH_AI_MIX_BETA && window.RH_AI_MIX_BETA.isActive()) { toast('Сначала выключите AI Mix Beta', 'info'); return; }
+    if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
+    refreshAiAutoMixUI();
+    return;
+  }
+  if (action === 'ai-mix-beta-toggle') {
+    if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) { toast('Сначала выключите AI AutoMix', 'info'); return; }
+    if (window.RH_AI_MIX_BETA) window.RH_AI_MIX_BETA.toggle();
+    refreshAiMixBetaUI();
+    return;
+  }
   if (action === 'smartmix-open') { openSmartMixSheet(); return; }
   if (action === 'smartmix-toggle') { toggleSmartMix(); return; }
   if (action === 'smartmix-bars') { setSmartMixBars(target.dataset.bars); return; }
@@ -3815,7 +3878,9 @@ audio.addEventListener('loadedmetadata', () => {
     if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? S.current.duration : 0);
     const target = (Number(el.value) / 1000) * duration;
-    if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
+    if (window.RH_AI_MIX_BETA && window.RH_AI_MIX_BETA.ownsPlayback()) {
+      if (window.RH_AI_MIX_BETA.seek) window.RH_AI_MIX_BETA.seek(target);
+    } else if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
       if (duration > 0) window.RH_AI_AUTOMIX.seek(target);
     } else {
       if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive && window.RH_AI_AUTOMIX.isActive()) {
@@ -3883,6 +3948,7 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   restorePlayerState();
   initSmartMix();
   initAiAutoMix();
+  initAiMixBeta();
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   updateTransport();
   await refreshMe();

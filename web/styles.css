@@ -1791,3 +1791,8 @@ html[data-ui="mobile"] .smartmix-card { padding: 12px; }
 .player-progress .seek, .np-progress .seek { position: relative; z-index: 1; }
 .ai-mix-status { display: block; margin-top: 2px; font-size: 10px; font-weight: 700; letter-spacing: .02em; color: #cfd8ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ai-mix-status[hidden] { display: none; }
+
+
+/* ── AI Mix Beta ─────────────────────────────────────────────── */
+.betamix-btn { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: #d8c7ff; border: 1px solid rgba(180,140,255,.35); border-radius: 8px; padding: 4px 7px; }
+.betamix-btn.is-on { color: #fff; background: rgba(139,92,246,.3); box-shadow: 0 0 15px rgba(139,92,246,.3); }
