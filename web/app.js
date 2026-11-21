@@ -2231,6 +2231,7 @@ function initAiAutoMix() {
       muted: S.muted,
     }),
     streamUrl,
+    getAudio: () => audio,
     onState: refreshAiAutoMixUI,
     onToast: toast,
     onAdopt: adoptAiTrack,

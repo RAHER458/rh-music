@@ -126,6 +126,7 @@
 
   async function enable() {
     if (state.phase !== 'OFF' && state.phase !== 'ERROR') return;
+    try { if (state.host && state.host.getAudio) state.host.getAudio().pause(); } catch (_) {}
     state.error = null;
     try {
       await ensureEngine();
