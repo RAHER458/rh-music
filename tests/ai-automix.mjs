@@ -61,12 +61,12 @@ check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix
 check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
 check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
-check('mix ring is inside the three-button control block', /id="npPrev"[\s\S]*id="npPlay"[\s\S]*id="npNext"/.test(html) && html.indexOf('np-mix-ring') < html.indexOf('id="npPrev"'));
-check('wrong per-button ring is removed', !html.includes('class="ai-ring"'));
-check('mix ring has base, fill and endpoint', html.includes('np-mix-base') && html.includes('np-mix-fill') && html.includes('np-mix-tip'));
-check('mix ring is styled as a capsule around the control group', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.np-mix-ring') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--np-mix-progress'));
-check('mix ring completes at 100% then hides', app.includes('justFinished') && app.includes("dataset.aiRingDone = '1'") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('np-ring-finish'));
-check('mix ring is invisible outside MIXING', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('body[data-ai-phase="MIXING"] .np-mix-ring'));
+check('mix ring is attached to the central npPlay button', html.includes('id="npPlay"') && html.includes('class="np-play-ring"') && !html.includes('np-mix-ring'));
+check('old per-button and panel rings are removed', !html.includes('class="ai-ring"') && !html.includes('np-mix-ring'));
+check('mix ring has base, fill and endpoint', html.includes('np-play-base') && html.includes('np-play-fill') && html.includes('np-play-tip'));
+check('mix ring is styled as a circle around npPlay', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('#npPlay > .np-play-ring') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--np-mix-progress'));
+check('mix ring completes at 100% then hides', app.includes('justFinished') && app.includes("dataset.aiRingDone = '1'") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('np-play-ring-finish'));
+check('mix ring is visible only during MIXING', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('body[data-ai-phase="MIXING"] #npPlay > .np-play-ring'));
 check('mix ring progress comes from real mix progress', app.includes('Math.max(0, Math.min(1, Number(mix.progress) || 0))') && app.includes('justFinished ? 1') && app.includes("--np-mix-progress"));
 check('native pause cannot flip Play during AI mix', app.includes('function aiOwnsPlayback') && app.includes("audio.addEventListener('pause', () => {\n  if (aiOwnsPlayback()) return;"));
 check('native timeupdate cannot overwrite AI timeline', app.includes("audio.addEventListener('timeupdate', () => {\n  if (aiOwnsPlayback()) return;"));

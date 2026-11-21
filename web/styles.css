@@ -2008,3 +2008,57 @@ body[data-ai-ring-done="1"] .np-mix-ring {
   .np-mix-fill, .np-mix-ring { transition: none; }
   body[data-ai-ring-done="1"] .np-mix-ring { animation: none; opacity: .6; }
 }
+
+/* AutoMix RH AI progress: circle around the central #npPlay only */
+#npPlay { overflow: visible; }
+#npPlay > .np-play-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 82px !important;
+  height: 82px !important;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  overflow: visible;
+  opacity: 0;
+  transition: opacity .28s ease;
+  z-index: 3;
+  filter: drop-shadow(0 0 6px rgba(108,140,255,.4));
+}
+#npPlay > .np-play-ring path { fill: none !important; }
+.np-play-base {
+  stroke: rgba(140,170,255,.18);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+.np-play-fill {
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100px - var(--np-mix-progress, 0) * 100px);
+  vector-effect: non-scaling-stroke;
+  transition: stroke-dashoffset .18s linear;
+}
+.np-play-tip {
+  stroke: #e8f1ff;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 1.1 98.9;
+  stroke-dashoffset: calc(var(--np-mix-progress, 0) * -100px);
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(150,190,255,.9));
+}
+body[data-ai-phase="MIXING"] #npPlay > .np-play-ring { opacity: 1; }
+body[data-ai-ring-done="1"] #npPlay > .np-play-ring {
+  opacity: 1;
+  animation: np-play-ring-finish .65s ease-out forwards;
+}
+@keyframes np-play-ring-finish {
+  0% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  55% { opacity: .9; transform: translate(-50%,-50%) scale(1.05); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .np-play-fill, #npPlay > .np-play-ring { transition: none; }
+  body[data-ai-ring-done="1"] #npPlay > .np-play-ring { animation: none; opacity: .6; }
+}
