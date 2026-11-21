@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-14';
+window.RH_BUILD = 'neural-2026-11-21-15';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2908,6 +2908,7 @@ function updateTransport() {
 let npLastTrackId = '';
 let npCoverToken = 0;
 let npTextTimer = 0;
+let npTextToken = 0;
 
 function npReducedMotion() {
   return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -2924,13 +2925,16 @@ function applyNpText(track) {
 
 function animateNpText(track) {
   const info = document.querySelector('.np-info');
-  if (!info || npReducedMotion()) { applyNpText(track); return; }
+  if (!info || npReducedMotion()) { applyNpText(track); info?.classList.remove('is-changing'); return; }
+  const token = ++npTextToken;
   info.classList.add('is-changing');
   if (npTextTimer) clearTimeout(npTextTimer);
   npTextTimer = setTimeout(() => {
     npTextTimer = 0;
+    if (token !== npTextToken) return;
     applyNpText(track);
-    requestAnimationFrame(() => info.classList.remove('is-changing'));
+    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 30);
+    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 500);
   }, 150);
 }
 
