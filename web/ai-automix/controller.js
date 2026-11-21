@@ -35,6 +35,7 @@
     currentEntry: null,
     ownsPlayback: false,
     trackToken: 0,
+    planEpoch: 0,
     cache: new Map(),
     timer: null,
     busy: false,
@@ -152,6 +153,7 @@
   }
 
   function disable() {
+    state.planEpoch += 1;
     const position = state.deckA ? state.deckA.currentTime : 0;
     const owned = state.ownsPlayback;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
@@ -171,6 +173,7 @@
 
   function releaseToStandard(restart = true) {
     if (!state.ownsPlayback) return;
+    state.planEpoch += 1;
     const position = state.deckA ? state.deckA.currentTime : 0;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.pending = null;
@@ -193,6 +196,7 @@
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.pending = null;
     state.currentEntry = null;
+    state.planEpoch += 1;
     state.activeTrack = track;
     state.activeIndex = state.host.getState().index;
     state.ownsPlayback = false;
@@ -240,11 +244,12 @@
     if (!candidates.length) { setPhase('DEGRADED'); log('Очередь пуста: нет кандидата'); return; }
     const candidate = candidates[0];
     const token = state.trackToken;
+    const epoch = state.planEpoch;
     state.busy = true;
     try {
       setPhase('PREPARING');
       const entry = await decode(candidate.track);
-      if (token !== state.trackToken || !state.activeTrack) return;
+      if (token !== state.trackToken || epoch !== state.planEpoch || !state.activeTrack) return;
       const history = { ids: [String(state.activeTrack.id)], artists: [state.activeTrack.artist] };
       const hostState = state.host.getState();
       const playback = {
@@ -258,6 +263,7 @@
         id: String(candidate.track.id), title: candidate.track.title, artist: candidate.track.artist,
         index: candidate.index, analysis: entry.analysis, context: entry.context,
       }], history, playback, {});
+      if (epoch !== state.planEpoch) return;
       if (!decision.chosen || !decision.plan) { setPhase('DEGRADED'); log('AI не нашёл переход: ' + decision.reason); return; }
       state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan: decision.plan };
       state.deckB.loadBuffer(entry.buffer);
@@ -377,6 +383,7 @@
 
   function invalidatePlan() {
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    state.planEpoch += 1;
     state.pending = null;
     state.activePlan = null;
     if (state.phase !== 'OFF' && state.phase !== 'ERROR') {
@@ -387,6 +394,7 @@
 
   function seek(position) {
     if (!state.ownsPlayback || !state.deckA || state.phase === 'MIXING') return false;
+    state.planEpoch += 1;
     const target = Math.max(0, Math.min(Number(position) || 0, state.deckA.duration - 0.05));
     state.deckA.seek(target);
     if (state.timer) { clearInterval(state.timer); state.timer = null; }

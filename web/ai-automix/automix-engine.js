@@ -1869,9 +1869,9 @@ function sectionConfidenceAt(analysis, time) {
  * Chooses a real transition window from section boundaries, cues, beatgrid,
  * vocal regions and energy. No structural classifier is simulated.
  */
-function selectTransitionWindow(out, incoming, context, strategy, durationSec) {
+function selectTransitionWindow(out, incoming, context, strategy, durationSec, timing = {}) {
     const duration = Math.max(0.6, durationSec);
-    const minStart = Math.max(0, context.position + 0.15);
+    const minStart = Math.max(0, context.position + 0.15, timing.minStartAt ?? 0);
     const maxStart = Math.max(minStart, out.duration - 0.5);
     const outCandidates = new Set();
     outCandidates.add(Math.min(maxStart, out.cues.mixOut));
@@ -1919,7 +1919,10 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec) {
             const energyScore = Math.max(0, 1 - energyDelta);
             const vocalPenalty = strategy === 'vocal-safe' || strategy === 'vocal-handoff' ? vocalCollision * 0.08 : Math.max(0, vocalCollision - 0.2) * 0.35;
             const remainingFit = outEnd <= out.duration ? 0.08 : 0;
-            const score = Math.max(0, Math.min(1, outScore * 0.3 + inScore * 0.28 + pairBonus + phrase + energyScore * 0.12 + remainingFit - vocalPenalty));
+            const tail = Math.max(0, out.duration - startAt);
+            const preferredTail = timing.preferredTailSec ?? Math.max(30, out.duration * 0.15);
+            const lateBonus = tail <= preferredTail ? 0.1 : 0;
+            const score = Math.max(0, Math.min(1, outScore * 0.3 + inScore * 0.28 + pairBonus + phrase + energyScore * 0.12 + remainingFit + lateBonus - vocalPenalty));
             const outConfidence = sectionConfidenceAt(out, startAt);
             const inConfidence = sectionConfidenceAt(incoming, inStart);
             const confidence = outConfidence == null || inConfidence == null ? 0 : Math.min(outConfidence, inConfidence);
@@ -2136,6 +2139,19 @@ function nearestDownbeat(analysis, time, direction = 'nearest') {
         }
     }
     return bestD <= 2.5 ? best : clamp(time, 0, analysis.duration);
+}
+function timingPolicy(outgoing, context, durationSec, strategy) {
+    const latestSafe = Math.max(context.position + 0.15, outgoing.duration - durationSec - 0.5);
+    // These styles may legitimately start before the outro only when their
+    // structural section exists; they still cannot start in the first third.
+    const structuralEarly = strategy === 'breakdown-to-drop' || strategy === 'build-up';
+    const floor = structuralEarly
+        ? Math.max(context.position + 0.15, outgoing.duration * 0.4)
+        : Math.max(context.position + 0.15, outgoing.duration * 0.72, outgoing.duration - Math.max(45, outgoing.duration * 0.22));
+    return {
+        minStartAt: Math.min(floor, latestSafe),
+        preferredTailSec: Math.max(30, outgoing.duration * 0.15),
+    };
 }
 function chooseOutStart(a, context, durationSec, strategy) {
     let target = Math.min(a.cues.mixOut, a.duration - Math.max(1, durationSec));
@@ -2495,7 +2511,7 @@ function planTransition(outgoing, incoming, context, options = {}) {
         const advisory = options.advisory?.strategyScores[candidate.strategy];
         const advisoryScore = advisory == null ? candidate.score : clamp01(candidate.score * (1 - weight) + advisory * weight);
         const duration = durationBeats(candidate.strategy, options.minDurationBeats ?? 4, options.maxDurationBeats ?? 32) * (60 / outBpmForWindow);
-        const structural = selectTransitionWindow(outgoing, incoming, context, candidate.strategy, duration).score;
+        const structural = selectTransitionWindow(outgoing, incoming, context, candidate.strategy, duration, timingPolicy(outgoing, context, duration, candidate.strategy)).score;
         const usagePenalty = clamp(options.sessionStrategyPenalty?.[candidate.strategy] ?? 0, 0, 0.2);
         return {
             ...candidate,
@@ -2524,7 +2540,8 @@ function planTransition(outgoing, incoming, context, options = {}) {
         durationSec = Math.max(0.6, incoming.duration - inStart - 0.2);
         beats = Math.max(1, Math.floor((durationSec / (60 / Math.max(40, bpm.target))) * 2) / 2);
     }
-    const window = selectTransitionWindow(outgoing, incoming, context, selected.strategy, durationSec);
+    const timing = timingPolicy(outgoing, context, durationSec, selected.strategy);
+    const window = selectTransitionWindow(outgoing, incoming, context, selected.strategy, durationSec, timing);
     startAt = window.startAt;
     const outEnd = clamp(window.outEnd, startAt + 0.2, outgoing.duration);
     const actualDuration = Math.max(0.6, outEnd - startAt);
@@ -2550,7 +2567,7 @@ function planTransition(outgoing, incoming, context, options = {}) {
         filter: buildFilter(selected.strategy),
         gain: buildGain(selected.strategy),
         score: selected.score,
-        reasons: [...selected.reasons, `Окно ${window.reasons.join(', ')}`, `Длительность ${beats} beats / ${durationSec.toFixed(1)} s`, `rate ${bpm.rateIn.toFixed(3)}`, ...(options.advisory?.note ? [options.advisory.note] : [])],
+        reasons: [...selected.reasons, `Окно ${window.reasons.join(', ')}`, `timing floor ${timing.minStartAt.toFixed(1)}s`, `Длительность ${beats} beats / ${durationSec.toFixed(1)} s`, `rate ${bpm.rateIn.toFixed(3)}`, ...(options.advisory?.note ? [options.advisory.note] : [])],
         warnings: [...selected.warnings, ...outgoing.warnings.slice(0, 1), ...incoming.warnings.slice(0, 1), ...(window.uncertainty === 'high' ? ['Структурное окно неопределённо; используется beatgrid/cue fallback'] : []), ...(selected.strategy === 'loop-assisted' && !loop ? ['Loop недоступен: нет надёжного beatgrid; используется безопасный fallback'] : [])],
         window: { score: window.score, uncertainty: window.uncertainty, evidence: window.evidence, reasons: window.reasons },
         loop: loop ? { start: round(loop.start, 3), end: round(loop.end, 3), lengthBeats: loop.lengthBeats, confidence: loop.confidence } : undefined,
