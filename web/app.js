@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-5';
+window.RH_BUILD = 'neural-2026-11-21-6';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2249,7 +2249,7 @@ function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
   const active = !!(info && info.active);
-  const label = phase === 'OFF' ? 'Neural AI' : phase === 'READY' ? 'Neural AI Ready' : phase === 'MIXING' ? 'Neural AI Mixing' : 'Neural AI ' + phase;
+  const label = phase === 'OFF' ? 'AutoMix RH AI' : phase === 'READY' ? 'AutoMix RH AI · Ready' : phase === 'MIXING' ? 'AutoMix RH AI · Mixing' : 'AutoMix RH AI · ' + phase;
   if (active && window.RH_SMARTMIX) {
     try {
       if (window.RH_SMARTMIX.getSettings().enabled) { aiSavedSmartMix = true; window.RH_SMARTMIX.setSettings({ enabled: false }); }
@@ -2278,7 +2278,7 @@ function refreshAiAutoMixUI() {
   if (diagKey !== aiDiagState.last) { aiDiagState.last = diagKey; aiDiag('ai_state'); }
 }
 
-function adoptAiTrack(track, strategy, label = 'AI AutoMix') {
+function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
   if (!track) return;
   aiDiag('adopt', { adopted: String(track.id), strategy: strategy || null });
   const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
@@ -2305,7 +2305,7 @@ function adoptAiTrack(track, strategy, label = 'AI AutoMix') {
   $('npDur').textContent = fmt(track.duration);
   syncSeek(0, Number(track.duration) || 0);
   updateTransport();
-  toast(label + ': ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
+  if (!options.silent) toast(label + ': ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
   refreshAiAutoMixUI();
 }
 
@@ -2346,7 +2346,7 @@ function initAiAutoMix() {
       }
       return out;
     },
-    onAdopt: adoptAiTrack,
+    onAdopt: (track, strategy) => adoptAiTrack(track, strategy, 'AutoMix RH AI', { silent: true }),
     onExit: (info) => {
       S.loading = false;
       S.playing = false;
@@ -2360,7 +2360,7 @@ function initAiAutoMix() {
         audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
       }
     },
-    log: (message) => console.debug('[AI AutoMix]', message),
+    log: (message) => console.debug('[AutoMix RH AI]', message),
   });
   refreshAiAutoMixUI();
   if (!window.__rhAiTimelineTimer) {
