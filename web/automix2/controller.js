@@ -37,9 +37,9 @@
     return analysisWorker;
   }
 
-  function encodePreviewWav(buffer, maxSeconds = 45) {
+  function encodePreviewWav(buffer, maxSeconds = 600) {
     const sourceRate = buffer.sampleRate;
-    const targetRate = 11025;
+    const targetRate = 8000;
     const seconds = Math.min(maxSeconds, buffer.duration);
     const targetLength = Math.max(1, Math.floor(seconds * targetRate));
     const channels = Math.min(2, buffer.numberOfChannels);
@@ -84,7 +84,7 @@
       downbeats: a.downbeats || [], duration: a.duration,
       sections: (a.structure || []).map((seg) => ({ start: seg.start, end: seg.end, energy: seg.energy })),
       peaks, energy: a.integrated_lufs, mixOut: Math.max(a.duration * 0.72, a.duration - Math.max(32, a.duration * 0.18)),
-      camelot: a.camelot, key: a.key, analysis: 'automix2-railway', confidence: a.analysis_confidence,
+      camelot: a.camelot, key: a.key, analysis: 'automix2-railway', confidence: a.analysis_confidence, rawAnalysis: a,
     };
   }
 
@@ -144,13 +144,14 @@
       const response = await fetch(API_BASE + '/api/v1/transition/plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          outgoing: { track_id: out.id, duration: out.duration, bpm: out.bpm, bpm_confidence: out.confidence || 0.5, beat_grid: [], downbeats: out.downbeats, key: out.key || '', camelot: out.camelot || '', key_confidence: 0.5, energy_curve: [], structure: [], vocal_activity: [], bass_activity: [], integrated_lufs: out.energy || 0, true_peak_db: 0, analysis_confidence: out.confidence || 0.5 },
-          incoming: { track_id: incoming.id, duration: incoming.duration, bpm: incoming.bpm, bpm_confidence: incoming.confidence || 0.5, beat_grid: [], downbeats: incoming.downbeats, key: incoming.key || '', camelot: incoming.camelot || '', key_confidence: 0.5, energy_curve: [], structure: [], vocal_activity: [], bass_activity: [], integrated_lufs: incoming.energy || 0, true_peak_db: 0, analysis_confidence: incoming.confidence || 0.5 },
+          outgoing: out.rawAnalysis || { track_id: out.id, duration: out.duration, bpm: out.bpm, bpm_confidence: out.confidence || 0.5, beat_grid: [], downbeats: out.downbeats, key: out.key || '', camelot: out.camelot || '', key_confidence: 0.5, energy_curve: [], structure: [], vocal_activity: [], bass_activity: [], integrated_lufs: out.energy || 0, true_peak_db: 0, analysis_confidence: out.confidence || 0.5 },
+          incoming: incoming.rawAnalysis || { track_id: incoming.id, duration: incoming.duration, bpm: incoming.bpm, bpm_confidence: incoming.confidence || 0.5, beat_grid: [], downbeats: incoming.downbeats, key: incoming.key || '', camelot: incoming.camelot || '', key_confidence: 0.5, energy_curve: [], structure: [], vocal_activity: [], bass_activity: [], integrated_lufs: incoming.energy || 0, true_peak_db: 0, analysis_confidence: incoming.confidence || 0.5 },
         }),
       });
       if (!response.ok) throw new Error('plan HTTP ' + response.status);
       const p = await response.json();
-      if (!p || !p.strategy || p.strategy === 'no-transition') return null;
+      if (p && p.strategy === 'no-transition') return { noTransition: true, reason: (p.reasons || []).join('; ') };
+      if (!p || !p.strategy) return null;
       return { strategy: p.strategy, startAt: p.transition_start, durationSec: p.duration, endAt: p.transition_start + p.duration, inStart: p.incoming_start, rateIn: p.incoming_rate || 1, bpmGap: 0, overlapBeats: Math.round(p.duration * 2), keyDistance: null, energyDelta: 0, confidence: p.confidence, reason: 'Railway: ' + (p.reasons || []).join('; ') };
     } catch (error) { note('Railway plan fallback: ' + error.message); return null; }
   }
@@ -283,7 +284,9 @@
       phase('PREPARING');
       const entry = await decodeTrack(cand.track);
       const s = state.host.getState();
-      const plan = (await planTransitionRemote(state.active.analysis, entry.analysis)) || planTransition(state.active.analysis, entry.analysis, s.currentTime);
+      const remote = await planTransitionRemote(state.active.analysis, entry.analysis);
+      if (remote && remote.noTransition) { state.pending = null; phase('DEGRADED'); note('Planner: no transition — ' + (remote.reason || 'incompatible pair')); return; }
+      const plan = remote || planTransition(state.active.analysis, entry.analysis, s.currentTime);
       if (!plan || plan.durationSec <= 0) { phase('DEGRADED'); return; }
       state.next = { ...entry, index: cand.index };
       state.plan = plan;
