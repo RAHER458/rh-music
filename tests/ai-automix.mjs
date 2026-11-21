@@ -41,6 +41,13 @@ check('preparation has timeout', controller.includes('audio preparation') && con
 check('transition has timeout', controller.includes("'transition'"));
 check('AI takes over from host position', controller.includes('host.currentTime') && controller.includes('takeOverAndMix'));
 check('AI can release playback to standard player', controller.includes('releaseToStandard') && app.includes('ownsPlayback()'));
+check('AI pause uses player state, not paused standard element', app.includes('if (S.playing) {\n      window.RH_AI_AUTOMIX.pause();'));
+check('seek is routed to AI when it owns output', controller.includes('function seek(position)') && app.includes('RH_AI_AUTOMIX.seek(target)'));
+check('stale preparation is rejected by track token', controller.includes('trackToken') && controller.includes('token !== state.trackToken'));
+check('takeover verifies real signal before muting standard audio', controller.includes('Deck A не дал аудиосигнала') && controller.includes('getMasterSamples'));
+check('transition failure restores standard audio', controller.includes('transition') && controller.includes('onExit({ position })'));
+check('Smart Mix setting is restored after AI', app.includes('aiSavedSmartMix'));
+check('buffer cache is bounded after transition', controller.includes('trimCache'));
 
 const lib = await import('../web/ai-automix/automix-engine.js');
 check('engine ESM exports AutoMixCore', typeof lib.AutoMixCore === 'function');

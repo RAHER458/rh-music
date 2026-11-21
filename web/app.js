@@ -2184,13 +2184,20 @@ function onSmartMixCancelled() {
   markCurrentRow();
 }
 
+let aiSavedSmartMix = false;
+
 function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
   const active = !!(info && info.active);
   const label = phase === 'OFF' ? 'AI AutoMix' : phase === 'READY' ? 'AI Ready' : phase === 'MIXING' ? 'AI Mixing' : 'AI ' + phase;
   if (active && window.RH_SMARTMIX) {
-    try { if (window.RH_SMARTMIX.getSettings().enabled) window.RH_SMARTMIX.setSettings({ enabled: false }); } catch (_) {}
+    try {
+      if (window.RH_SMARTMIX.getSettings().enabled) { aiSavedSmartMix = true; window.RH_SMARTMIX.setSettings({ enabled: false }); }
+    } catch (_) {}
+  } else if (!active && aiSavedSmartMix && window.RH_SMARTMIX) {
+    aiSavedSmartMix = false;
+    try { window.RH_SMARTMIX.setSettings({ enabled: true }); } catch (_) {}
   }
   document.querySelectorAll('[data-action="ai-automix-toggle"]').forEach((el) => {
     el.classList.toggle('is-on', active);
@@ -2677,12 +2684,12 @@ function togglePlay() {
   if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
     const state = window.RH_AI_AUTOMIX.getState();
     if (state.phase === 'MIXING') return;
-    if (audio.paused || !S.playing) {
-      window.RH_AI_AUTOMIX.resume();
-      S.playing = true;
-    } else {
+    if (S.playing) {
       window.RH_AI_AUTOMIX.pause();
       S.playing = false;
+    } else {
+      window.RH_AI_AUTOMIX.resume();
+      S.playing = true;
     }
     updateTransport();
     return;
@@ -3746,9 +3753,14 @@ audio.addEventListener('loadedmetadata', () => {
   el.addEventListener('change', () => {
     if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? S.current.duration : 0);
-    if (duration > 0) audio.currentTime = (Number(el.value) / 1000) * duration;
+    const target = (Number(el.value) / 1000) * duration;
+    if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
+      if (duration > 0) window.RH_AI_AUTOMIX.seek(target);
+    } else if (duration > 0) {
+      audio.currentTime = target;
+    }
     S.seeking = false;
-    S.playback.lastTick = audio.currentTime;
+    S.playback.lastTick = target;
   });
 });
 

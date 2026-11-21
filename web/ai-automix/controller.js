@@ -33,6 +33,7 @@
     pending: null,
     currentEntry: null,
     ownsPlayback: false,
+    trackToken: 0,
     cache: new Map(),
     timer: null,
     busy: false,
@@ -192,15 +193,17 @@
     state.activeTrack = track;
     state.activeIndex = state.host.getState().index;
     state.ownsPlayback = false;
+    const token = ++state.trackToken;
     setPhase('ANALYZING');
     log('Фоновый анализ: ' + track.title);
     try {
       const entry = await decode(track);
-      if (!state.activeTrack || String(state.activeTrack.id) !== String(track.id)) return;
+      if (token !== state.trackToken || !state.activeTrack || String(state.activeTrack.id) !== String(track.id)) return;
       state.currentEntry = entry;
       setPhase('ACTIVE');
       await planNext();
     } catch (error) {
+      if (state.phase === 'OFF') return;
       setPhase('DEGRADED');
       log('Анализ не удался, обычное воспроизведение продолжается: ' + (error && error.message ? error.message : String(error)));
     }
@@ -230,11 +233,12 @@
     const candidates = queueCandidates();
     if (!candidates.length) { setPhase('DEGRADED'); log('Очередь пуста: нет кандидата'); return; }
     const candidate = candidates[0];
+    const token = state.trackToken;
     state.busy = true;
     try {
       setPhase('PREPARING');
       const entry = await decode(candidate.track);
-      if (!state.activeTrack) return;
+      if (token !== state.trackToken || !state.activeTrack) return;
       const history = { ids: [String(state.activeTrack.id)], artists: [state.activeTrack.artist] };
       const hostState = state.host.getState();
       const playback = {
@@ -256,6 +260,7 @@
       setPhase('ACTIVE');
       scheduleWatch();
     } catch (error) {
+      if (state.phase === 'OFF') return;
       setPhase('DEGRADED');
       log('Подготовка следующего трека не удалась; текущий трек продолжает играть: ' + (error && error.message ? error.message : String(error)));
     } finally {
@@ -290,6 +295,13 @@
         state.deckA.fadeTo(1, 0.01);
         await state.deckA.play(position, 1);
         if (state.deckA.paused) throw new Error('Deck A не запустился');
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        let peak = 0;
+        try {
+          const samples = state.engine.getMasterSamples();
+          for (let i = 0; i < samples.length; i += 1) peak = Math.max(peak, Math.abs(samples[i]));
+        } catch (_) { peak = 0; }
+        if (peak < 0.001) throw new Error('Deck A не дал аудиосигнала');
         const audio = state.host.getAudio ? state.host.getAudio() : null;
         if (audio) audio.pause();
         state.ownsPlayback = true;
@@ -347,6 +359,16 @@
     }
   }
 
+  function seek(position) {
+    if (!state.ownsPlayback || !state.deckA || state.phase === 'MIXING') return false;
+    const target = Math.max(0, Math.min(Number(position) || 0, state.deckA.duration - 0.05));
+    state.deckA.seek(target);
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    state.pending = null;
+    setTimeout(() => { if (state.phase !== 'OFF') void planNext(); }, 350);
+    return true;
+  }
+
   function pause() {
     try { state.deckA && state.deckA.pause(); state.deckB && state.deckB.pause(); } catch (_) {}
   }
@@ -386,6 +408,7 @@
     onTrackStarted,
     pause,
     resume,
+    seek,
     getState,
     getDiagnostics,
     isActive() { return state.phase !== 'OFF' && state.phase !== 'ERROR'; },
