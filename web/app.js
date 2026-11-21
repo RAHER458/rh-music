@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-13';
+window.RH_BUILD = 'neural-2026-11-21-14';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2905,22 +2905,95 @@ function updateTransport() {
   syncPlayerVisibility();
 }
 
-function updateNowPlayingMeta(track) {
+let npLastTrackId = '';
+let npCoverToken = 0;
+let npTextTimer = 0;
+
+function npReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function applyNpText(track) {
   $('npTitle').textContent = track ? track.title : 'Ничего не играет';
   $('npArtist').innerHTML = track && track.artistId
     ? `<a href="#/artist/${esc(track.artistId)}" data-link>${esc(track.artist || 'Неизвестный исполнитель')}</a>`
     : esc(track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек');
   $('npSong').textContent = track ? track.title : 'Ничего не играет';
   $('npSinger').textContent = track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек';
+}
+
+function animateNpText(track) {
+  const info = document.querySelector('.np-info');
+  if (!info || npReducedMotion()) { applyNpText(track); return; }
+  info.classList.add('is-changing');
+  if (npTextTimer) clearTimeout(npTextTimer);
+  npTextTimer = setTimeout(() => {
+    npTextTimer = 0;
+    applyNpText(track);
+    requestAnimationFrame(() => info.classList.remove('is-changing'));
+  }, 150);
+}
+
+function animateNpCover(track) {
+  const first = $('npBigCover');
+  const second = $('npBigCoverNext');
+  if (!first || !second) return;
+  const token = ++npCoverToken;
+  const current = first.classList.contains('is-active') ? first : second.classList.contains('is-active') ? second : null;
+
+  if (!track || !track.cover) {
+    first.classList.remove('is-active', 'is-leaving');
+    second.classList.remove('is-active', 'is-leaving');
+    first.removeAttribute('src');
+    second.removeAttribute('src');
+    return;
+  }
+
+  const url = pic(track.cover, 640);
+  const target = current === first ? second : first;
+  if (current && current.getAttribute('src') === url) return;
+
+  const loader = new Image();
+  loader.decoding = 'async';
+  let committed = false;
+  const commit = () => {
+    if (token !== npCoverToken || committed) return;
+    committed = true;
+    target.src = url;
+    target.classList.add('is-active');
+    target.setAttribute('aria-hidden', 'false');
+    if (current) {
+      current.classList.remove('is-active');
+      current.classList.add('is-leaving');
+      current.setAttribute('aria-hidden', 'true');
+      setTimeout(() => { if (token === npCoverToken) current.classList.remove('is-leaving'); }, 520);
+    }
+  };
+  loader.onload = commit;
+  loader.onerror = () => {
+    if (token !== npCoverToken) return;
+    first.classList.remove('is-active', 'is-leaving');
+    second.classList.remove('is-active', 'is-leaving');
+    first.removeAttribute('src');
+    second.removeAttribute('src');
+  };
+  loader.src = url;
+}
+
+function updateNowPlayingMeta(track) {
+  const sameTrack = !!track && String(track.id) === String(npLastTrackId);
+  npLastTrackId = track ? String(track.id) : '';
+  if (sameTrack) applyNpText(track); else animateNpText(track);
+  animateNpCover(track);
 
   const mini = $('npCover');
-  const big = $('npBigCover');
-  [mini, big].forEach((img) => { img.classList.remove('is-loaded'); img.removeAttribute('src'); });
-  if (track && track.cover) {
-    big.onload = () => big.classList.add('is-loaded');
-    big.src = pic(track.cover, 640);
-    mini.onload = () => mini.classList.add('is-loaded');
-    mini.src = pic(track.cover, 160);
+  if (mini) {
+    mini.classList.remove('is-loaded');
+    mini.removeAttribute('src');
+    if (track && track.cover) {
+      mini.onload = () => mini.classList.add('is-loaded');
+      mini.src = pic(track.cover, 160);
+    }
   }
   updateAmbient(track ? track.cover : null);
   $('npDur').textContent = fmt(track ? track.duration : 0);
