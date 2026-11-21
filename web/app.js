@@ -2269,16 +2269,21 @@ function adoptAiTrack(track, strategy) {
 function initAiAutoMix() {
   if (!window.RH_AI_AUTOMIX) return;
   window.RH_AI_AUTOMIX.init({
-    getState: () => ({
-      current: S.current,
-      index: S.index,
-      queue: S.queue,
-      paused: audio.paused,
-      currentTime: audio.currentTime || 0,
-      duration: Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0),
-      volume: S.volume,
-      muted: S.muted,
-    }),
+    getState: () => {
+      const ai = window.RH_AI_AUTOMIX;
+      const owned = !!(ai && typeof ai.ownsPlayback === 'function' && ai.ownsPlayback());
+      const deck = owned ? ai.getState().deckA : null;
+      return {
+        current: S.current,
+        index: S.index,
+        queue: S.queue,
+        paused: deck ? !!deck.paused : audio.paused,
+        currentTime: deck ? deck.time : (audio.currentTime || 0),
+        duration: deck ? deck.duration : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0)),
+        volume: S.volume,
+        muted: S.muted,
+      };
+    },
     streamUrl,
     getAudio: () => audio,
     onState: refreshAiAutoMixUI,
@@ -2300,6 +2305,20 @@ function initAiAutoMix() {
     log: (message) => console.debug('[AI AutoMix]', message),
   });
   refreshAiAutoMixUI();
+  if (!window.__rhAiTimelineTimer) {
+    window.__rhAiTimelineTimer = setInterval(() => {
+      const ai = window.RH_AI_AUTOMIX;
+      if (!ai || !ai.ownsPlayback || !ai.ownsPlayback()) return;
+      const info = ai.getState();
+      const deck = info.deckA;
+      if (deck) {
+        syncSeek(deck.time, deck.duration);
+        $('npCur').textContent = fmt(deck.time);
+        $('npDur').textContent = fmt(deck.duration);
+      }
+      refreshAiAutoMixUI();
+    }, 250);
+  }
 }
 
 function initSmartMix() {
@@ -3798,8 +3817,11 @@ audio.addEventListener('loadedmetadata', () => {
     const target = (Number(el.value) / 1000) * duration;
     if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
       if (duration > 0) window.RH_AI_AUTOMIX.seek(target);
-    } else if (duration > 0) {
-      audio.currentTime = target;
+    } else {
+      if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive && window.RH_AI_AUTOMIX.isActive()) {
+        window.RH_AI_AUTOMIX.invalidatePlan();
+      }
+      if (duration > 0) audio.currentTime = target;
     }
     S.seeking = false;
     S.playback.lastTick = target;

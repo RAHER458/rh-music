@@ -56,6 +56,12 @@ check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix
 check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
 check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
+check('AI candidates follow queue order after current index', controller.includes('(activeIndex + offset) % queue.length'));
+check('missed transition windows trigger replan', controller.includes('Окно перехода упущено') && controller.includes('void planNext()'));
+check('seek invalidates AI plan before takeover', controller.includes('function invalidatePlan') && app.includes('RH_AI_AUTOMIX.invalidatePlan()'));
+check('AI host state uses active deck clock when owning output', app.includes('const deck = owned ? ai.getState().deckA : null') && app.includes('currentTime: deck ? deck.time'));
+check('AI playing seekbar is updated by deck clock', app.includes('__rhAiTimelineTimer') && app.includes('syncSeek(deck.time, deck.duration)'));
+check('adoption index comes from host after onAdopt', controller.includes('state.activeIndex = state.host.getState().index'));
 check('adoption refreshes mini player', app.includes('adoptAiTrack') && /adoptAiTrack[\s\S]{0,900}renderCompactTrack/.test(app));
 check('adoption refreshes transport controls', /adoptAiTrack[\s\S]{0,1200}updateTransport/.test(app));
 check('adoption sets playback state', /adoptAiTrack[\s\S]{0,500}S\.playing = true/.test(app));

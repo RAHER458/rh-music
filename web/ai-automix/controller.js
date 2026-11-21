@@ -220,12 +220,15 @@
   function queueCandidates() {
     const hostState = state.host.getState();
     const queue = Array.isArray(hostState.queue) ? hostState.queue : [];
+    if (!queue.length) return [];
+    const activeIndex = Number.isInteger(hostState.index) && hostState.index >= 0 ? hostState.index : 0;
     const out = [];
-    for (let i = 0; i < queue.length; i += 1) {
-      const track = queue[i];
+    for (let offset = 1; offset <= queue.length; offset += 1) {
+      const index = (activeIndex + offset) % queue.length;
+      const track = queue[index];
       if (!track || !track.id) continue;
       if (state.activeTrack && String(track.id) === String(state.activeTrack.id)) continue;
-      out.push({ track, index: i });
+      out.push({ track, index });
       if (out.length >= 3) break;
     }
     return out;
@@ -277,6 +280,13 @@
       if (state.phase === 'OFF' || state.phase === 'ERROR' || !state.pending) return;
       const host = state.host.getState();
       if (host.paused) return;
+      if (host.currentTime > state.pending.plan.startAt + 2) {
+        clearInterval(state.timer); state.timer = null;
+        state.pending = null;
+        log('Окно перехода упущено; план будет пересчитан');
+        void planNext();
+        return;
+      }
       if (host.currentTime >= state.pending.plan.startAt - 0.35) {
         clearInterval(state.timer); state.timer = null;
         void takeOverAndMix();
@@ -350,7 +360,7 @@
       trimCache([String(pending.track.id)]);
       const hostState = state.host.getState();
       if (state.host && typeof state.host.onAdopt === 'function') state.host.onAdopt(pending.track, pending.plan.strategy);
-      state.activeIndex = hostState.index;
+      state.activeIndex = state.host.getState().index;
       log('Переход завершён: ' + pending.track.title);
       setPhase('ACTIVE');
       await planNext();
@@ -362,6 +372,16 @@
         if (state.host && typeof state.host.onExit === 'function') state.host.onExit({ position });
       }
       fail(error && error.message ? error.message : String(error));
+    }
+  }
+
+  function invalidatePlan() {
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    state.pending = null;
+    state.activePlan = null;
+    if (state.phase !== 'OFF' && state.phase !== 'ERROR') {
+      setPhase(state.ownsPlayback ? 'ACTIVE' : 'ANALYZING');
+      setTimeout(() => { if (state.phase !== 'OFF') void planNext(); }, 350);
     }
   }
 
@@ -421,6 +441,7 @@
     pause,
     resume,
     seek,
+    invalidatePlan,
     getState,
     getDiagnostics,
     isActive() { return state.phase !== 'OFF' && state.phase !== 'ERROR'; },
