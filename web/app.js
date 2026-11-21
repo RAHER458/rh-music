@@ -2429,6 +2429,52 @@ function initAiMixBeta() {
   }
 }
 
+function refreshAutoMix2UI() {
+  const info = window.RH_AUTOMIX2 ? window.RH_AUTOMIX2.getState() : null;
+  const phase = info ? info.phase : 'OFF';
+  const active = !!(info && info.active);
+  document.querySelectorAll('[data-action="automix2-toggle"]').forEach((el) => {
+    el.classList.toggle('is-on', active);
+    el.setAttribute('aria-pressed', active ? 'true' : 'false');
+    el.dataset.phase = phase;
+    if (el.id === 'npAutoMix2') el.textContent = phase === 'OFF' ? 'Auto Mix Beta 2.0' : '2.0 ' + phase;
+  });
+}
+
+function initAutoMix2() {
+  if (!window.RH_AUTOMIX2) return;
+  window.RH_AUTOMIX2.init({
+    getState: () => {
+      const a = window.RH_AUTOMIX2;
+      const owned = !!(a && a.ownsPlayback());
+      const st = owned ? a.getState() : null;
+      return {
+        current: S.current, index: S.index, queue: S.queue,
+        paused: owned && st ? !!st.paused : audio.paused,
+        currentTime: owned && st ? st.position : (audio.currentTime || 0),
+        duration: owned && st && st.duration ? st.duration : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0)),
+        volume: S.volume, muted: S.muted,
+      };
+    },
+    streamUrl,
+    getAudio: () => audio,
+    onState: refreshAutoMix2UI,
+    onToast: toast,
+    onAdopt: (track, strategy) => adoptAiTrack(track, strategy, 'Auto Mix Beta 2.0'),
+    onExit: (info) => {
+      S.loading = false; S.playing = false; updateTransport();
+      if (S.current) {
+        audio.src = streamUrl(S.current); audio.load();
+        const resumeAt = info && Number.isFinite(info.position) ? info.position : 0;
+        audio.addEventListener('loadedmetadata', () => { try { if (resumeAt > 0) audio.currentTime = resumeAt; } catch (_) {} }, { once: true });
+        audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
+      }
+    },
+    log: (message) => console.debug('[AutoMix2]', message),
+  });
+  refreshAutoMix2UI();
+}
+
 function initSmartMix() {
   if (!window.RH_SMARTMIX) return;
   window.RH_SMARTMIX.init({
@@ -2815,6 +2861,7 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   startPlaybackSession(track, source);
   savePlayerState(0);
   if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) window.RH_AI_AUTOMIX.onTrackStarted(track);
+  if (window.RH_AUTOMIX2 && window.RH_AUTOMIX2.isActive()) window.RH_AUTOMIX2.onTrackStarted(track);
 
   if (autoplay) {
     const promise = audio.play();
@@ -2850,6 +2897,11 @@ function handleAudioFailure(detail) {
 }
 
 function togglePlay() {
+  if (window.RH_AUTOMIX2 && window.RH_AUTOMIX2.ownsPlayback()) {
+    if (S.playing) { window.RH_AUTOMIX2.pause(); S.playing = false; } else { window.RH_AUTOMIX2.resume(); S.playing = true; }
+    updateTransport();
+    return;
+  }
   if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
     const state = window.RH_AI_AUTOMIX.getState();
     if (state.phase === 'MIXING') return;
@@ -3304,7 +3356,14 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
+  if (action === 'automix2-toggle') {
+    if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) { toast('Сначала выключите AI AutoMix', 'info'); return; }
+    if (window.RH_AUTOMIX2) window.RH_AUTOMIX2.toggle();
+    refreshAutoMix2UI();
+    return;
+  }
   if (action === 'ai-automix-toggle') {
+    if (window.RH_AUTOMIX2 && window.RH_AUTOMIX2.isActive()) { toast('Сначала выключите Auto Mix Beta 2.0', 'info'); return; }
     if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
     refreshAiAutoMixUI();
     return;
@@ -3927,7 +3986,9 @@ audio.addEventListener('loadedmetadata', () => {
     if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? S.current.duration : 0);
     const target = (Number(el.value) / 1000) * duration;
-    if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
+    if (window.RH_AUTOMIX2 && window.RH_AUTOMIX2.ownsPlayback()) {
+      if (window.RH_AUTOMIX2.seek) window.RH_AUTOMIX2.seek(target);
+    } else if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
       if (duration > 0) window.RH_AI_AUTOMIX.seek(target);
     } else {
       if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive && window.RH_AI_AUTOMIX.isActive()) {
@@ -3995,6 +4056,7 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   restorePlayerState();
   initSmartMix();
   initAiAutoMix();
+  initAutoMix2();
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   updateTransport();
   await refreshMe();
