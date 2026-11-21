@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-11';
+window.RH_BUILD = 'neural-2026-11-21-12';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2246,6 +2246,98 @@ function aiOwnsPlayback() {
   return !!(window.RH_AI_AUTOMIX && typeof window.RH_AI_AUTOMIX.ownsPlayback === 'function' && window.RH_AI_AUTOMIX.ownsPlayback());
 }
 
+const aiRingAnim = {
+  raf: 0, target: 0, display: 0, last: 0, key: '', mixKey: '',
+  completing: false, flashUntil: 0,
+};
+
+function renderAiRing(value) {
+  const progress = Math.max(0, Math.min(1, Number(value) || 0));
+  aiRingAnim.display = progress;
+  document.querySelectorAll('.np-play-wrap').forEach((el) => {
+    el.style.setProperty('--np-mix-progress', progress.toFixed(4));
+  });
+}
+
+function stopAiRingAnimation() {
+  if (aiRingAnim.raf) cancelAnimationFrame(aiRingAnim.raf);
+  aiRingAnim.raf = 0;
+  aiRingAnim.last = 0;
+}
+
+function finishAiRing() {
+  if (!aiRingAnim.completing) return;
+  aiRingAnim.completing = false;
+  stopAiRingAnimation();
+  renderAiRing(1);
+  aiRingAnim.flashUntil = Date.now() + 650;
+  document.body.dataset.aiRingDone = '1';
+  setTimeout(() => {
+    document.body.dataset.aiRingDone = '';
+    aiRingAnim.flashUntil = 0;
+    if (!window.RH_AI_AUTOMIX || window.RH_AI_AUTOMIX.getState().phase !== 'MIXING') {
+      document.body.dataset.aiPhase = '';
+    }
+  }, 650);
+}
+
+function tickAiRing(now) {
+  aiRingAnim.raf = 0;
+  if (!aiRingAnim.last) aiRingAnim.last = now;
+  const dt = Math.min(0.12, Math.max(0, (now - aiRingAnim.last) / 1000));
+  aiRingAnim.last = now;
+  const target = aiRingAnim.target;
+  const gap = target - aiRingAnim.display;
+  // Frame-rate independent exponential smoothing. A larger target jump is
+  // followed faster so the ring never lags audibly behind the transition.
+  const tau = Math.abs(gap) > 0.15 ? 0.055 : 0.11;
+  const alpha = 1 - Math.exp(-dt / tau);
+  let next = aiRingAnim.display + gap * alpha;
+  if (Math.abs(target - next) < 0.0005) next = target;
+  renderAiRing(next);
+  if (target >= 0.999 && next >= 0.999) { finishAiRing(); return; }
+  if (aiRingAnim.target > next || aiRingAnim.completing) {
+    aiRingAnim.raf = requestAnimationFrame(tickAiRing);
+  } else {
+    aiRingAnim.display = target;
+  }
+}
+
+function startAiRingAnimation() {
+  if (aiRingAnim.raf) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    renderAiRing(aiRingAnim.target);
+    if (aiRingAnim.target >= 0.999) finishAiRing();
+    return;
+  }
+  aiRingAnim.last = 0;
+  aiRingAnim.raf = requestAnimationFrame(tickAiRing);
+}
+
+function setAiRingTarget(progress, mixKey, paused) {
+  const target = Math.max(0, Math.min(1, Number(progress) || 0));
+  if (mixKey !== aiRingAnim.mixKey) {
+    aiRingAnim.mixKey = mixKey;
+    aiRingAnim.display = target;
+    aiRingAnim.target = target;
+    renderAiRing(target);
+  } else {
+    aiRingAnim.target = target;
+  }
+  if (paused || document.visibilityState === 'hidden') { stopAiRingAnimation(); return; }
+  if (target <= aiRingAnim.display + 0.0001 && !aiRingAnim.completing) {
+    stopAiRingAnimation();
+    renderAiRing(target);
+    return;
+  }
+  startAiRingAnimation();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { stopAiRingAnimation(); return; }
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.getState().phase === 'MIXING') refreshAiAutoMixUI();
+});
+
 function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
@@ -2267,19 +2359,33 @@ function refreshAiAutoMixUI() {
   });
   const mix = info && info.mix ? info.mix : null;
   const justFinished = aiLastPhase === 'MIXING' && phase === 'ACTIVE' && active;
-  const ringProgress = justFinished ? 1 : (mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0);
-  const ringPhase = active ? (justFinished ? 'MIXING' : phase === 'MIXING' ? 'MIXING' : (info && info.preparing ? 'PREPARING' : phase)) : '';
+  const mixProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0;
+  const mixKey = mix ? [mix.startAt, mix.durationSec, mix.strategy].join(':') : 'none';
+  if (justFinished && !aiRingAnim.completing) {
+    aiRingAnim.completing = true;
+    aiRingAnim.target = 1;
+  }
+  if (phase === 'MIXING') {
+    aiRingAnim.completing = false;
+    document.body.dataset.aiRingDone = '';
+    setAiRingTarget(mixProgress, mixKey, !!info.paused);
+  } else if (aiRingAnim.completing || Date.now() < aiRingAnim.flashUntil) {
+    // Keep the ring visible while it animates to 100% and flashes.
+    if (document.body.dataset.aiRingDone) {
+      // flash is running
+    } else {
+      startAiRingAnimation();
+    }
+  } else {
+    stopAiRingAnimation();
+    aiRingAnim.target = 0;
+    renderAiRing(0);
+  }
+  const ringPhase = active && (phase === 'MIXING' || aiRingAnim.completing || Date.now() < aiRingAnim.flashUntil) ? 'MIXING' : (active ? (info && info.preparing ? 'PREPARING' : phase) : '');
   aiLastPhase = phase;
   document.body.dataset.aiPhase = ringPhase;
-  document.body.style.setProperty('--ai-ring-progress', ringProgress.toFixed(3));
-  document.body.style.setProperty('--np-mix-progress', ringProgress.toFixed(3));
+  document.body.dataset.aiRingDone = document.body.dataset.aiRingDone || '';
   document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
-  if (justFinished) {
-    document.body.dataset.aiRingDone = '1';
-    setTimeout(() => { document.body.dataset.aiRingDone = ''; }, 650);
-  } else if (phase === 'MIXING') {
-    document.body.dataset.aiRingDone = '';
-  }
   applyAiMixTimeline(info);
   const button = $('aiAutomixBtn');
   if (button) button.title = label;

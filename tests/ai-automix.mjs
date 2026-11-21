@@ -67,7 +67,10 @@ check('mix ring has base, fill and endpoint', html.includes('np-play-base') && h
 check('mix ring is styled as a circle around npPlay', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.np-play-wrap > .np-play-ring') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--np-mix-progress'));
 check('mix ring completes at 100% then hides', app.includes('justFinished') && app.includes("dataset.aiRingDone = '1'") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('np-play-ring-finish'));
 check('mix ring is visible only during MIXING', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('body[data-ai-phase="MIXING"] .np-play-wrap > .np-play-ring'));
-check('mix ring progress comes from real mix progress', app.includes('Math.max(0, Math.min(1, Number(mix.progress) || 0))') && app.includes('justFinished ? 1') && app.includes("--np-mix-progress"));
+check('mix ring progress comes from real mix progress', app.includes('Number(mix.progress)') && app.includes('setAiRingTarget(mixProgress') && app.includes("--np-mix-progress"));
+check('ring uses one RAF loop only during MIXING', app.includes('requestAnimationFrame(tickAiRing)') && app.includes('cancelAnimationFrame') && app.includes('if (paused || document.visibilityState'));
+check('ring freezes on pause and resumes smoothly', app.includes('setAiRingTarget(mixProgress, mixKey, !!info.paused)') && app.includes('stopAiRingAnimation()'));
+check('ring is frame-rate independent', app.includes('1 - Math.exp(-dt / tau)') && app.includes('Math.min(0.12'));
 check('native pause cannot flip Play during AI mix', app.includes('function aiOwnsPlayback') && app.includes("audio.addEventListener('pause', () => {\n  if (aiOwnsPlayback()) return;"));
 check('native timeupdate cannot overwrite AI timeline', app.includes("audio.addEventListener('timeupdate', () => {\n  if (aiOwnsPlayback()) return;"));
 check('transport follows real AI deck paused state', app.includes('S.playing = !ai.paused') && controller.includes('paused: !!state.paused'));
