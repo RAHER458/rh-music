@@ -28,6 +28,8 @@ check('Beta2 has queue order after current index', source.includes('(idx + off) 
 check('Beta2 has analysis cache', cache.includes('rh_automix2') && cache.includes('MAX_ENTRIES'));
 check('Beta2 is mutually exclusive with AI AutoMix', app.includes('Сначала выключите Auto Mix Beta 2.0') && app.includes('Сначала выключите AI AutoMix'));
 check('Beta2 routes Play/Pause and seek', app.includes('RH_AUTOMIX2.pause()') && app.includes('RH_AUTOMIX2.seek(target)'));
+check('cache records are unwrapped before use', source.includes('analysis && analysis.analysis') && source.includes('!Array.isArray(analysis.downbeats)'));
+check('nearestDownbeat tolerates missing grids', source.includes("!Array.isArray(analysis.downbeats)") && source.includes('return Math.max(0, Number(time) || 0)'));
 check('DEGRADED carries a concrete reason', source.includes('function degrade') && source.includes('reason: state.error'));
 check('empty queue becomes READY with retry', source.includes('Ожидание следующего трека') && source.includes('retryLater'));
 check('no-transition is not forced', source.includes('Planner: no transition') && source.includes("remote.noTransition"));

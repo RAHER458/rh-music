@@ -140,6 +140,7 @@
   }
 
   function nearestDownbeat(analysis, time) {
+    if (!analysis || !Array.isArray(analysis.downbeats) || !analysis.downbeats.length) return Math.max(0, Number(time) || 0);
     let best = analysis.downbeats[0] ?? 0;
     for (const t of analysis.downbeats) if (Math.abs(t - time) < Math.abs(best - time)) best = t;
     return best;
@@ -263,6 +264,8 @@
     const cache = window.RH_AUTOMIX2_CACHE;
     const cacheKey = 'pg1:' + String(track.id) + ':' + String(track.duration || 0);
     let analysis = cache ? await cache.get(cacheKey) : null;
+    if (analysis && analysis.analysis) analysis = analysis.analysis;
+    if (analysis && !Array.isArray(analysis.downbeats)) analysis = null;
     if (analysis) {
       note('cache hit: ' + track.title);
     } else {
