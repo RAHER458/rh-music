@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import vm from 'node:vm';
 
 const here = dirname(fileURLToPath(import.meta.url));
 let passed = 0; const failures = [];
@@ -37,18 +38,33 @@ function clickTrack(bpm, seconds = 60) {
       samples[start + j] += Math.sin(2 * Math.PI * 60 * j / SR) * e;
     }
   }
-  return { sampleRate: SR, length, numberOfChannels: 1, duration: seconds, getChannelData: () => samples };
+  return samples;
 }
-const a = API._internal.analyzeBuffer(clickTrack(120), { id: 'a', title: 'A', artist: 'A', duration: 60 });
-const b = API._internal.analyzeBuffer(clickTrack(124), { id: 'b', title: 'B', artist: 'B', duration: 60 });
-check('BPM analysis is plausible', Math.abs(a.bpm - 120) < 4, String(a.bpm));
-check('downbeats detected', a.downbeats.length > 5);
+function pulseGridAnalyze(samples, duration) {
+  const messages = [];
+  const context = { self: { onmessage: null, postMessage: (m) => messages.push(m) }, Math, Float32Array, Float64Array, console };
+  vm.createContext(context);
+  vm.runInContext(readFileSync(join(here, '../web/ai-mix-beta/pulsegrid-analysis-worker.js'), 'utf8'), context);
+  context.self.onmessage({ data: { id: 1, samples, sampleRate: SR, duration } });
+  const complete = messages.find((m) => m.phase === 'complete');
+  if (!complete) throw new Error('PulseGrid worker did not complete');
+  return complete.result;
+}
+const analysisResult = pulseGridAnalyze(clickTrack(120), 60);
+check('PulseGrid worker detects BPM', Math.abs(analysisResult.bpm - 120) < 5, String(analysisResult.bpm));
+check('PulseGrid worker returns beat grid', Number.isFinite(analysisResult.gridOffset) && analysisResult.gridOffset >= 0);
+check('PulseGrid worker returns key/energy', typeof analysisResult.camelot === 'string' && Number.isFinite(analysisResult.energy));
+const beatSec = 60 / analysisResult.bpm;
+const downbeats = []; for (let t = analysisResult.gridOffset; t < 59.5; t += beatSec * 4) downbeats.push(t);
+const a = { bpm: analysisResult.bpm, beatSec, downbeats, duration: 60, mixOut: 43.2, sections: [] };
+const b = { bpm: 124, beatSec: 60 / 124, downbeats, duration: 60, mixOut: 43.2, sections: [] };
 const plan = API._internal.planTransition(a, b, 5);
 check('transition starts late', plan.startAt >= 60 * 0.7, String(plan.startAt));
 check('transition fits', plan.startAt + plan.durationSec <= 60);
 check('transition has real duration', plan.durationSec >= 2);
 check('transition has tempo rate', plan.rateIn > 0.9 && plan.rateIn < 1.1);
 check('strategy is real', ['beta-bass-swap', 'beta-filter-cut'].includes(plan.strategy));
+check('PulseGrid worker and policy are vendored', source.includes('pulsegrid-analysis-worker') && source.includes('pulsegrid-transition-policy') && source.includes('pulsegrid-pitch-processor'));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

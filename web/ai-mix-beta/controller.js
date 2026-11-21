@@ -15,53 +15,55 @@
   function phase(p) { state.phase = p; emit(); }
   function fail(m) { state.error = m; phase('ERROR'); if (state.host?.onToast) state.host.onToast(m); note('ERROR ' + m); }
 
-  function rms(data, from, to) { let s = 0, n = 0; for (let i = from; i < to && i < data.length; i += 1) { s += data[i] * data[i]; n += 1; } return Math.sqrt(s / Math.max(1, n)); }
+  let pulsePolicy = null;
+  let analysisWorker = null;
+  let analysisSeq = 0;
+  const analysisPending = new Map();
 
-  /** Lightweight real DSP analysis: onset BPM, downbeats, phrases, energy. */
-  function analyzeBuffer(buffer, track) {
-    const sr = buffer.sampleRate;
-    const len = buffer.length;
+  function ensureAnalysisWorker() {
+    if (analysisWorker) return analysisWorker;
+    analysisWorker = new Worker('ai-mix-beta/pulsegrid-analysis-worker.js');
+    analysisWorker.onmessage = (event) => {
+      const job = analysisPending.get(event.data.id);
+      if (!job) return;
+      if (event.data.phase === 'complete') { analysisPending.delete(event.data.id); job.resolve(event.data.result); }
+      else if (event.data.phase === 'error') { analysisPending.delete(event.data.id); job.reject(new Error(event.data.error || 'PulseGrid analysis failed')); }
+    };
+    analysisWorker.onerror = (event) => {
+      for (const [id, job] of analysisPending) { job.reject(new Error(event.message || 'PulseGrid analysis worker error')); analysisPending.delete(id); }
+    };
+    return analysisWorker;
+  }
+
+  function analyzeWithPulseGrid(buffer, track) {
+    const worker = ensureAnalysisWorker();
     const channels = Math.min(2, buffer.numberOfChannels);
-    const mono = new Float32Array(len);
-    for (let c = 0; c < channels; c += 1) {
-      const data = buffer.getChannelData(c);
-      for (let i = 0; i < len; i += 1) mono[i] += data[i] / channels;
-    }
-    const hop = Math.max(128, Math.floor(sr * 0.01));
-    const frames = Math.floor(len / hop);
-    const env = new Float32Array(frames);
-    for (let f = 0; f < frames; f += 1) env[f] = rms(mono, f * hop, (f + 1) * hop);
-    const onset = new Float32Array(frames);
-    for (let f = 1; f < frames; f += 1) onset[f] = Math.max(0, env[f] - env[f - 1]);
-    const mean = onset.reduce((a, b) => a + b, 0) / Math.max(1, frames);
-    const peaks = [];
-    for (let f = 2; f < frames - 1; f += 1) if (onset[f] > mean * 2.2 && onset[f] >= onset[f - 1] && onset[f] >= onset[f + 1]) peaks.push(f);
-    const minLag = Math.round(0.30 / 0.01), maxLag = Math.round(1.05 / 0.01);
-    let bestLag = minLag, bestScore = 0;
-    for (let lag = minLag; lag <= maxLag; lag += 1) {
-      let s = 0;
-      for (let i = 0; i + lag < frames; i += 1) s += onset[i] * onset[i + lag];
-      if (s > bestScore) { bestScore = s; bestLag = lag; }
-    }
-    let bpm = 60 / (bestLag * 0.01);
-    while (bpm < 70) bpm *= 2; while (bpm > 180) bpm /= 2;
+    const samples = new Float32Array(buffer.length);
+    for (let c = 0; c < channels; c += 1) { const data = buffer.getChannelData(c); for (let i = 0; i < data.length; i += 1) samples[i] += data[i] / channels; }
+    const id = ++analysisSeq;
+    return new Promise((resolve, reject) => {
+      analysisPending.set(id, { resolve, reject });
+      worker.postMessage({ id, samples, sampleRate: buffer.sampleRate, duration: track.duration }, [samples.buffer]);
+    });
+  }
+
+  async function analyzeTrackBuffer(buffer, track) {
+    const result = await analyzeWithPulseGrid(buffer, track);
+    const bpm = Number(result.bpm) || 120;
     const beatSec = 60 / Math.max(1, bpm);
-    const firstPeak = peaks.length ? peaks[0] * 0.01 : 0;
-    const offset = Math.max(0, firstPeak % beatSec);
+    const offset = Number(result.gridOffset) || 0;
     const downbeats = [];
     for (let t = offset; t < track.duration - 0.2; t += beatSec * 4) downbeats.push(Number(t.toFixed(3)));
-    const block = Math.max(beatSec * 4, 4);
+    const peaks = result.peaks || new Float32Array(0);
     const sections = [];
-    for (let t = 0; t < track.duration; t += block) {
-      const from = Math.floor(t * sr), to = Math.min(len, Math.floor((t + block) * sr));
-      sections.push({ start: t, end: Math.min(track.duration, t + block), energy: rms(mono, from, to) });
+    const buckets = 12;
+    for (let i = 0; i < buckets; i += 1) {
+      const from = Math.floor((i / buckets) * peaks.length), to = Math.floor(((i + 1) / buckets) * peaks.length);
+      let sum = 0; for (let j = from; j < to; j += 1) sum += peaks[j] || 0;
+      sections.push({ start: (i / buckets) * track.duration, end: ((i + 1) / buckets) * track.duration, energy: Number((sum / Math.max(1, to - from)).toFixed(3)) });
     }
-    const energies = sections.map((s) => s.energy);
-    const maxEnergy = Math.max(...energies, 1e-6);
-    for (const s of sections) s.energy = Number((s.energy / maxEnergy).toFixed(3));
-    const late = track.duration * 0.72;
-    const mixOut = Math.max(late, track.duration - Math.max(32, track.duration * 0.18));
-    return { id: String(track.id), bpm: Number(bpm.toFixed(2)), beatSec, offset, downbeats, duration: track.duration, sections, mixOut, track };
+    const mixOut = Math.max(track.duration * 0.72, track.duration - Math.max(32, track.duration * 0.18));
+    return { id: String(track.id), bpm: Number(bpm.toFixed(2)), beatSec, offset, downbeats, duration: track.duration, sections, energy: result.energy, mixOut, camelot: result.camelot, key: result.key, analysis: 'pulsegrid' };
   }
 
   function nearestDownbeat(analysis, time) {
@@ -75,7 +77,9 @@
     const start = Math.max(position + 0.2, nearestDownbeat(out, Math.max(out.mixOut, out.duration * 0.72)));
     const remaining = Math.max(0, out.duration - start);
     const beats = bpmGap <= 0.06 ? 32 : 16;
-    const durationSec = Math.min(remaining - 0.2, Math.max(2, beats * 60 / Math.max(60, out.bpm)));
+    const plannedSec = Math.min(remaining - 0.2, Math.max(2, beats * 60 / Math.max(60, out.bpm)));
+    const profile = pulsePolicy ? pulsePolicy.transitionDurationProfile({ plannedSec, plannedBeats: beats, remainingOutgoingSec: remaining }) : null;
+    const durationSec = profile ? profile.effectiveSec : plannedSec;
     const inStart = Math.max(0, nearestDownbeat(incoming, Math.max(incoming.duration * 0.08, incoming.duration * 0.04)));
     const strategy = bpmGap <= 0.06 ? 'beta-bass-swap' : 'beta-filter-cut';
     return {
@@ -88,8 +92,8 @@
   }
 
   class BetaMixer {
-    constructor(ctx) {
-      this.ctx = ctx; this.out = ctx.createGain(); this.out.gain.value = 1; this.out.connect(ctx.destination);
+    constructor(ctx, pitchReady = false) {
+      this.ctx = ctx; this.pitchReady = pitchReady; this.out = ctx.createGain(); this.out.gain.value = 1; this.out.connect(ctx.destination);
       this.a = this.makeDeck(); this.b = this.makeDeck(); this.active = null;
     }
     makeDeck() {
@@ -98,14 +102,22 @@
       const mid = this.ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 1100;
       const high = this.ctx.createBiquadFilter(); high.type = 'highshelf'; high.frequency.value = 6500;
       const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 22000;
+      let pitch = null;
+      if (this.pitchReady) {
+        try {
+          pitch = new AudioWorkletNode(this.ctx, 'pulsegrid-pitch-processor', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+          pitch.connect(gain);
+        } catch (_) { pitch = null; }
+      }
       gain.connect(low).connect(mid).connect(high).connect(filter).connect(this.out);
-      return { gain, low, mid, high, filter, source: null, anchor: 0, startedAt: 0, rate: 1, buffer: null };
+      return { gain, low, mid, high, filter, pitch, source: null, anchor: 0, startedAt: 0, rate: 1, buffer: null };
     }
     startDeck(deck, buffer, offset, rate) {
       this.stopDeck(deck);
       const source = this.ctx.createBufferSource();
       source.buffer = buffer; source.playbackRate.value = rate || 1;
-      source.connect(deck.gain);
+      source.connect(deck.pitch || deck.gain);
+      if (deck.pitch) { try { deck.pitch.parameters.get('pitchRatio').setTargetAtTime(1 / (rate || 1), this.ctx.currentTime, 0.015); } catch (_) {} }
       source.start(0, Math.max(0, Math.min(offset, buffer.duration - 0.02)));
       deck.source = source; deck.anchor = offset; deck.startedAt = this.ctx.currentTime; deck.rate = rate || 1; deck.buffer = buffer;
     }
@@ -123,7 +135,7 @@
     if (!res.ok) throw new Error('stream HTTP ' + res.status);
     const data = await res.arrayBuffer();
     const buffer = await state.ctx.decodeAudioData(data.slice(0));
-    const analysis = analyzeBuffer(buffer, track);
+    const analysis = await analyzeTrackBuffer(buffer, track);
     const entry = { track, buffer, analysis };
     state.cache.set(String(track.id), entry);
     while (state.cache.size > 2) state.cache.delete(state.cache.keys().next().value);
@@ -227,7 +239,13 @@
       const Ctx = window.AudioContext || window.webkitAudioContext;
       state.ctx = new Ctx({ latencyHint: 'interactive' });
       if (state.ctx.state === 'suspended') await state.ctx.resume();
-      state.mixer = new BetaMixer(state.ctx);
+      if (!pulsePolicy) pulsePolicy = await import('./ai-mix-beta/pulsegrid-transition-policy.mjs').catch(() => null);
+      let pitchReady = false;
+      if (state.ctx.audioWorklet) {
+        try { await state.ctx.audioWorklet.addModule('ai-mix-beta/pulsegrid-pitch-processor.js'); pitchReady = true; }
+        catch (_) { pitchReady = false; }
+      }
+      state.mixer = new BetaMixer(state.ctx, pitchReady);
       const cur = state.host.getState().current;
       if (cur) await onTrackStarted(cur);
       else phase('READY');
@@ -291,6 +309,6 @@
     pause() { state.mixer?.pause(); }, resume() { state.mixer?.resume(); },
     seek,
     getDiagnostics() { return { state: getState(), log: state.log.slice() }; },
-    _internal: { analyzeBuffer, planTransition },
+    _internal: { analyzeTrackBuffer, planTransition },
   };
 })();

@@ -16,9 +16,18 @@ Candidates examined:
 
 ## Chosen approach
 
-A separate browser engine was implemented in `web/ai-mix-beta/controller.js`:
+The beta uses actual vendored PulseGrid modules:
 
-- own BPM/onset analysis, downbeats, energy sections;
+- `pulsegrid-analysis-worker.js` — BPM, beat grid, key, energy;
+- `pulsegrid-pitch-processor.js` — AudioWorklet pitch lock;
+- `pulsegrid-transition-policy.mjs` — safe transition duration policy.
+
+The RH-MUSIC adapter/executor lives in `web/ai-mix-beta/controller.js`:
+
+- PulseGrid BPM/beat-grid/key/energy analysis;
+- PulseGrid pitch-lock worklet;
+- PulseGrid transition-duration policy;
+- adapter-derived downbeats/sections from PulseGrid output;
 - own transition planner with a late-track policy (`max(duration*0.72, duration - tail)`);
 - two AudioBufferSourceNode decks with independent gain/EQ/filter;
 - equal-power crossfade, bass swap for close BPM, filter cut for large BPM gaps;
@@ -27,6 +36,10 @@ A separate browser engine was implemented in `web/ai-mix-beta/controller.js`:
 - preparation of only the next track;
 - adoption through the existing RH-MUSIC UI/history path;
 - separate global `RH_AI_MIX_BETA` and button, mutually exclusive with AI AutoMix.
+
+## Attribution
+
+PulseGrid is MIT. Its LICENSE is vendored as `web/ai-mix-beta/PULSEGRID_LICENSE`.
 
 ## Not done
 

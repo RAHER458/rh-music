@@ -1,0 +1,3 @@
+PulseGrid (https://github.com/ysy-ym/pulsegrid) — MIT.
+Vendored files: pulsegrid-analysis-worker.js, pulsegrid-pitch-processor.js, pulsegrid-transition-policy.mjs.
+See PULSEGRID_LICENSE.
