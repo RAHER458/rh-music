@@ -2239,14 +2239,29 @@ function refreshAiAutoMixUI() {
 function adoptAiTrack(track, strategy) {
   if (!track) return;
   const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
-  if (index >= 0) { S.index = index; S.current = track; }
-  flushPlayback(true);
+  if (index >= 0) S.index = index;
+  S.current = track;
+  S.playing = true;
+  S.loading = false;
+
+  const sameSession = S.playback
+    && String(S.playback.trackId) === String(track.id)
+    && S.playback.source === 'automix';
+  if (!sameSession) {
+    flushPlayback(true);
+    startPlaybackSession(track, 'automix');
+  }
+
   updateNowPlayingMeta(track);
+  renderCompactTrack(track);
   if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
   renderQueue();
   markCurrentRow();
-  startPlaybackSession(track, 'automix');
   savePlayerState(0);
+  $('npCur').textContent = '0:00';
+  $('npDur').textContent = fmt(track.duration);
+  syncSeek(0, Number(track.duration) || 0);
+  updateTransport();
   toast('AI AutoMix: ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
   refreshAiAutoMixUI();
 }

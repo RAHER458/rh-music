@@ -54,8 +54,14 @@ check('timeline uses TransitionPlan values, not animation', app.includes('functi
 check('timeline writes CSS seek-band variables', app.includes("'--mix-start'") && app.includes("'--mix-width'") && app.includes("'--mix-progress'"));
 check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix-opacity', mix ? '1' : '0')"));
 check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
-check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.index = index; S.current = track'));
+check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
+check('adoption refreshes mini player', app.includes('adoptAiTrack') && /adoptAiTrack[\s\S]{0,900}renderCompactTrack/.test(app));
+check('adoption refreshes transport controls', /adoptAiTrack[\s\S]{0,1200}updateTransport/.test(app));
+check('adoption sets playback state', /adoptAiTrack[\s\S]{0,500}S\.playing = true/.test(app));
+check('adoption avoids duplicate automix history session', app.includes('sameSession') && app.includes("source === 'automix'"));
+check('adoption resets seekbar to incoming track', app.includes("$('npDur').textContent = fmt(track.duration)") && app.includes('syncSeek(0'));
+check('adoption can still run if queue index is missing', app.includes('S.current = track;') && !app.includes('if (index >= 0) { S.index = index; S.current = track; }'));
 
 const lib = await import('../web/ai-automix/automix-engine.js');
 check('engine ESM exports AutoMixCore', typeof lib.AutoMixCore === 'function');
