@@ -287,7 +287,7 @@
         void planNext();
         return;
       }
-      if (host.currentTime >= state.pending.plan.startAt - 0.35) {
+      if (host.currentTime >= state.pending.plan.startAt - 0.15) {
         clearInterval(state.timer); state.timer = null;
         void takeOverAndMix();
       }
