@@ -1,3 +1,8 @@
+# AI Mix Beta — TEMPORARILY DISABLED
+
+AI Mix Beta is removed from the active RH-MUSIC UI and disabled from initialization.
+The engine code, PulseGrid modules, tests and documentation are preserved for future work.
+
 # AI Mix Beta — independent experimental mixer
 
 ## Research

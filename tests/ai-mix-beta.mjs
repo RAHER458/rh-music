@@ -16,10 +16,13 @@ const API = win.RH_AI_MIX_BETA;
 
 console.log('RH—MUSIC · AI Mix Beta tests\n');
 check('separate global controller', !!API);
-check('one beta button', (html.match(/id="aiMixBetaBtn"/g) || []).length === 1);
-check('beta chip exists', html.includes('id="npAiMixBeta"'));
-check('beta script is isolated dir', html.includes('ai-mix-beta/controller.js'));
-check('beta buttons are mutually exclusive with AI AutoMix', app.includes('Сначала выключите AI Mix Beta') && app.includes('Сначала выключите AI AutoMix'));
+check('beta button removed from UI', !html.includes('id="aiMixBetaBtn"'));
+check('beta chip removed from UI', !html.includes('id="npAiMixBeta"'));
+check('beta visualization removed from UI', !html.includes('id="betaViz"') && !html.includes('id="betaWaveOut"') && !html.includes('id="betaMixStatus"'));
+check('beta controller not loaded by page', !html.includes('ai-mix-beta/controller.js') && !html.includes('ai-mix-beta/cache.js'));
+check('beta not initialized by app', !/^(?!.*function initAiMixBeta)[\s\S]*\n\s*initAiMixBeta\(\);/m.test(app) && !app.includes('\n  initAiMixBeta();'));
+check('beta does not intercept play/seek', !app.includes('RH_AI_MIX_BETA.ownsPlayback()') && !app.includes('RH_AI_MIX_BETA.onTrackStarted'));
+check('beta files preserved', source.length > 1000 && html.length > 1000);
 check('beta uses queue after current index', source.includes('(idx + off) % q.length'));
 check('beta prepares one next track', source.includes('const cand = candidates()[0]'));
 check('beta has real buffers and two decks', source.includes('createBufferSource') && source.includes('makeDeck()'));
@@ -82,8 +85,8 @@ check('beta strategy uses key/energy', source.includes('camelotDistance') && sou
 check('beta has seamless filter-cut automation', source.includes("strategy === 'beta-filter-cut'") && source.includes('exponentialRampToValueAtTime'));
 check('beta timeline CSS band exists', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--beta-mix-start'));
 check('beta timeline clears and displays incoming', app.includes('applyBetaTimeline') && app.includes('BETA MIXING ·'));
-check('beta status element exists', html.includes('id="betaMixStatus"'));
-check('beta dual waveform canvases exist', html.includes('betaWaveOut') && html.includes('betaWaveIn'));
+check('beta status removed from UI', !html.includes('id="betaMixStatus"'));
+check('beta waveform canvases removed from UI', !html.includes('betaWaveOut') && !html.includes('betaWaveIn'));
 check('beta visualization draws real peaks/positions', app.includes('drawBetaWave') && app.includes('getVisualization') && app.includes('outPeaks'));
 check('beta visualization timer follows deck position', app.includes('__rhBetaVizTimer') && app.includes('syncSeek(info.position'));
 check('beta decode has timeout and abort', source.includes('AbortController') && source.includes("withTimeout(state.ctx.decodeAudioData") && source.includes('stream too short'));
