@@ -106,18 +106,25 @@ function clickTrack(bpm, seconds = 12) {
 }
 const core = lib.createAutoMixCore({ sessionId: 'rh-music-test' });
 core.initialize();
-const active = core.analyzeTrack({ id: 'a', title: 'A', artist: 'A', analysis: lib.analyzeAudioBuffer(clickTrack(120), { id: 'a' }) });
+const activeAnalysis = lib.analyzeAudioBuffer(clickTrack(120), { id: 'a' });
+const active = core.analyzeTrack({ id: 'a', title: 'A', artist: 'A', analysis: activeAnalysis });
 const candidateAnalysis = lib.analyzeAudioBuffer(clickTrack(124), { id: 'b' });
 const candidate = { id: 'b', title: 'B', artist: 'B', index: 1, analysis: candidateAnalysis, context: core.analyzeTrack({ id: 'b', title: 'B', artist: 'B', analysis: candidateAnalysis }) };
 const decision = core.decide('a', [candidate], { ids: [], artists: [] }, { position: 4, duration: 12, activeDeck: 'A', paused: false, remainingSec: 8 });
 check('AutoMixCore analyzes active track', !!active);
+check('analysis exposes kick/snare/hat profile', !!activeAnalysis.drums && activeAnalysis.drums.pattern.length > 0 && activeAnalysis.drums.kick > 0 && activeAnalysis.drums.confidence > 0);
+check('drum profile follows the beat grid', activeAnalysis.drums.pattern.every((p) => Number.isFinite(p.beat) && p.beat >= 0));
 check('AutoMixCore chooses a candidate', !!decision.chosen);
 check('AutoMixCore plans a real strategy', !!decision.plan && typeof decision.plan.strategy === 'string');
 check('outgoing gain keeps musical presence longer', engineSource.includes('function musicalBlendGain') && engineSource.includes('Math.pow(Math.cos'));
 check('deck crossfader is not double-attenuated', engineSource.includes('cross.gain.value = 1') && !engineSource.includes('setCrossfader(0.5);\n            this.decks.B'));
+check('takeover compensates incoming beat phase', controller.includes('phase lead') && controller.includes('plan.inStart = Math.max(0, Number(plan.inStart) - phaseLead)'));
 check('native pitch preservation is used for playback quality', engineSource.includes("this.stretchMode = 'native'") && engineSource.includes('stretchA = null;\n            stretchB = null;'));
 check('unsafe tempo rates fall back to 1x', engineSource.includes('const safeRate') && engineSource.includes('<= 0.02'));
 const gainAt = (points, t) => { const p = points.find((x) => x.at >= t) || points[points.length - 1]; return p.value; };
+const eqAt = (points, t) => { const p = points.find((x) => x.at >= t) || points[points.length - 1]; return p.value; };
+check('kick/bass handoff keeps one low end alive', eqAt(decision.plan.eq.out.low, 0.5) === 0 && eqAt(decision.plan.eq.in.low, 0.5) === -24);
+check('bass handoff overlaps instead of double-cutting', eqAt(decision.plan.eq.out.low, 0.68) > -24 && eqAt(decision.plan.eq.in.low, 0.68) > -24);
 check('outgoing gain stays high through the middle', gainAt(decision.plan.gain.out, 0.55) >= 0.9, JSON.stringify(decision.plan.gain.out));
 check('incoming gain rises progressively', gainAt(decision.plan.gain.in, 0.62) >= 0.4 && gainAt(decision.plan.gain.in, 1) === 1, JSON.stringify(decision.plan.gain.in));
 check('transition does not start before the latter half', decision.plan.startAt >= 12 * 0.55 - 0.01, String(decision.plan.startAt));
