@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-15';
+window.RH_BUILD = 'neural-2026-11-21-16';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2923,6 +2923,56 @@ function applyNpText(track) {
   $('npSinger').textContent = track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек';
 }
 
+let npCinemaTimer = 0;
+
+function triggerNpBurst(art) {
+  if (!art || npReducedMotion()) return;
+  art.classList.remove('is-burst');
+  void art.offsetWidth;
+  art.classList.add('is-burst');
+  if (npCinemaTimer) clearTimeout(npCinemaTimer);
+  npCinemaTimer = setTimeout(() => {
+    npCinemaTimer = 0;
+    art.classList.remove('is-burst');
+  }, 980);
+}
+
+function setNpPalette(art, image) {
+  if (!art || !image || npReducedMotion()) return;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 24; canvas.height = 24;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(image, 0, 0, 24, 24);
+    const data = ctx.getImageData(0, 0, 24, 24).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const rr = data[i], gg = data[i + 1], bb = data[i + 2];
+      const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb);
+      if (max < 34 || max - min < 10) continue;
+      r += rr; g += gg; b += bb; n++;
+    }
+    if (!n) return;
+    r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+    // Keep the cinematic palette inside RH-MUSIC's cool range.
+    const boost = (v) => Math.max(48, Math.min(235, Math.round(v * 1.12)));
+    art.style.setProperty('--np-glow-rgb', `${boost(r)}, ${boost(g)}, ${boost(b)}`);
+    art.style.setProperty('--np-glow2-rgb', `${Math.min(255, boost(b) + 24)}, ${Math.max(40, boost(g) - 18)}, ${Math.min(255, boost(r) + 30)}`);
+  } catch (_) { /* canvas can be tainted by a cross-origin cover; keep default palette */ }
+}
+
+function startNpCinema(track) {
+  const art = $('npArt');
+  if (!art || npReducedMotion()) return;
+  art.classList.remove('is-cinema', 'is-burst');
+  document.querySelectorAll('.np-cover-layer').forEach((img) => img.classList.remove('is-cinema-in'));
+  art.style.removeProperty('--np-glow-rgb');
+  art.style.removeProperty('--np-glow2-rgb');
+  void art.offsetWidth;
+  art.classList.add('is-cinema');
+}
+
 function animateNpText(track) {
   const info = document.querySelector('.np-info');
   if (!info || npReducedMotion()) { applyNpText(track); info?.classList.remove('is-changing'); return; }
@@ -2935,6 +2985,12 @@ function animateNpText(track) {
     applyNpText(track);
     setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 30);
     setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 500);
+    if (!npReducedMotion()) {
+      info.classList.remove('is-cinema-text');
+      void info.offsetWidth;
+      info.classList.add('is-cinema-text');
+      setTimeout(() => { if (token === npTextToken) info.classList.remove('is-cinema-text'); }, 1100);
+    }
   }, 150);
 }
 
@@ -2950,6 +3006,7 @@ function animateNpCover(track) {
     second.classList.remove('is-active', 'is-leaving');
     first.removeAttribute('src');
     second.removeAttribute('src');
+    triggerNpBurst($('npArt'));
     return;
   }
 
@@ -2964,10 +3021,13 @@ function animateNpCover(track) {
     if (token !== npCoverToken || committed) return;
     committed = true;
     target.src = url;
-    target.classList.add('is-active');
+    target.classList.remove('is-leaving', 'is-cinema-in');
+    target.classList.add('is-active', 'is-cinema-in');
     target.setAttribute('aria-hidden', 'false');
+    triggerNpBurst($('npArt'));
+    requestAnimationFrame(() => setNpPalette($('npArt'), target));
     if (current) {
-      current.classList.remove('is-active');
+      current.classList.remove('is-active', 'is-cinema-in');
       current.classList.add('is-leaving');
       current.setAttribute('aria-hidden', 'true');
       setTimeout(() => { if (token === npCoverToken) current.classList.remove('is-leaving'); }, 520);
@@ -2980,6 +3040,7 @@ function animateNpCover(track) {
     second.classList.remove('is-active', 'is-leaving');
     first.removeAttribute('src');
     second.removeAttribute('src');
+    triggerNpBurst($('npArt'));
   };
   loader.src = url;
 }
@@ -2987,6 +3048,7 @@ function animateNpCover(track) {
 function updateNowPlayingMeta(track) {
   const sameTrack = !!track && String(track.id) === String(npLastTrackId);
   npLastTrackId = track ? String(track.id) : '';
+  if (!sameTrack) startNpCinema(track);
   if (sameTrack) applyNpText(track); else animateNpText(track);
   animateNpCover(track);
 

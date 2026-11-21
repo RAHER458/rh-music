@@ -2090,3 +2090,104 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
   .np-art img.np-cover-layer.is-active { transform: none; }
   .np-info.is-changing { opacity: 1; transform: none; }
 }
+
+/* ── Cinematic track transition in Now Playing ───────────────── */
+.np-art {
+  --np-glow-rgb: 108, 140, 255;
+  --np-glow2-rgb: 168, 85, 247;
+  transition: box-shadow .8s ease;
+}
+.np-art.is-cinema {
+  box-shadow:
+    0 24px 70px rgba(0,0,0,.55),
+    0 0 28px rgba(var(--np-glow-rgb), .38),
+    0 0 60px rgba(var(--np-glow2-rgb), .20);
+}
+.np-cinema-glow,
+.np-cinema-burst,
+.np-cinema-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.np-cinema-glow {
+  z-index: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(var(--np-glow-rgb), .55), transparent 58%),
+    radial-gradient(circle at 75% 70%, rgba(var(--np-glow2-rgb), .45), transparent 62%);
+  transition: opacity .7s ease;
+}
+.np-art.is-cinema .np-cinema-glow { opacity: .75; }
+.np-cinema-burst {
+  z-index: 4;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.95), rgba(var(--np-glow-rgb),.65) 18%, rgba(var(--np-glow2-rgb),.28) 38%, transparent 64%);
+  mix-blend-mode: screen;
+}
+.np-art.is-burst .np-cinema-burst { animation: np-light-burst .72s cubic-bezier(.15,.7,.2,1) forwards; }
+.np-cinema-particles { z-index: 5; overflow: hidden; }
+.np-cinema-particles i {
+  position: absolute;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: rgb(var(--np-glow-rgb));
+  box-shadow: 0 0 8px 2px rgba(var(--np-glow-rgb), .75);
+  opacity: 0;
+  transform: translate3d(0,0,0) scale(.6);
+}
+.np-art.is-burst .np-cinema-particles i { animation: np-particle-drift .9s ease-out forwards; }
+.np-cinema-particles i:nth-child(1) { left: 18%; top: 72%; animation-delay: .02s; }
+.np-cinema-particles i:nth-child(2) { left: 34%; top: 82%; animation-delay: .08s; background: rgb(var(--np-glow2-rgb)); }
+.np-cinema-particles i:nth-child(3) { left: 52%; top: 76%; animation-delay: .04s; }
+.np-cinema-particles i:nth-child(4) { left: 68%; top: 80%; animation-delay: .12s; background: rgb(var(--np-glow2-rgb)); }
+.np-cinema-particles i:nth-child(5) { left: 78%; top: 64%; animation-delay: .06s; }
+.np-cinema-particles i:nth-child(6) { left: 44%; top: 88%; animation-delay: .15s; }
+.np-art.is-cinema .np-cover-layer.is-cinema-in {
+  animation: np-cover-arrive .9s cubic-bezier(.16,.75,.2,1) both;
+}
+.np-art.is-cinema .np-cover-layer.is-leaving {
+  animation: np-cover-depart .62s cubic-bezier(.4,0,.6,1) both;
+}
+.np-info.is-cinema-text .np-song { animation: np-title-reveal .58s cubic-bezier(.16,.75,.2,1) both; }
+.np-info.is-cinema-text .np-singer { animation: np-artist-reveal .52s cubic-bezier(.16,.75,.2,1) .10s both; }
+
+@keyframes np-cover-arrive {
+  0% { opacity: 0; transform: scale(1.10); filter: blur(12px) saturate(1.12); }
+  55% { opacity: 1; filter: blur(1.5px) saturate(1.04); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0) saturate(1); }
+}
+@keyframes np-cover-depart {
+  0% { opacity: 1; transform: scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: scale(1.14) translate3d(-1.2%, -1%, 0); filter: blur(10px); }
+}
+@keyframes np-light-burst {
+  0% { opacity: 0; transform: scale(.72); }
+  28% { opacity: .95; }
+  100% { opacity: 0; transform: scale(1.20); }
+}
+@keyframes np-particle-drift {
+  0% { opacity: 0; transform: translate3d(0, 12px, 0) scale(.5); }
+  25% { opacity: .9; }
+  100% { opacity: 0; transform: translate3d(0, -28px, 0) scale(1.1); }
+}
+@keyframes np-title-reveal {
+  0% { opacity: 0; transform: translateY(8px); filter: blur(6px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@keyframes np-artist-reveal {
+  0% { opacity: 0; transform: translateY(6px); filter: blur(4px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .np-art.is-cinema { box-shadow: 0 24px 60px rgba(0,0,0,.55); }
+  .np-art.is-cinema .np-cover-layer.is-active,
+  .np-art.is-cinema .np-cover-layer.is-leaving,
+  .np-info.is-cinema-text .np-song,
+  .np-info.is-cinema-text .np-singer { animation: none !important; }
+  .np-art.is-burst .np-cinema-burst,
+  .np-art.is-burst .np-cinema-particles i { animation: none !important; opacity: 0 !important; }
+}

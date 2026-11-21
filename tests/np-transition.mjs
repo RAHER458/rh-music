@@ -19,6 +19,11 @@ check('same track does not restart text animation', app.includes('sameTrack') &&
 check('rapid track changes cancel text timer', app.includes('clearTimeout(npTextTimer)'));
 check('missing cover uses the existing fallback', app.includes('!track || !track.cover') && css.includes('.cover-fallback'));
 check('reduced motion disables transitions', css.includes('prefers-reduced-motion: reduce') && css.includes('.np-art img.np-cover-layer, .np-info'));
+check('cinematic layers exist', html.includes('np-cinema-glow') && html.includes('np-cinema-burst') && html.includes('np-cinema-particles'));
+check('cinematic cover keyframes exist', css.includes('np-cover-arrive') && css.includes('np-cover-depart') && css.includes('np-title-reveal') && css.includes('np-artist-reveal'));
+check('cinematic light burst and particles are bounded', css.includes('np-light-burst') && (css.match(/np-cinema-particles i:nth-child/g) || []).length === 6);
+check('palette is extracted from the new cover', app.includes('setNpPalette') && app.includes('getImageData') && app.includes('--np-glow-rgb'));
+check('cinematic timeline is restarted on a new track', app.includes('startNpCinema') && app.includes('is-cinema-in') && app.includes('triggerNpBurst'));
 check('no new controls were added', !html.includes('npTransitionBtn'));
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
