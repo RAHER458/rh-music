@@ -39,6 +39,8 @@
     cache: new Map(),
     timer: null,
     busy: false,
+    preparing: false,
+    paused: false,
     diagnostics: [],
     fallbackPool: [],
     fallbackActive: false,
@@ -201,6 +203,7 @@
     state.currentEntry = null;
     state.planEpoch += 1;
     state.activeTrack = track;
+    state.paused = false;
     state.fallbackActive = false;
     state.activeIndex = state.host.getState().index;
     state.ownsPlayback = false;
@@ -276,8 +279,9 @@
     const token = state.trackToken;
     const epoch = state.planEpoch;
     state.busy = true;
+    state.preparing = true;
     try {
-      setPhase('PREPARING');
+      if (!state.currentEntry) setPhase('PREPARING'); else emit();
       const entry = await decode(candidate.track);
       if (token !== state.trackToken || epoch !== state.planEpoch || !state.activeTrack) return;
       const history = { ids: [String(state.activeTrack.id)], artists: [state.activeTrack.artist] };
@@ -299,6 +303,7 @@
       state.deckB.loadBuffer(entry.buffer);
       state.deckB.cancelAutomation();
       log('AI выбрал: ' + decision.chosen.title + ' · ' + decision.plan.strategy);
+      state.preparing = false;
       setPhase('ACTIVE');
       scheduleWatch();
     } catch (error) {
@@ -307,6 +312,8 @@
       log('Подготовка следующего трека не удалась; текущий трек продолжает играть: ' + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
+      state.preparing = false;
+      emit();
     }
   }
 
@@ -351,9 +358,9 @@
           for (let i = 0; i < samples.length; i += 1) peak = Math.max(peak, Math.abs(samples[i]));
         } catch (_) { peak = 0; }
         if (peak < 0.001) throw new Error('Deck A не дал аудиосигнала');
+        state.ownsPlayback = true;
         const audio = state.host.getAudio ? state.host.getAudio() : null;
         if (audio) audio.pause();
-        state.ownsPlayback = true;
       }
       await executeTransition();
     } catch (error) {
@@ -436,13 +443,19 @@
   }
 
   function pause() {
+    state.paused = true;
     try { state.deckA && state.deckA.pause(); state.deckB && state.deckB.pause(); } catch (_) {}
+    try { if (state.ctx && typeof state.ctx.suspend === 'function') state.ctx.suspend(); } catch (_) {}
+    emit();
   }
 
   function resume() {
+    state.paused = false;
+    try { if (state.ctx && typeof state.ctx.resume === 'function') state.ctx.resume(); } catch (_) {}
     try {
       if (state.deckA && state.deckA.paused && state.deckA.currentTime < state.deckA.duration) state.deckA.play(state.deckA.currentTime, 1);
     } catch (_) {}
+    emit();
   }
 
   function getState() {
@@ -452,6 +465,8 @@
       steps: LOAD_STEPS,
       error: state.error,
       active: state.phase !== 'OFF' && state.phase !== 'ERROR',
+      preparing: !!state.preparing,
+      paused: !!state.paused,
       ownsPlayback: state.ownsPlayback,
       currentReady: !!state.currentEntry,
       activeTrack: state.activeTrack,

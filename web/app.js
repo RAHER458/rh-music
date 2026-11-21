@@ -2212,6 +2212,10 @@ function applyAiMixTimeline(info) {
   }
 }
 
+function aiOwnsPlayback() {
+  return !!(window.RH_AI_AUTOMIX && typeof window.RH_AI_AUTOMIX.ownsPlayback === 'function' && window.RH_AI_AUTOMIX.ownsPlayback());
+}
+
 function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
@@ -2233,7 +2237,8 @@ function refreshAiAutoMixUI() {
   });
   const mix = info && info.mix ? info.mix : null;
   const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0;
-  document.body.dataset.aiPhase = active ? phase : '';
+  const ringPhase = active ? (phase === 'MIXING' ? 'MIXING' : (info && info.preparing ? 'PREPARING' : phase)) : '';
+  document.body.dataset.aiPhase = ringPhase;
   document.body.style.setProperty('--ai-ring-progress', ringProgress.toFixed(3));
   document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
   applyAiMixTimeline(info);
@@ -2719,6 +2724,11 @@ function restoreVolume() {
 }
 
 function updateTransport() {
+  if (aiOwnsPlayback()) {
+    const ai = window.RH_AI_AUTOMIX.getState();
+    S.playing = !ai.paused;
+    S.loading = ai.phase === 'LOADING' || ai.phase === 'ANALYZING' || ai.phase === 'PREPARING';
+  }
   const hasTrack = !!S.current;
   ['play', 'playMini', 'npPlay'].forEach((id) => { const el = $(id); if (el) el.disabled = !hasTrack; });
   ['prev', 'next', 'npPrev', 'npNext'].forEach((id) => { const el = $(id); if (el) el.disabled = !S.queue.length; });
@@ -3911,6 +3921,7 @@ audio.addEventListener('loadstart', () => { S.loading = true; updateTransport();
 audio.addEventListener('waiting', () => { S.loading = true; updateTransport(); });
 audio.addEventListener('canplay', () => { S.loading = false; updateTransport(); });
 audio.addEventListener('playing', () => {
+  if (aiOwnsPlayback()) return;
   S.loading = false;
   S.playing = true;
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.warm();
@@ -3919,6 +3930,7 @@ audio.addEventListener('playing', () => {
   markCurrentRow();
 });
 audio.addEventListener('pause', () => {
+  if (aiOwnsPlayback()) return;
   if (smartMixAdopting) return;
   S.playing = false;
   updateTransport();
@@ -3926,29 +3938,34 @@ audio.addEventListener('pause', () => {
   flushPlayback(true);
 });
 audio.addEventListener('ended', () => {
+  if (aiOwnsPlayback()) return;
   S.playback.completed = true;
   flushPlayback(true, true);
   nextTrack(true);
 });
 audio.addEventListener('error', () => {
+  if (aiOwnsPlayback()) return;
   if (smartMixAdopting || smartMixHandoffActive()) return;
   if (audio.error && audio.error.code === 1) return;
   handleAudioFailure(audio.error ? 'код ' + audio.error.code : null);
 });
 
 audio.addEventListener('pause', () => {
+  if (aiOwnsPlayback()) return;
   if (smartMixAdopting) return;
   if (window.RH_SMARTMIX && window.RH_SMARTMIX.isPlaying()) window.RH_SMARTMIX.cancel('pause');
 });
 
-audio.addEventListener('pause', () => { if (!smartMixAdopting) savePlayerState(); });
+audio.addEventListener('pause', () => { if (!smartMixAdopting && !aiOwnsPlayback()) savePlayerState(); });
 
 audio.addEventListener('seeking', () => {
+  if (aiOwnsPlayback()) return;
   if (smartMixAdopting || smartMixHandoffActive()) return;
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');
 });
 
 audio.addEventListener('timeupdate', () => {
+  if (aiOwnsPlayback()) return;
   const current = audio.currentTime || 0;
   const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? S.current.duration : 0);
   if (!S.seeking) syncSeek(current, duration);
