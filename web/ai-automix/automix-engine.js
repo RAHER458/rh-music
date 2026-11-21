@@ -1436,7 +1436,7 @@ function buildCues(sections, grid, duration) {
         : Math.max(duration * 0.82, duration - 32);
     return {
         intro: snap(introSection?.start || 0),
-        mixIn: snap(Math.max(firstMix?.start || duration * 0.08, duration * 0.04)),
+        mixIn: snap(Math.min(Math.max(firstMix?.start || duration * 0.08, duration * 0.04), Math.min(duration * 0.22, 45))),
         mixOut: snap(Math.min(outro, duration - 1.5)),
         outro: snap(Math.min(outro, duration - 0.5)),
     };
@@ -1871,7 +1871,7 @@ function sectionConfidenceAt(analysis, time) {
  */
 function selectTransitionWindow(out, incoming, context, strategy, durationSec, timing = {}) {
     const duration = Math.max(0.6, durationSec);
-    const minStart = Math.max(0, context.position + 0.15, timing.minStartAt ?? 0);
+    const minStart = Math.max(0, context.position + 0.15, out.duration * 0.55, timing.minStartAt ?? 0);
     const maxStart = Math.max(minStart, out.duration - 0.5);
     const outCandidates = new Set();
     outCandidates.add(Math.min(maxStart, out.cues.mixOut));
@@ -1886,8 +1886,10 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
     const inCandidates = new Set();
     inCandidates.add(incoming.cues.intro);
     inCandidates.add(incoming.cues.mixIn);
-    for (const section of incoming.sections)
-        inCandidates.add(section.start);
+    for (const section of incoming.sections) {
+        if (section.start <= Math.min(incoming.duration * 0.25, 45))
+            inCandidates.add(section.start);
+    }
     const windows = [];
     for (const rawStart of outCandidates) {
         const startAt = Math.min(maxStart, Math.max(minStart, nearestDownbeat$1(out, rawStart)));

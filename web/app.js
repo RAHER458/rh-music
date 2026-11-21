@@ -5,6 +5,9 @@
    ========================================================================== */
 'use strict';
 
+window.RH_BUILD = 'neural-2026-11-21-3';
+console.info('[RH-MUSIC] build', window.RH_BUILD);
+
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
 
 const $ = (id) => document.getElementById(id);
@@ -2212,6 +2215,32 @@ function applyAiMixTimeline(info) {
   }
 }
 
+const aiDiagState = { events: [], last: '' };
+function aiDiag(event, extra = {}) {
+  try {
+    const info = window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.getState ? window.RH_AI_AUTOMIX.getState() : null;
+    aiDiagState.events.push({
+      at: new Date().toISOString(), event,
+      phase: info ? info.phase : null,
+      preparing: info ? !!info.preparing : null,
+      pausedAI: info ? !!info.paused : null,
+      owns: info ? !!info.ownsPlayback : null,
+      playing: S.playing, nativePaused: audio ? !!audio.paused : null,
+      nativeTime: audio ? Number(audio.currentTime.toFixed(3)) : null,
+      deckA: info && info.deckA ? { time: info.deckA.time, duration: info.deckA.duration, paused: info.deckA.paused } : null,
+      deckB: info && info.deckB ? { time: info.deckB.time, duration: info.deckB.duration, paused: info.deckB.paused } : null,
+      mix: info && info.mix ? { startAt: info.mix.startAt, durationSec: info.mix.durationSec, progress: info.mix.progress, strategy: info.mix.strategy } : null,
+      ...extra,
+    });
+    if (aiDiagState.events.length > 300) aiDiagState.events.shift();
+  } catch (_) {}
+}
+window.RH_AI_DIAG = {
+  events: aiDiagState.events,
+  dump() { return JSON.parse(JSON.stringify(aiDiagState.events)); },
+  clear() { aiDiagState.events.length = 0; },
+};
+
 function aiOwnsPlayback() {
   return !!(window.RH_AI_AUTOMIX && typeof window.RH_AI_AUTOMIX.ownsPlayback === 'function' && window.RH_AI_AUTOMIX.ownsPlayback());
 }
@@ -2244,10 +2273,14 @@ function refreshAiAutoMixUI() {
   applyAiMixTimeline(info);
   const button = $('aiAutomixBtn');
   if (button) button.title = label;
+  if (info && info.ownsPlayback) updateTransport();
+  const diagKey = phase + ':' + (mix ? mix.progress + ':' + mix.strategy : '-') + ':' + (info && info.preparing ? 'prep' : '');
+  if (diagKey !== aiDiagState.last) { aiDiagState.last = diagKey; aiDiag('ai_state'); }
 }
 
 function adoptAiTrack(track, strategy, label = 'AI AutoMix') {
   if (!track) return;
+  aiDiag('adopt', { adopted: String(track.id), strategy: strategy || null });
   const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
   if (index >= 0) S.index = index;
   S.current = track;
@@ -3921,6 +3954,7 @@ audio.addEventListener('loadstart', () => { S.loading = true; updateTransport();
 audio.addEventListener('waiting', () => { S.loading = true; updateTransport(); });
 audio.addEventListener('canplay', () => { S.loading = false; updateTransport(); });
 audio.addEventListener('playing', () => {
+  aiDiag('native_playing');
   if (aiOwnsPlayback()) return;
   S.loading = false;
   S.playing = true;
@@ -3930,6 +3964,7 @@ audio.addEventListener('playing', () => {
   markCurrentRow();
 });
 audio.addEventListener('pause', () => {
+  aiDiag('native_pause');
   if (aiOwnsPlayback()) return;
   if (smartMixAdopting) return;
   S.playing = false;
@@ -3938,6 +3973,7 @@ audio.addEventListener('pause', () => {
   flushPlayback(true);
 });
 audio.addEventListener('ended', () => {
+  aiDiag('native_ended');
   if (aiOwnsPlayback()) return;
   S.playback.completed = true;
   flushPlayback(true, true);
@@ -3959,6 +3995,7 @@ audio.addEventListener('pause', () => {
 audio.addEventListener('pause', () => { if (!smartMixAdopting && !aiOwnsPlayback()) savePlayerState(); });
 
 audio.addEventListener('seeking', () => {
+  aiDiag('native_seeking');
   if (aiOwnsPlayback()) return;
   if (smartMixAdopting || smartMixHandoffActive()) return;
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('seek');

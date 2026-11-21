@@ -116,7 +116,7 @@
     if (state.engine) return;
     if (!state.lib) {
       setPhase('LOADING', 0);
-      state.lib = await withTimeout(import('./automix-engine.js?v=1'), 15_000, 'engine module');
+      state.lib = await withTimeout(import('./automix-engine.js?v=3'), 15_000, 'engine module');
       setPhase('LOADING', 1);
       state.core = state.lib.createAutoMixCore({ sessionId: 'rh-music' });
       state.core.initialize();

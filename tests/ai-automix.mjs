@@ -112,6 +112,8 @@ const decision = core.decide('a', [candidate], { ids: [], artists: [] }, { posit
 check('AutoMixCore analyzes active track', !!active);
 check('AutoMixCore chooses a candidate', !!decision.chosen);
 check('AutoMixCore plans a real strategy', !!decision.plan && typeof decision.plan.strategy === 'string');
+check('transition does not start before the latter half', decision.plan.startAt >= 12 * 0.55 - 0.01, String(decision.plan.startAt));
+check('incoming does not start deep inside the track', decision.plan.inStart <= Math.min(12 * 0.25, 45) + 0.01, String(decision.plan.inStart));
 const strategies = lib.strategyCandidates(lib.analyzeAudioBuffer(clickTrack(120), { id: 'a' }), candidateAnalysis);
 check('AutoMixCore keeps 25 strategies', strategies.length === 25);
 core.recordOutcome({ outgoingId: 'a', incomingId: 'b', strategy: decision.plan.strategy, planScore: decision.plan.score, qualityScore: 0.8, success: true, energy: 0.5 });
