@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-12';
+window.RH_BUILD = 'neural-2026-11-21-13';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2284,7 +2284,7 @@ function finishAiRing() {
 function tickAiRing(now) {
   aiRingAnim.raf = 0;
   if (!aiRingAnim.last) aiRingAnim.last = now;
-  const dt = Math.min(0.12, Math.max(0, (now - aiRingAnim.last) / 1000));
+  const dt = Math.min(0.04, Math.max(0, (now - aiRingAnim.last) / 1000));
   aiRingAnim.last = now;
   const target = aiRingAnim.target;
   const gap = target - aiRingAnim.display;
@@ -2292,7 +2292,7 @@ function tickAiRing(now) {
   // followed faster so the ring never lags audibly behind the transition.
   const tau = Math.abs(gap) > 0.15 ? 0.055 : 0.11;
   const alpha = 1 - Math.exp(-dt / tau);
-  let next = aiRingAnim.display + gap * alpha;
+  let next = aiRingAnim.display + Math.max(-0.08, Math.min(0.08, gap * alpha));
   if (Math.abs(target - next) < 0.0005) next = target;
   renderAiRing(next);
   if (target >= 0.999 && next >= 0.999) { finishAiRing(); return; }

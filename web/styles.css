@@ -1982,7 +1982,6 @@ body[data-ai-ring-done="1"] .ai-ring-dot { opacity: 0; }
   stroke-dasharray: 100;
   stroke-dashoffset: calc(100px - var(--np-mix-progress, 0) * 100px);
   vector-effect: non-scaling-stroke;
-  transition: stroke-dashoffset .18s linear;
 }
 .np-mix-tip {
   fill: none;
@@ -2037,7 +2036,6 @@ body[data-ai-ring-done="1"] .np-mix-ring {
   stroke-dasharray: 100;
   stroke-dashoffset: calc(100px - var(--np-mix-progress, 0) * 100px);
   vector-effect: non-scaling-stroke;
-  transition: stroke-dashoffset .18s linear;
 }
 .np-play-tip {
   stroke: #e8f1ff;

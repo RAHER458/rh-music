@@ -70,7 +70,7 @@ check('mix ring is visible only during MIXING', readFileSync(join(here, '../web/
 check('mix ring progress comes from real mix progress', app.includes('Number(mix.progress)') && app.includes('setAiRingTarget(mixProgress') && app.includes("--np-mix-progress"));
 check('ring uses one RAF loop only during MIXING', app.includes('requestAnimationFrame(tickAiRing)') && app.includes('cancelAnimationFrame') && app.includes('if (paused || document.visibilityState'));
 check('ring freezes on pause and resumes smoothly', app.includes('setAiRingTarget(mixProgress, mixKey, !!info.paused)') && app.includes('stopAiRingAnimation()'));
-check('ring is frame-rate independent', app.includes('1 - Math.exp(-dt / tau)') && app.includes('Math.min(0.12'));
+check('ring is frame-rate independent', app.includes('1 - Math.exp(-dt / tau)') && app.includes('Math.min(0.04') && app.includes('Math.min(0.08'));
 check('native pause cannot flip Play during AI mix', app.includes('function aiOwnsPlayback') && app.includes("audio.addEventListener('pause', () => {\n  if (aiOwnsPlayback()) return;"));
 check('native timeupdate cannot overwrite AI timeline', app.includes("audio.addEventListener('timeupdate', () => {\n  if (aiOwnsPlayback()) return;"));
 check('transport follows real AI deck paused state', app.includes('S.playing = !ai.paused') && controller.includes('paused: !!state.paused'));
