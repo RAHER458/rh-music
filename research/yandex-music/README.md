@@ -259,3 +259,20 @@ track-dependent and must be checked via `preview:false` plus actual duration.
 
 Production RH-MUSIC, its Zvuk provider, Audio Engine, queue and AutoMix were
 not modified.
+
+## Production integration attempt — blocked by Yandex geo policy
+
+A Yandex provider was implemented and tested in an isolated branch/service:
+
+- Cloudflare Pages Function `/api/yandex/*`: Yandex returned **HTTP 451
+  Unavailable For Legal Reasons** from Cloudflare egress.
+- Railway service `yandex-research` (Amsterdam): `/account/status` worked, but
+  `/search` and `/get-file-info` also returned **HTTP 451**.
+- The same API calls succeeded from the local residential/research environment,
+  proving the OAuth token and signature are valid; the block is network/region
+  based.
+
+Because no RH-MUSIC server-side environment with RU-eligible egress was
+available, the Yandex provider could not be shipped without violating the
+requirement to serve full tracks. The Pages Function was rolled back to the
+Zvuk-only baseline and the temporary Railway service was removed.
