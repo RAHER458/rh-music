@@ -2839,6 +2839,9 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
     window.RH_AI_AUTOMIX.releaseToStandard(false);
   }
+  if (window.RH_AUTOMIX2 && window.RH_AUTOMIX2.ownsPlayback && window.RH_AUTOMIX2.ownsPlayback()) {
+    window.RH_AUTOMIX2.releaseToStandard(false);
+  }
 
   audio.src = streamUrl(track);
 
@@ -3988,6 +3991,9 @@ audio.addEventListener('loadedmetadata', () => {
     const target = (Number(el.value) / 1000) * duration;
     if (window.RH_AUTOMIX2 && window.RH_AUTOMIX2.ownsPlayback()) {
       if (window.RH_AUTOMIX2.seek) window.RH_AUTOMIX2.seek(target);
+    } else if (window.RH_AUTOMIX2 && window.RH_AUTOMIX2.isActive && window.RH_AUTOMIX2.isActive()) {
+      window.RH_AUTOMIX2.invalidatePlan();
+      if (duration > 0) audio.currentTime = target;
     } else if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
       if (duration > 0) window.RH_AI_AUTOMIX.seek(target);
     } else {

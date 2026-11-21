@@ -372,11 +372,12 @@
       state.active = next;
       state.next = null; state.plan = null;
       phase('ACTIVE');
-      state.host.onAdopt(next.track, 'AI Mix Beta');
+      try { state.host.onAdopt(next.track, 'Auto Mix Beta 2.0'); } catch (error) { note('adoption failed: ' + error.message); }
       note('beta transition complete: ' + next.track.title);
       await planNext();
     } catch (e) {
       state.owns = false;
+      try { state.mixer && state.mixer.stop(); } catch (_) {}
       try { state.host.getAudio()?.play(); } catch (_) {}
       fail('beta transition: ' + e.message);
     }
@@ -443,6 +444,31 @@
     };
   }
 
+  function invalidatePlan() {
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    state.plan = null;
+    state.next = null;
+    if (state.phase !== 'OFF' && state.phase !== 'ERROR' && state.active) {
+      phase(state.owns ? 'ACTIVE' : 'READY');
+      setTimeout(() => { if (state.phase !== 'OFF') void planNext(); }, 350);
+    }
+  }
+
+  function releaseToStandard(restart = true) {
+    if (!state.owns) return;
+    const deck = state.mixer ? (state.mixer.active || state.mixer.a) : null;
+    const position = deck ? state.mixer.position(deck) : 0;
+    state.token += 1;
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    if (state.retryTimer) { clearInterval(state.retryTimer); state.retryTimer = null; }
+    state.plan = null; state.next = null;
+    state.owns = false;
+    try { state.mixer && state.mixer.stop(); } catch (_) {}
+    if (restart && state.host?.onExit) state.host.onExit({ position });
+    state.active = null;
+    note('Beta2: управление возвращено стандартному плееру');
+  }
+
   function seek(position) {
     if (!state.owns || !state.mixer) return false;
     const deck = state.mixer.active || state.mixer.a;
@@ -461,6 +487,8 @@
     ownsPlayback() { return state.owns; },
     pause() { state.mixer?.pause(); }, resume() { state.mixer?.resume(); },
     seek,
+    invalidatePlan,
+    releaseToStandard,
     getVisualization() {
       const activeDeck = state.mixer ? (state.mixer.active || state.mixer.a) : null;
       const outPeaks = state.active && state.active.analysis ? state.active.analysis.peaks : null;
