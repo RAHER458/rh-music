@@ -105,9 +105,20 @@
     };
   }
 
+  function crossfadeCurve(steps = 24) {
+    const points = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps;
+      points.push({ t, out: Math.cos(t * Math.PI / 2), in: Math.sin(t * Math.PI / 2) });
+    }
+    return points;
+  }
+
   class BetaMixer {
     constructor(ctx, pitchReady = false) {
-      this.ctx = ctx; this.pitchReady = pitchReady; this.out = ctx.createGain(); this.out.gain.value = 1; this.out.connect(ctx.destination);
+      this.ctx = ctx; this.pitchReady = pitchReady; this.out = ctx.createGain(); this.out.gain.value = 0.82;
+      const limiter = ctx.createDynamicsCompressor(); limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 12; limiter.attack.value = 0.003; limiter.release.value = 0.18;
+      this.out.connect(limiter); limiter.connect(ctx.destination);
       this.a = this.makeDeck(); this.b = this.makeDeck(); this.active = null;
     }
     makeDeck() {
@@ -224,21 +235,27 @@
       const host = state.host.getState();
       state.mixer = state.mixer || new BetaMixer(state.ctx);
       const a = state.mixer.a, b = state.mixer.b;
-      a.gain.gain.cancelScheduledValues(state.ctx.currentTime); b.gain.gain.cancelScheduledValues(state.ctx.currentTime);
-      a.gain.gain.setValueAtTime(1, state.ctx.currentTime); b.gain.gain.setValueAtTime(0, state.ctx.currentTime);
-      a.low.gain.cancelScheduledValues(state.ctx.currentTime); b.low.gain.cancelScheduledValues(state.ctx.currentTime);
-      a.low.gain.setValueAtTime(0, state.ctx.currentTime); b.low.gain.setValueAtTime(0, state.ctx.currentTime);
-      state.mixer.startDeck(a, state.active.buffer, host.currentTime, 1);
-      state.mixer.startDeck(b, next.buffer, plan.inStart, plan.rateIn);
+      const startPosition = host.currentTime;
+      const audio = state.host.getAudio ? state.host.getAudio() : null;
+      if (audio) audio.pause();
+      if (state.mixer.active) { state.mixer.stopDeck(state.mixer.active); state.mixer.active = null; }
+      const phaseLead = Math.max(0, plan.startAt - startPosition);
+      const incomingOffset = Math.max(0, plan.inStart - phaseLead);
       const now = state.ctx.currentTime;
-      a.gain.gain.cancelScheduledValues(now); b.gain.gain.cancelScheduledValues(now);
+      for (const deck of [a, b]) {
+        deck.gain.gain.cancelScheduledValues(now); deck.low.gain.cancelScheduledValues(now);
+        deck.low.gain.setValueAtTime(0, now);
+        if (deck.filter && deck.filter.frequency) { deck.filter.frequency.cancelScheduledValues(now); deck.filter.frequency.setValueAtTime(22000, now); }
+      }
       a.gain.gain.setValueAtTime(1, now); b.gain.gain.setValueAtTime(0, now);
-      const curve = 24, dur = plan.durationSec;
+      state.mixer.startDeck(a, state.active.buffer, startPosition, 1);
+      state.mixer.startDeck(b, next.buffer, incomingOffset, plan.rateIn);
+      const curve = crossfadeCurve(24), dur = plan.durationSec;
       const swap = now + dur * 0.5;
-      for (let i = 1; i <= curve; i += 1) {
-        const t = i / curve, at = now + dur * t;
-        a.gain.gain.linearRampToValueAtTime(Math.cos(t * Math.PI / 2), at);
-        b.gain.gain.linearRampToValueAtTime(Math.sin(t * Math.PI / 2), at);
+      for (const point of curve.slice(1)) {
+        const at = now + dur * point.t;
+        a.gain.gain.linearRampToValueAtTime(point.out, at);
+        b.gain.gain.linearRampToValueAtTime(point.in, at);
       }
       if (plan.strategy === 'beta-bass-swap' || plan.strategy === 'beta-long-blend') {
         a.low.gain.setValueAtTime(0, now); b.low.gain.setValueAtTime(-24, now);
@@ -252,7 +269,6 @@
         a.filter.frequency.setValueAtTime(22000, now);
         a.filter.frequency.linearRampToValueAtTime(9000, now + dur);
       }
-      state.host.getAudio()?.pause();
       state.owns = true;
       await new Promise((resolve) => setTimeout(resolve, Math.max(0, (now + dur - state.ctx.currentTime) * 1000)));
       state.mixer.stopDeck(a);
@@ -364,6 +380,6 @@
       if (window.RH_AI_MIX_BETA_CACHE) window.RH_AI_MIX_BETA_CACHE.stats().then((cache) => { base.cache = cache; });
       return base;
     },
-    _internal: { analyzeTrackBuffer, planTransition },
+    _internal: { analyzeTrackBuffer, planTransition, crossfadeCurve },
   };
 })();
