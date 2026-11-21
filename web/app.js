@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-17';
+window.RH_BUILD = 'neural-2026-11-21-18';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -733,7 +733,7 @@ const liveSearch = debounce((query) => {
   history.replaceState(null, '', '#/search?q=' + encodeURIComponent(query) + '&type=' + S.type);
   S.query = query;
   renderSearchBody(query, S.type);
-}, 380);
+}, 150);
 
 async function runSearch(query, type, { push = false } = {}) {
   const hash = '#/search?q=' + encodeURIComponent(query) + '&type=' + (type || 'all');
@@ -2934,7 +2934,7 @@ function triggerNpBurst(art) {
   npCinemaTimer = setTimeout(() => {
     npCinemaTimer = 0;
     art.classList.remove('is-burst');
-  }, 980);
+  }, 2050);
 }
 
 function setNpPalette(art, image) {
@@ -2983,15 +2983,15 @@ function animateNpText(track) {
     npTextTimer = 0;
     if (token !== npTextToken) return;
     applyNpText(track);
-    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 30);
-    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 500);
+    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 80);
+    setTimeout(() => { if (token === npTextToken) info.classList.remove('is-changing'); }, 900);
     if (!npReducedMotion()) {
       info.classList.remove('is-cinema-text');
       void info.offsetWidth;
       info.classList.add('is-cinema-text');
-      setTimeout(() => { if (token === npTextToken) info.classList.remove('is-cinema-text'); }, 1100);
+      setTimeout(() => { if (token === npTextToken) info.classList.remove('is-cinema-text'); }, 2400);
     }
-  }, 150);
+  }, 380);
 }
 
 function animateNpCover(track) {
@@ -3030,7 +3030,7 @@ function animateNpCover(track) {
       current.classList.remove('is-active', 'is-cinema-in');
       current.classList.add('is-leaving');
       current.setAttribute('aria-hidden', 'true');
-      setTimeout(() => { if (token === npCoverToken) current.classList.remove('is-leaving'); }, 520);
+      setTimeout(() => { if (token === npCoverToken) current.classList.remove('is-leaving'); }, 1200);
     }
   };
   loader.onload = commit;

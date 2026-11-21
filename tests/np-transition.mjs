@@ -12,7 +12,8 @@ check('two cover layers exist', html.includes('id="npBigCover"') && html.include
 check('cover layers are stacked absolutely', css.includes('.np-art img.np-cover-layer') && css.includes('position: absolute'));
 check('cover crossfade uses opacity and scale', css.includes('img.np-cover-layer.is-active') && css.includes('transform: scale(1.035)'));
 check('text block fades and shifts', css.includes('.np-info.is-changing') && css.includes('translateY(4px)'));
-check('animation duration is 300-450ms', css.includes('opacity .38s') && css.includes('opacity .18s'));
+check('cinematic duration is about 2.5s', css.includes('np-cover-arrive 1.6s') && css.includes('np-cover-depart 1.05s') && css.includes('np-light-burst 1.45s') && css.includes('np-title-reveal 1.1s'));
+check('text reveal is sequenced title before artist', css.includes('np-title-reveal 1.1s') && css.includes('np-artist-reveal .95s') && css.includes('.28s'));
 check('new cover is preloaded before commit', app.includes('new Image()') && app.includes('loader.onload = commit') && app.includes('loader.onerror'));
 check('stale cover loads are rejected', app.includes('npCoverToken') && app.includes('token !== npCoverToken'));
 check('same track does not restart text animation', app.includes('sameTrack') && app.includes('if (sameTrack) applyNpText'));
