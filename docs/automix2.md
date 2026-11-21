@@ -1,3 +1,9 @@
+# Auto Mix Beta 2.0 — TEMPORARILY DISABLED
+
+Auto Mix Beta 2.0 is removed from the RH-MUSIC UI and runtime. The code,
+Railway backend, tests and documentation are preserved for future work.
+Neural AutoMix is the active AutoMix implementation.
+
 # Auto Mix Beta 2.0
 
 - Separate mode from Neural AutoMix and the disabled PulseGrid Beta.
