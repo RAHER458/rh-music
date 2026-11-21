@@ -4,10 +4,16 @@ Date: 2026-11-21. Research branch only. No production changes were made.
 
 ## Result in one line
 
-Anonymous access returns **only `smart_preview`**, not the full track. A full
-track requires an OAuth token for an account whose subscription grants access.
-No such token was available in this environment, so a full-track playback test
-was **not performed** and must not be claimed.
+**Yes — full tracks were obtained and measured with an authorized OAuth token.**
+
+The same `GET /tracks/{id}/download-info` returned `preview: true` anonymously
+and `preview: false` with the token. Signed `GET /get-file-info` returned full
+`mp3` files whose measured duration matches the original track (within normal
+MP3 frame padding).
+
+Anonymous access still returns only `smart_preview`; the OAuth token is the
+boundary. The token was used only for this research and is not stored in this
+repository.
 
 ## Repositories inspected
 
@@ -167,3 +173,89 @@ satisfy the task.
 - production baseline remains untouched;
 - `neural-2026-11-21-4` → `50a2b3d`;
 - this research is isolated in branch `research/yandex-music`.
+
+
+## Authorized follow-up test (full tracks)
+
+The supplied OAuth token was validated against `GET /account/status`.
+The account reported `hasPlus: false` and permissions
+`landing-play, feed-play, radio-play, mix-play`, yet the tested tracks were
+served in full. This means the result is **account/track-specific**; it does
+not prove that every Yandex track is available to every account.
+
+### Anonymous vs authorized
+
+| Check | Anonymous | Authorized |
+|---|---|---|
+| `download-info` `preview` | `true` | `false` |
+| `get-file-info` quality | `smart_preview` | `nq` / `lossless` |
+| media path | `.../preview192` | `.../2.mp3` or `.../320.mp3` |
+| measured duration | 16.2–19.6 s | 143–304 s |
+
+### Full-track measurements
+
+| trackId | original duration | requested quality | actual codec | actual bitrate | bytes | measured duration |
+|---|---:|---|---|---:|---:|---:|
+| 18743864 | 304.070 s | nq | mp3 | 192 kbps | 7 285 027 | 303.485 s |
+| 26413511 | 156.300 s | nq | mp3 | 192 kbps | 3 752 228 | 156.343 s |
+| 152841656 | 157.610 s | nq | mp3 | 192 kbps | 3 783 575 | 157.649 s |
+| 732405 | 198.000 s | nq | mp3 | 192 kbps | 4 752 822 | 198.034 s |
+| 129529772 | 143.330 s | nq | mp3 | 192 kbps | 3 440 640 | 143.360 s |
+| 24948471 | 242.250 s | nq | mp3 | 192 kbps | 5 814 857 | 242.286 s |
+| 26413511 | 156.300 s | lossless | **mp3** | **320 kbps** | 6 253 714 | 156.343 s |
+
+The `lossless` request returned **MP3 320**, not FLAC. The API's quality label
+must not be treated as proof of codec.
+
+### Full-track Range
+
+Direct CDN:
+
+```text
+Range: bytes=0-1023
+206 Partial Content
+Content-Range: bytes 0-1023/3752228
+Content-Length: 1024
+```
+
+`bytes=2000000-2001023` also returned `206`.
+
+### Isolated Cloudflare Worker
+
+Prototype:
+
+```text
+research/yandex-music/worker/index.js
+https://rh-yandex-research.rh-launcher.workers.dev
+```
+
+The Worker:
+
+- accepts only HTTPS URLs on `*.strm.yandex.net` under `/music-v2/raw/`;
+- forwards `Range` and HEAD;
+- returns upstream `200/206`, `Content-Length`, `Content-Range`,
+  `Content-Type`;
+- allows only the RH-MUSIC production origin for CORS;
+- stores no OAuth token or Yandex secret.
+
+Tests through the Worker:
+
+```text
+HEAD Range 0-1023        -> 206, 1024 bytes, Content-Range .../3752228
+Range 1000000-1001023    -> 206, 1024 bytes
+Full GET                 -> 200, 3 752 228 bytes
+ffprobe                  -> mp3, 44100 Hz, stereo, 156.343 s, 192 kbps
+```
+
+The Worker was separate from RH-MUSIC production and uses only short-lived
+signed CDN URLs supplied by the caller.
+
+### Conclusion for integration
+
+A full Yandex Music provider is technically feasible **with a server-side
+OAuth token**, `get-file-info` signing, and a Range-capable media proxy.
+The browser must never receive the token. Full access is account- and
+track-dependent and must be checked via `preview:false` plus actual duration.
+
+Production RH-MUSIC, its Zvuk provider, Audio Engine, queue and AutoMix were
+not modified.
