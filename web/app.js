@@ -2216,7 +2216,7 @@ function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
   const active = !!(info && info.active);
-  const label = phase === 'OFF' ? 'AI AutoMix' : phase === 'READY' ? 'AI Ready' : phase === 'MIXING' ? 'AI Mixing' : 'AI ' + phase;
+  const label = phase === 'OFF' ? 'Neural AI' : phase === 'READY' ? 'Neural AI Ready' : phase === 'MIXING' ? 'Neural AI Mixing' : 'Neural AI ' + phase;
   if (active && window.RH_SMARTMIX) {
     try {
       if (window.RH_SMARTMIX.getSettings().enabled) { aiSavedSmartMix = true; window.RH_SMARTMIX.setSettings({ enabled: false }); }
@@ -2231,6 +2231,11 @@ function refreshAiAutoMixUI() {
     el.dataset.phase = phase;
     if (el.id === 'npAiAutomix') el.textContent = label;
   });
+  const mix = info && info.mix ? info.mix : null;
+  const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0;
+  document.body.dataset.aiPhase = active ? phase : '';
+  document.body.style.setProperty('--ai-ring-progress', ringProgress.toFixed(3));
+  document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
   applyAiMixTimeline(info);
   const button = $('aiAutomixBtn');
   if (button) button.title = label;
@@ -2288,6 +2293,21 @@ function initAiAutoMix() {
     getAudio: () => audio,
     onState: refreshAiAutoMixUI,
     onToast: toast,
+    getFallbackTracks: async () => {
+      if (!S.user) return [];
+      const data = await loadRecommendations();
+      const out = [];
+      const seen = new Set();
+      for (const sectionData of (data && data.sections) || []) {
+        for (const item of (sectionData && sectionData.items) || []) {
+          if (!item || !item.id || !item.title || !item.artist) continue;
+          if (seen.has(String(item.id))) continue;
+          seen.add(String(item.id));
+          out.push(item);
+        }
+      }
+      return out;
+    },
     onAdopt: adoptAiTrack,
     onExit: (info) => {
       S.loading = false;

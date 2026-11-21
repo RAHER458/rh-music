@@ -56,6 +56,13 @@ check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix
 check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
 check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
+check('AI ring is drawn around the play button', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.ctrl.play::before') && app.includes('--ai-ring-progress'));
+check('AI ring progress comes from real mix progress', app.includes('const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0'));
+check('AI ring is hidden when AI is off', app.includes("document.body.dataset.aiPhase = active ? phase : ''") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('opacity: 0'));
+check('AI can continue after user queue ends', app.includes('getFallbackTracks') && controller.includes('fallbackCandidates') && controller.includes('fallbackPool'));
+check('AI fallback uses recommendations, not random tracks', app.includes('loadRecommendations()') && app.includes('data.sections') && !controller.includes('Math.random'));
+check('AI avoids repeating recently played tracks', controller.includes('playedIds') && controller.includes('state.playedIds.has'));
+check('user queue keeps priority over fallback', controller.includes('if (state.fallbackActive) return [];') && controller.includes('let candidates = queueCandidates();'));
 check('AI candidates follow queue order after current index', controller.includes('(activeIndex + offset) % queue.length'));
 check('missed transition windows trigger replan', controller.includes('Окно перехода упущено') && controller.includes('void planNext()'));
 check('seek invalidates AI plan before takeover', controller.includes('function invalidatePlan') && app.includes('RH_AI_AUTOMIX.invalidatePlan()'));
@@ -102,5 +109,28 @@ check('AutoMixCore keeps 25 strategies', strategies.length === 25);
 core.recordOutcome({ outgoingId: 'a', incomingId: 'b', strategy: decision.plan.strategy, planScore: decision.plan.score, qualityScore: 0.8, success: true, energy: 0.5 });
 check('AutoMixCore records memory', core.diagnostics().memory.count === 1);
 
+/* ── Autonomous fallback source (no audio device required) ── */
+const win = { setInterval, clearInterval, setTimeout, clearTimeout, console, document: { createElement: () => ({}) } };
+new Function('window', 'document', controller)(win, { createElement: () => ({}) });
+const ai = win.RH_AI_AUTOMIX;
+const fallbackCalls = [];
+ai.init({
+  getState: () => ({ current: { id: 'a' }, index: 0, queue: [], currentTime: 0, duration: 180, paused: false }),
+  getFallbackTracks: async () => { fallbackCalls.push(1); return [{ id: 'r1', title: 'R1', artist: 'X' }, { id: 'r2', title: 'R2', artist: 'Y' }, { id: 'r3', title: 'R3', artist: 'Z' }]; },
+});
+const fb = await ai._internal.fallbackCandidates();
+check('autonomous fallback returns recommendation tracks', fb.length === 3 && fb.every((x) => x.fallback === true));
+check('autonomous fallback does not touch the user queue', ai.getState().phase === 'OFF');
+ai.init({
+  getState: () => ({ current: { id: 'a' }, index: 0, queue: [{ id: 'a' }, { id: 'q1' }, { id: 'q2' }], currentTime: 0, duration: 180, paused: false }),
+  getFallbackTracks: async () => { throw new Error('should not be called while queue has candidates'); },
+});
+const q = ai._internal.queueCandidates();
+check('user queue keeps priority over autonomous source', q.length > 0 && q[0].track.id === 'q1' && q[0].fallback !== true);
+ai._state.fallbackActive = true;
+check('fallback mode suppresses queue recycling', ai._internal.queueCandidates().length === 0);
+ai._state.fallbackActive = false;
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
+

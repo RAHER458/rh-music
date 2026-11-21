@@ -40,6 +40,9 @@
     timer: null,
     busy: false,
     diagnostics: [],
+    fallbackPool: [],
+    fallbackActive: false,
+    playedIds: new Set(),
   };
 
   function emit() {
@@ -198,6 +201,7 @@
     state.currentEntry = null;
     state.planEpoch += 1;
     state.activeTrack = track;
+    state.fallbackActive = false;
     state.activeIndex = state.host.getState().index;
     state.ownsPlayback = false;
     const token = ++state.trackToken;
@@ -222,6 +226,7 @@
   }
 
   function queueCandidates() {
+    if (state.fallbackActive) return [];
     const hostState = state.host.getState();
     const queue = Array.isArray(hostState.queue) ? hostState.queue : [];
     if (!queue.length) return [];
@@ -238,10 +243,35 @@
     return out;
   }
 
+  async function fallbackCandidates() {
+    if (!state.host || typeof state.host.getFallbackTracks !== 'function') return [];
+    if (!state.fallbackPool.length) {
+      try {
+        const list = await state.host.getFallbackTracks();
+        state.fallbackPool = (Array.isArray(list) ? list : [])
+          .filter((track) => track && track.id)
+          .filter((track) => !state.playedIds.has(String(track.id)))
+          .filter((track) => !state.activeTrack || String(track.id) !== String(state.activeTrack.id));
+        log('AI автономный источник: ' + state.fallbackPool.length + ' треков');
+      } catch (error) {
+        log('Автономный источник недоступен: ' + (error && error.message ? error.message : String(error)));
+        return [];
+      }
+    }
+    const out = [];
+    while (out.length < 3 && state.fallbackPool.length) {
+      const track = state.fallbackPool.shift();
+      if (!track || !track.id || state.playedIds.has(String(track.id))) continue;
+      out.push({ track, index: -1, fallback: true });
+    }
+    return out;
+  }
+
   async function planNext() {
     if (state.busy || state.phase === 'OFF') return;
-    const candidates = queueCandidates();
-    if (!candidates.length) { setPhase('DEGRADED'); log('Очередь пуста: нет кандидата'); return; }
+    let candidates = queueCandidates();
+    if (!candidates.length) candidates = await fallbackCandidates();
+    if (!candidates.length) { setPhase('DEGRADED'); log('Нет кандидата: очередь пуста и автономный источник недоступен'); return; }
     const candidate = candidates[0];
     const token = state.trackToken;
     const epoch = state.planEpoch;
@@ -265,7 +295,7 @@
       }], history, playback, {});
       if (epoch !== state.planEpoch) return;
       if (!decision.chosen || !decision.plan) { setPhase('DEGRADED'); log('AI не нашёл переход: ' + decision.reason); return; }
-      state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan: decision.plan };
+      state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan: decision.plan, fallback: !!candidate.fallback };
       state.deckB.loadBuffer(entry.buffer);
       state.deckB.cancelAutomation();
       log('AI выбрал: ' + decision.chosen.title + ' · ' + decision.plan.strategy);
@@ -365,6 +395,8 @@
       state.currentEntry = pending.entry;
       trimCache([String(pending.track.id)]);
       const hostState = state.host.getState();
+      state.playedIds.add(String(pending.track.id));
+      state.fallbackActive = !!pending.fallback;
       if (state.host && typeof state.host.onAdopt === 'function') state.host.onAdopt(pending.track, pending.plan.strategy);
       state.activeIndex = state.host.getState().index;
       log('Переход завершён: ' + pending.track.title);
@@ -456,5 +488,6 @@
     ownsPlayback() { return state.ownsPlayback; },
     releaseToStandard,
     _state: state,
+    _internal: { queueCandidates, fallbackCandidates },
   };
 })();

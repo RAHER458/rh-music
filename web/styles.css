@@ -1827,3 +1827,36 @@ html[data-ui="mobile"] .smartmix-card { padding: 12px; }
 
 .betamix2-btn { font-size: 10px; font-weight: 800; letter-spacing: .04em; color: #cfd8ff; border: 1px solid rgba(108,140,255,.45); border-radius: 8px; padding: 4px 6px; }
 .betamix2-btn.is-on { color: #fff; background: rgba(108,140,255,.3); box-shadow: 0 0 15px rgba(108,140,255,.3); }
+
+
+/* ── Neural AI DJ ring around the play button ─────────────────── */
+.ctrl.play { position: relative; }
+.ctrl.play::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ai-ring-color, #7CFFCB) calc(var(--ai-ring-progress, 0) * 1turn), rgba(255,255,255,.08) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .35s ease, background .35s ease;
+  z-index: 3;
+}
+body[data-ai-phase="ACTIVE"] .ctrl.play::before,
+body[data-ai-phase="READY"] .ctrl.play::before { opacity: .45; }
+body[data-ai-phase="ANALYZING"] .ctrl.play::before,
+body[data-ai-phase="PREPARING"] .ctrl.play::before {
+  opacity: 1;
+  background: conic-gradient(var(--ai-ring-color, #6C8CFF) 0 25%, rgba(255,255,255,.12) 25% 100%);
+  animation: ai-ring-spin 1.4s linear infinite;
+}
+body[data-ai-phase="MIXING"] .ctrl.play::before { opacity: 1; }
+body[data-ai-phase="DEGRADED"] .ctrl.play::before { opacity: .7; }
+body[data-ai-phase="ERROR"] .ctrl.play::before { opacity: .55; }
+@keyframes ai-ring-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) {
+  body[data-ai-phase="ANALYZING"] .ctrl.play::before,
+  body[data-ai-phase="PREPARING"] .ctrl.play::before { animation: none; }
+}
