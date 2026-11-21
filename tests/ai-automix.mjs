@@ -139,6 +139,22 @@ ai._state.fallbackActive = true;
 check('fallback mode suppresses queue recycling', ai._internal.queueCandidates().length === 0);
 ai._state.fallbackActive = false;
 
+/* ── Real pause/resume state on the controller (no audio device) ── */
+const win2 = { setInterval, clearInterval, setTimeout, clearTimeout, console, document: { createElement: () => ({}) } };
+new Function('window', 'document', controller)(win2, { createElement: () => ({}) });
+const ai2 = win2.RH_AI_AUTOMIX;
+let suspended = 0; let resumed = 0; let deckPaused = 0;
+ai2._state.ctx = { suspend: () => { suspended += 1; }, resume: () => { resumed += 1; }, currentTime: 0, state: 'running' };
+ai2._state.deckA = { pause: () => { deckPaused += 1; }, paused: true, currentTime: 10, duration: 100, play: () => {} };
+ai2._state.deckB = { pause: () => { deckPaused += 1; }, paused: true, currentTime: 0, duration: 100, play: () => {} };
+ai2.pause();
+check('pause reports paused and suspends audio', ai2.getState().paused === true && suspended === 1 && deckPaused === 2);
+ai2.resume();
+check('resume reports playing and resumes audio', ai2.getState().paused === false && resumed === 1);
+ai2._state.currentEntry = { track: { id: 'x' } };
+ai2._state.preparing = true;
+check('preparing is exposed without faking phase', ai2.getState().preparing === true);
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
 
