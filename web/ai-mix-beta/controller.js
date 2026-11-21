@@ -142,13 +142,23 @@
     stop() { this.stopDeck(this.a); this.stopDeck(this.b); }
   }
 
+  function withTimeout(promise, ms, label) {
+    return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timeout')), ms))]);
+  }
+
   async function decodeTrack(track) {
     const cached = state.cache.get(String(track.id)); if (cached) return cached;
     const url = state.host.streamUrl(track);
-    const res = await fetch(url, { headers: { Accept: 'audio/mpeg' } });
-    if (!res.ok) throw new Error('stream HTTP ' + res.status);
-    const data = await res.arrayBuffer();
-    const buffer = await state.ctx.decodeAudioData(data.slice(0));
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 20_000);
+    let res, data;
+    try {
+      res = await fetch(url, { headers: { Accept: 'audio/mpeg' }, signal: controller.signal });
+      if (!res.ok) throw new Error('stream HTTP ' + res.status);
+      data = await res.arrayBuffer();
+    } finally { clearTimeout(abortTimer); }
+    if (!data || data.byteLength < 1024) throw new Error('stream too short');
+    const buffer = await withTimeout(state.ctx.decodeAudioData(data.slice(0)), 25_000, 'decode');
     const cache = window.RH_AI_MIX_BETA_CACHE;
     const cacheKey = 'pg1:' + String(track.id) + ':' + String(track.duration || 0);
     let analysis = cache ? await cache.get(cacheKey) : null;

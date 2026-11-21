@@ -76,6 +76,7 @@ check('beta status element exists', html.includes('id="betaMixStatus"'));
 check('beta dual waveform canvases exist', html.includes('betaWaveOut') && html.includes('betaWaveIn'));
 check('beta visualization draws real peaks/positions', app.includes('drawBetaWave') && app.includes('getVisualization') && app.includes('outPeaks'));
 check('beta visualization timer follows deck position', app.includes('__rhBetaVizTimer') && app.includes('syncSeek(info.position'));
+check('beta decode has timeout and abort', source.includes('AbortController') && source.includes("withTimeout(state.ctx.decodeAudioData") && source.includes('stream too short'));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
