@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-10';
+window.RH_BUILD = 'neural-2026-11-21-11';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
