@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-16';
+window.RH_BUILD = 'neural-2026-11-21-17';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -2950,13 +2950,13 @@ function setNpPalette(art, image) {
     for (let i = 0; i < data.length; i += 4) {
       const rr = data[i], gg = data[i + 1], bb = data[i + 2];
       const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb);
-      if (max < 34 || max - min < 10) continue;
+      if (max < 70 || max - min < 12) continue;
       r += rr; g += gg; b += bb; n++;
     }
     if (!n) return;
     r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
     // Keep the cinematic palette inside RH-MUSIC's cool range.
-    const boost = (v) => Math.max(48, Math.min(235, Math.round(v * 1.12)));
+    const boost = (v) => Math.max(64, Math.min(235, Math.round(v * 1.35)));
     art.style.setProperty('--np-glow-rgb', `${boost(r)}, ${boost(g)}, ${boost(b)}`);
     art.style.setProperty('--np-glow2-rgb', `${Math.min(255, boost(b) + 24)}, ${Math.max(40, boost(g) - 18)}, ${Math.min(255, boost(r) + 30)}`);
   } catch (_) { /* canvas can be tainted by a cross-origin cover; keep default palette */ }
