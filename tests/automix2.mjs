@@ -30,6 +30,8 @@ check('Beta2 is mutually exclusive with AI AutoMix', app.includes('Сначал�
 check('Beta2 routes Play/Pause and seek', app.includes('RH_AUTOMIX2.pause()') && app.includes('RH_AUTOMIX2.seek(target)'));
 check('cache records are unwrapped before use', source.includes('analysis && analysis.analysis') && source.includes('!Array.isArray(analysis.downbeats)'));
 check('nearestDownbeat tolerates missing grids', source.includes("!Array.isArray(analysis.downbeats)") && source.includes('return Math.max(0, Number(time) || 0)'));
+check('release closes AudioContext and clears mixer', source.includes('state.ctx.close()') && source.includes('state.ctx = null; state.mixer = null'));
+check('re-enable closes an existing context', source.includes("if (state.ctx) { try { state.ctx.close(); } catch (_) {} state.ctx = null; state.mixer = null; }"));
 check('Beta2 releases decks on manual track selection', source.includes('function releaseToStandard') && app.includes('RH_AUTOMIX2.releaseToStandard(false)'));
 check('seek before takeover invalidates stale plan', source.includes('function invalidatePlan') && app.includes('RH_AUTOMIX2.invalidatePlan()'));
 check('transition failure stops all decks before restoring', source.includes("state.mixer && state.mixer.stop()") && source.includes('beta transition:'));

@@ -405,6 +405,7 @@
     if (window.RH_AI_AUTOMIX?.isActive?.()) throw new Error('Сначала выключите AI AutoMix');
     try {
       phase('ANALYZING');
+      if (state.ctx) { try { state.ctx.close(); } catch (_) {} state.ctx = null; state.mixer = null; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       state.ctx = new Ctx({ latencyHint: 'interactive' });
       if (state.ctx.state === 'suspended') await state.ctx.resume();
@@ -481,6 +482,8 @@
     state.plan = null; state.next = null;
     state.owns = false;
     try { state.mixer && state.mixer.stop(); } catch (_) {}
+    if (state.ctx) { try { state.ctx.close(); } catch (_) {} }
+    state.ctx = null; state.mixer = null;
     if (restart && state.host?.onExit) state.host.onExit({ position });
     state.active = null;
     note('Beta2: управление возвращено стандартному плееру');
