@@ -460,7 +460,7 @@ async function renderShowcase() {
         <span class="cover-fallback big">RH</span>
       </div>
       <div class="hero-info">
-        <span class="hero-kicker">Подборка каталога</span>
+        <span class="hero-kicker">Популярное на Zvuk</span>
         <h1 class="hero-title">${esc(hero.title)}</h1>
         ${hero.description ? `<p class="hero-sub">${esc(hero.description)}</p>` : ''}
         <div class="hero-actions">
@@ -479,6 +479,15 @@ async function renderShowcase() {
     if (block.type === 'artists') {
       return section(block.title, carousel(block.items, artistCard), { sub: block.subtitle || '', key: block.key });
     }
+    if (block.type === 'banner') {
+      const chips = (block.actions || [])
+        .filter((action) => action && action.title)
+        .map((action) => action.url
+          ? `<a class="chip" href="https://zvuk.com${esc(action.url)}" target="_blank" rel="noopener">${esc(action.title)}</a>`
+          : `<span class="chip">${esc(action.title)}</span>`)
+        .join('');
+      return section(block.title, chips ? `<div class="chip-row">${chips}</div>` : '', { sub: block.subtitle || '', key: block.key });
+    }
     S.lists['home_' + block.key] = block.items;
     return section(block.title, trackList(block.items, 'home_' + block.key), { sub: block.subtitle || '', key: block.key });
   });
@@ -490,13 +499,13 @@ async function renderShowcase() {
     <div class="page-head">
       <div>
         <h1 class="page-title">${S.user ? 'Привет, ' + esc(S.user.displayName || S.user.username) : 'Витрина RH—MUSIC'}</h1>
-        <p class="page-sub">Плейлисты каталога, новинки и исполнители — для всех</p>
+        <p class="page-sub">Полное содержимое вкладки «Популярное» Zvuk</p>
       </div>
     </div>
     ${heroBlock}
     ${genres ? `<div class="chip-row">${genres}</div>` : ''}
     ${blocks.join('')}
-    <p class="section-sub">${sections.length ? 'Витрина обновляется автоматически по мере появления нового контента в каталоге.' : 'Каталог временно не вернул контент.'}</p>
+    <p class="section-sub">${sections.length ? 'Содержимое обновляется автоматически из вкладки «Популярное» Zvuk.' : 'Zvuk временно не вернул контент.'}</p>
   `;
 }
 

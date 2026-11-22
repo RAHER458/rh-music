@@ -24,6 +24,7 @@ import {
 } from './music.js';
 import { handleRecommendations } from './recommend.js';
 import { handleHome, handleCatalogPlaylist } from './home.js';
+import { handlePopular, syncPopular } from './popular.js';
 import { handleLyrics } from './lyrics.js';
 import { handleLyricsWords } from './words.js';
 import {
@@ -380,7 +381,14 @@ async function route(request, env) {
   if (path === '/api/recommendations' && method === 'GET') return handleRecommendations(request, env);
 
   /* --- витрина главной (общий контент) --- */
-  if (path === '/api/home' && method === 'GET') return handleHome(request, env);
+  if (path === '/api/home' && method === 'GET') {
+    try {
+      return await handlePopular(env);
+    } catch {
+      return handleHome(request, env);
+    }
+  }
+  if (path === '/api/popular' && method === 'GET') return handlePopular(env);
   if ((m = path.match(/^\/api\/playlist\/(\d+)$/)) && method === 'GET') return handleCatalogPlaylist(env, m[1]);
 
   /* --- каталог (как и раньше) --- */
@@ -409,6 +417,10 @@ async function route(request, env) {
 }
 
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(syncPopular(env).catch(() => {}));
+  },
+
   async fetch(request, env) {
     const cors = corsHeaders(request);
     try {
