@@ -18,6 +18,7 @@ const deps = ['isVowel', 'letterWeight', 'weightedLetterTimings'].map(extract).j
 const letterTimingsForWord = new Function('codePoints', deps + '\n' + extract('letterTimingsForWord') + '\nreturn letterTimingsForWord;')(codePoints);
 const letterTimingsForLine = new Function('codePoints', deps + '\n' + extract('letterTimingsForLine') + '\nreturn letterTimingsForLine;')(codePoints);
 const letterProgress = new Function(extract('letterProgress') + '\nreturn letterProgress;')();
+const modeLabel = new Function(extract('modeLabel') + '\nreturn modeLabel;')();
 
 console.log('RH—MUSIC · karaoke letter tests\n');
 
@@ -56,6 +57,9 @@ check('калибровка применяется через effectiveOffset о
   /function effectiveOffset\(\)/.test(src)
   && /effectiveOffset\(\)/.test(src)
   && !/letterTimingsForWord\([^)]*offset\)/.test(src));
+check('modeLabel: Smart при слоговых метках', modeLabel({ syncLevel: 'word', lines: [{ words: [{ syllables: [{ t: 0, end: 1 }, { t: 1, end: 2 }] }] }] }) === 'Smart');
+check('modeLabel: Word при словах без слогов', modeLabel({ syncLevel: 'word', lines: [{ words: [{ t: 0, end: 1, text: 'x' }] }] }) === 'Word');
+check('modeLabel: Line при построчных метках', modeLabel({ syncLevel: 'line', lines: [] }) === 'Line');
 check('режим синхронизации различает Smart, Word и Line',
   /function modeLabel\(data\)/.test(src)
   && /hasSyllables \? 'Smart' : 'Word'/.test(src)
