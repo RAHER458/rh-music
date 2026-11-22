@@ -172,21 +172,7 @@ export async function buildPopular(env) {
   let hero = null;
 
   for (const [index, section] of grid.entries()) {
-    if (section.type === 'banner') {
-      const message = (section.messages || [])[0] || {};
-      const actions = (section.actions || []).map((a) => ({ title: a.title, url: a.action && a.action.url }));
-      if (message.title || actions.length) {
-        sections.push({
-          key: 'banner-' + index,
-          type: 'banner',
-          title: message.title || 'Подборки',
-          subtitle: message.detail || '',
-          cover: message.image || null,
-          actions,
-        });
-      }
-      continue;
-    }
+    if (section.type === 'banner') continue;
 
     if (section.type === 'content') {
       const first = (section.data || [])[0];
@@ -232,7 +218,7 @@ export async function buildPopular(env) {
     });
   }
 
-  return { sections, hero, source: 'zvuk-popular', fetchedAt: new Date().toISOString() };
+  return { sections, hero, source: 'rh-popular', fetchedAt: new Date().toISOString() };
 }
 
 /** Читает снимок из D1; при отсутствии/устаревании собирает заново. */
