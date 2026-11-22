@@ -2688,12 +2688,38 @@ function shouldShowPlayer(state = S) {
  * она остаётся на месте и не перекрывает контент, потому что страница резервирует
  * её высоту. На телефоне пустая панель по-прежнему скрыта.
  */
-function syncPlayerVisibility() {
+let playerHideTimer = 0;
+
+function computedPlayerVisible() {
   const authRoute = S.route === 'login' || S.route === 'register';
   const emptyDesktopBar = isDesktop() && !authRoute && !S.playerHidden && !hasSelectedTrack();
-  const visible = shouldShowPlayer() || emptyDesktopBar;
-  player.hidden = !visible;
-  player.classList.toggle('is-hidden', !visible);
+  return shouldShowPlayer() || emptyDesktopBar;
+}
+
+function syncPlayerVisibility() {
+  const visible = computedPlayerVisible();
+  const reducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (!visible && reducedMotion) {
+    player.hidden = !visible;
+    player.classList.add('is-hidden');
+    document.body.classList.remove('has-player');
+    updateCompactPlayer();
+    syncLayoutHeight();
+    return;
+  }
+  if (visible) {
+    if (playerHideTimer) { clearTimeout(playerHideTimer); playerHideTimer = 0; }
+    player.hidden = false;
+    requestAnimationFrame(() => player.classList.remove('is-hidden'));
+  } else {
+    player.classList.add('is-hidden');
+    if (!player.hidden && !playerHideTimer) {
+      playerHideTimer = setTimeout(() => {
+        playerHideTimer = 0;
+        if (!computedPlayerVisible()) player.hidden = true;
+      }, 340);
+    }
+  }
   document.body.classList.toggle('has-player', visible);
   updateCompactPlayer();
   syncLayoutHeight();
