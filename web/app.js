@@ -55,6 +55,7 @@ const S = {
   recentSearches: readJson('rh_searches_v1', []),
   playback: { historyId: null, trackId: null, pending: 0, lastTick: 0, completed: false, source: 'player' },
   restorePosition: 0,
+  restoreTrackId: null,
   lastStateSave: 0,
   playerHidden: false,
   volume: 1,
@@ -2854,6 +2855,7 @@ function restorePlayerState() {
   S.shuffle = !!saved.shuffle;
   S.repeat = ['off', 'all', 'one'].includes(saved.repeat) ? saved.repeat : 'off';
   S.restorePosition = Math.max(0, Number(saved.position) || 0);
+  S.restoreTrackId = String(S.current.id);
   S.lastStateSave = Date.now();
 
   updateNowPlayingMeta(S.current);
@@ -3180,9 +3182,11 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   audio.src = streamUrl(track);
 
   // Продолжение с места, где остановились после перезагрузки страницы.
-  if (S.restorePosition > 0) {
+  // Только для того же трека: иначе новая песня начиналась бы с чужой секунды.
+  if (S.restorePosition > 0 && S.restoreTrackId && String(track.id) === String(S.restoreTrackId)) {
     const target = S.restorePosition;
     S.restorePosition = 0;
+    S.restoreTrackId = null;
     const resume = () => {
       try {
         const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
@@ -3191,6 +3195,9 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
       audio.removeEventListener('loadedmetadata', resume);
     };
     audio.addEventListener('loadedmetadata', resume);
+  } else if (S.restorePosition > 0) {
+    S.restorePosition = 0;
+    S.restoreTrackId = null;
   }
 
   audio.load();

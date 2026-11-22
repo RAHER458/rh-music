@@ -1,0 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const here = dirname(fileURLToPath(import.meta.url));
+let passed = 0; const failures = [];
+const check = (name, ok) => { if (ok) passed++; else { failures.push(name); console.error('  ✗', name); } };
+const app = readFileSync(join(here, '../web/app.js'), 'utf8');
+console.log('RH—MUSIC · playback restore position tests\n');
+check('состояние хранит id трека для восстановления', /restoreTrackId: null,/.test(app));
+check('restorePlayerState запоминает id сохранённого трека', /S\.restoreTrackId = String\(S\.current\.id\);/.test(app));
+check('playIndex применяет позицию только к тому же треку', /S\.restorePosition > 0 && S\.restoreTrackId && String\(track\.id\) === String\(S\.restoreTrackId\)/.test(app));
+check('playIndex очищает чужую позицию', /else if \(S\.restorePosition > 0\) \{\s*S\.restorePosition = 0;\s*S\.restoreTrackId = null;/.test(app));
+console.log(`\n${passed} passed, ${failures.length} failed`);
+if (failures.length) process.exit(1);
