@@ -144,16 +144,17 @@
    * Метки слов настоящие; внутри слова время распределяется равномерно —
    * это интерполяция, а не выдуманные пословные метки.
    */
-  function letterTimingsForWord(word, wordEnd, wordIndex, words) {
+  function letterTimingsForWord(word, wordEnd, wordIndex, words, offset) {
     const chars = codePoints(word.text);
     const end = Number.isFinite(wordEnd)
       ? Math.max(word.t, wordEnd)
       : (wordIndex + 1 < words.length ? words[wordIndex + 1].t : word.t + 1000);
+    const base = word.t + (Number(offset) || 0);
     const span = Math.max(1, end - word.t);
     return chars.map((ch, ci) => ({
       ch,
-      start: word.t + (span * ci) / chars.length,
-      end: word.t + (span * (ci + 1)) / chars.length,
+      start: base + (span * ci) / chars.length,
+      end: base + (span * (ci + 1)) / chars.length,
     }));
   }
 
@@ -163,13 +164,14 @@
   }
 
   /** Интерполяция букв по строке, если есть только построчные метки. */
-  function letterTimingsForLine(line, end) {
+  function letterTimingsForLine(line, end, offset) {
     const chars = codePoints(line.text);
+    const base = line.t + (Number(offset) || 0);
     const span = Math.max(1, end - line.t);
     return chars.map((ch, ci) => ({
       ch,
-      start: line.t + (span * ci) / chars.length,
-      end: line.t + (span * (ci + 1)) / chars.length,
+      start: base + (span * ci) / chars.length,
+      end: base + (span * (ci + 1)) / chars.length,
     }));
   }
 
@@ -264,14 +266,15 @@
         node.setAttribute('role', 'button');
         node.setAttribute('tabindex', '0');
         node._letterNodes = [];
-        const lineEnd = lineEndOf(data.lines, index);
+        const offset = Number(data.offsetMs) || 0;
+        const lineEnd = lineEndOf(data.lines, index) + offset;
         if (hasWords) {
           // Каждое слово — span, внутри него буквы — отдельные span.
           // Пробелы остаются текстовыми узлами, пунктуация — внутри слова.
           node._wordNodes = line.words.map((word, wordIndex) => {
             const span = createElement('span', 'lyrics-word');
             span.dataset.word = String(wordIndex);
-            const timings = letterTimingsForWord(word, word.end, wordIndex, line.words);
+            const timings = letterTimingsForWord(word, word.end, wordIndex, line.words, offset);
             timings.forEach((item, letterIndex) => {
               const letter = createElement('span', 'lyrics-letter', item.ch);
               letter.dataset.letter = String(letterIndex);
@@ -283,7 +286,7 @@
             return span;
           });
         } else {
-          const timings = letterTimingsForLine(line, lineEnd);
+          const timings = letterTimingsForLine(line, lineEnd, offset);
           timings.forEach((item, letterIndex) => {
             const letter = createElement('span', 'lyrics-letter', item.ch);
             letter.dataset.letter = String(letterIndex);
