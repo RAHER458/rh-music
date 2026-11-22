@@ -2212,7 +2212,7 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
 
 @property --fill {
   syntax: '<percentage>';
-  inherits: false;
+  inherits: true;
   initial-value: 0%;
 }
 
