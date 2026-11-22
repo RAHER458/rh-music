@@ -2322,3 +2322,35 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
   #page > :where(.page-head, .hero, .detail, .notice, .empty, .chip-row, .search-intro) { animation: none !important; }
   .np-play-ring, .np-mix-ring, .ai-ring { animation: none !important; }
 }
+
+/* ── Karaoke Letter-by-Letter ───────────────────────────────────── */
+.lyrics-line.has-letters,
+.lyrics-line.has-letters.is-active {
+  color: rgba(255, 255, 255, .34);
+  background: none;
+  box-shadow: none;
+}
+.lyrics-line.has-letters .lyrics-word.is-active {
+  /* Слово больше не заливается целиком: подсветка идёт по буквам. */
+  color: inherit;
+  background: none;
+  box-shadow: none;
+}
+.lyrics-letter {
+  background-image: linear-gradient(
+    90deg,
+    var(--blue) 0 var(--p, 0%),
+    rgba(255, 255, 255, .34) var(--p, 0%) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .lyrics-letter { color: rgba(255, 255, 255, .34); }
+  .lyrics-letter.is-done,
+  .lyrics-letter.is-current { color: var(--blue); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-letter { transition: none; }
+}

@@ -30,6 +30,7 @@
     wordsWanted: false,
     wordsController: null,
     wordCache: new Map(),
+    letterRaf: 0,
   };
 
   const views = [];
@@ -125,6 +126,53 @@
 
   /* ───────────────────────────── представления ───────────────────────────── */
 
+  /** Разбивает строку на code points: кириллица/латиница/эмодзи — по одному. */
+  function codePoints(value) {
+    return Array.from(String(value == null ? '' : value));
+  }
+
+  /** Конец строки: явный end, следующая строка или запас 4 с. */
+  function lineEndOf(lines, index) {
+    const line = lines[index];
+    if (Number.isFinite(line.end)) return Math.max(line.t, line.end);
+    const next = lines[index + 1];
+    return next && next.t > line.t ? next.t : line.t + 4000;
+  }
+
+  /**
+   * Создаёт посимвольные тайминги для слова.
+   * Метки слов настоящие; внутри слова время распределяется равномерно —
+   * это интерполяция, а не выдуманные пословные метки.
+   */
+  function letterTimingsForWord(word, wordEnd, wordIndex, words) {
+    const chars = codePoints(word.text);
+    const end = Number.isFinite(wordEnd)
+      ? Math.max(word.t, wordEnd)
+      : (wordIndex + 1 < words.length ? words[wordIndex + 1].t : word.t + 1000);
+    const span = Math.max(1, end - word.t);
+    return chars.map((ch, ci) => ({
+      ch,
+      start: word.t + (span * ci) / chars.length,
+      end: word.t + (span * (ci + 1)) / chars.length,
+    }));
+  }
+
+  /** Прогресс буквы 0..1 по фактическому времени аудио. */
+  function letterProgress(item, ms) {
+    return Math.max(0, Math.min(1, (ms - item.start) / Math.max(1, item.end - item.start)));
+  }
+
+  /** Интерполяция букв по строке, если есть только построчные метки. */
+  function letterTimingsForLine(line, end) {
+    const chars = codePoints(line.text);
+    const span = Math.max(1, end - line.t);
+    return chars.map((ch, ci) => ({
+      ch,
+      start: line.t + (span * ci) / chars.length,
+      end: line.t + (span * (ci + 1)) / chars.length,
+    }));
+  }
+
   function createElement(tag, className, text) {
     const el = document.createElement(tag);
     if (className) el.className = className;
@@ -209,22 +257,41 @@
       const fragment = document.createDocumentFragment();
       data.lines.forEach((line, index) => {
         const hasWords = Array.isArray(line.words) && line.words.length > 0;
-        const node = hasWords ? createElement('p', 'lyrics-line has-words') : createElement('p', 'lyrics-line', line.text);
+        const node = hasWords ? createElement('p', 'lyrics-line has-words') : createElement('p', 'lyrics-line');
         node.dataset.index = String(index);
         node.dataset.time = String(line.t);
+        node.dataset.letterSource = hasWords ? 'word' : 'line';
         node.setAttribute('role', 'button');
         node.setAttribute('tabindex', '0');
+        node._letterNodes = [];
+        const lineEnd = lineEndOf(data.lines, index);
         if (hasWords) {
-          // Слова разделяются текстовыми узлами: пунктуация и пробелы остаются
-          // исходными, а подсветка не меняет геометрию строки.
+          // Каждое слово — span, внутри него буквы — отдельные span.
+          // Пробелы остаются текстовыми узлами, пунктуация — внутри слова.
           node._wordNodes = line.words.map((word, wordIndex) => {
-            const span = createElement('span', 'lyrics-word', word.text);
+            const span = createElement('span', 'lyrics-word');
             span.dataset.word = String(wordIndex);
+            const timings = letterTimingsForWord(word, word.end, wordIndex, line.words);
+            timings.forEach((item, letterIndex) => {
+              const letter = createElement('span', 'lyrics-letter', item.ch);
+              letter.dataset.letter = String(letterIndex);
+              node._letterNodes.push({ el: letter, start: item.start, end: item.end });
+              span.appendChild(letter);
+            });
             node.appendChild(span);
             if (wordIndex + 1 < line.words.length) node.appendChild(document.createTextNode(' '));
             return span;
           });
+        } else {
+          const timings = letterTimingsForLine(line, lineEnd);
+          timings.forEach((item, letterIndex) => {
+            const letter = createElement('span', 'lyrics-letter', item.ch);
+            letter.dataset.letter = String(letterIndex);
+            node._letterNodes.push({ el: letter, start: item.start, end: item.end });
+            node.appendChild(letter);
+          });
         }
+        if (node._letterNodes.length) node.classList.add('has-letters');
         fragment.appendChild(node);
         view.nodes.push(node);
       });
@@ -298,6 +365,91 @@
     }
   }
 
+
+  /** Полный пересчёт букв активной строки: используется при перемотке. */
+  function resetLetters(view, index, ms) {
+    const node = view.nodes && view.nodes[index];
+    const letters = node && node._letterNodes;
+    if (!letters || !letters.length) {
+      view._letterLine = index;
+      view._letterCursor = 0;
+      return;
+    }
+    let cursor = 0;
+    for (let i = 0; i < letters.length; i += 1) {
+      const item = letters[i];
+      const el = item.el;
+      if (ms >= item.end) {
+        el.classList.add('is-done');
+        el.classList.remove('is-current');
+        el.style.setProperty('--p', '100%');
+        cursor = i + 1;
+      } else if (ms >= item.start) {
+        const progress = letterProgress(item, ms);
+        el.classList.remove('is-done');
+        el.classList.add('is-current');
+        el.style.setProperty('--p', `${(progress * 100).toFixed(1)}%`);
+        cursor = i;
+      } else {
+        el.classList.remove('is-done', 'is-current');
+        el.style.setProperty('--p', '0%');
+      }
+    }
+    view._letterLine = index;
+    view._letterCursor = cursor;
+    view._letterMs = ms;
+  }
+
+  /** Обновляет только активную букву и уже исполненные; не трогает всю панель. */
+  function applyLetters(index, ms, force) {
+    for (const view of views) {
+      const node = view.nodes && view.nodes[index];
+      const letters = node && node._letterNodes;
+      if (!letters || !letters.length) continue;
+      const backwards = Number.isFinite(view._letterMs) && ms < view._letterMs - 120;
+      if (force || backwards || view._letterLine !== index) {
+        resetLetters(view, index, ms);
+        continue;
+      }
+      let cursor = view._letterCursor || 0;
+      while (cursor < letters.length && ms >= letters[cursor].end) {
+        const done = letters[cursor];
+        done.el.classList.add('is-done');
+        done.el.classList.remove('is-current');
+        done.el.style.setProperty('--p', '100%');
+        cursor += 1;
+      }
+      if (cursor < letters.length && ms >= letters[cursor].start) {
+        const item = letters[cursor];
+        const progress = letterProgress(item, ms);
+        item.el.classList.remove('is-done');
+        item.el.classList.add('is-current');
+        item.el.style.setProperty('--p', `${(progress * 100).toFixed(1)}%`);
+      }
+      view._letterCursor = cursor;
+      view._letterLine = index;
+      view._letterMs = ms;
+    }
+  }
+
+  function stopLetterLoop() {
+    if (state.letterRaf) {
+      cancelAnimationFrame(state.letterRaf);
+      state.letterRaf = 0;
+    }
+  }
+
+  function startLetterLoop() {
+    if (reducedMotion() || state.letterRaf || !audio) return;
+    const step = () => {
+      state.letterRaf = 0;
+      if (!audio || audio.paused || audio.ended || document.hidden) return;
+      syncNow(false);
+      state.letterRaf = requestAnimationFrame(step);
+    };
+    state.letterRaf = requestAnimationFrame(step);
+  }
+
   function wordIndexFor(index, ms) {
     const line = state.data && state.data.lines[index];
     if (!line || !Array.isArray(line.words) || !line.words.length) return -1;
@@ -313,12 +465,15 @@
       const node = view.nodes && view.nodes[index];
       view.activeNode = node || null;
       view.activeIndex = index;
+      view._letterLine = -1;
+      view._letterCursor = 0;
       if (node) node.classList.add('is-active');
       if (node && !view.userScroll && visible(view)) {
         scrollToActive(view, forceScroll ? 'auto' : 'smooth');
       }
     }
     applyWord(index, wordIndexFor(index, ms));
+    applyLetters(index, ms, true);
   }
 
   function syncNow(forceScroll) {
@@ -332,6 +487,7 @@
     }
     const wordIndex = wordIndexFor(index, ms);
     if (wordIndex !== state.activeWord) applyWord(index, wordIndex);
+    applyLetters(index, ms, false);
   }
 
   /* ───────────────────────────── загрузка ───────────────────────────── */
@@ -346,6 +502,7 @@
     const seq = state.seq;
     if (state.controller) state.controller.abort();
 
+    stopLetterLoop();
     if (state.wordsController) state.wordsController.abort();
     state.wordsState = 'idle';
     state.track = track;
@@ -399,6 +556,7 @@
   }
 
   function clear() {
+    stopLetterLoop();
     state.seq += 1;
     if (state.controller) state.controller.abort();
     if (state.wordsController) state.wordsController.abort();
@@ -477,15 +635,22 @@
 
   if (audio) {
     audio.addEventListener('timeupdate', onTime);
-    audio.addEventListener('seeked', () => syncNow(true));
-    audio.addEventListener('playing', onTime);
-    audio.addEventListener('loadedmetadata', () => syncNow(true));
+    audio.addEventListener('seeked', () => { syncNow(true); applyLetters(state.active, (audio.currentTime || 0) * 1000, true); });
+    audio.addEventListener('playing', () => { onTime(); startLetterLoop(); });
+    audio.addEventListener('pause', () => { stopLetterLoop(); applyLetters(state.active, (audio.currentTime || 0) * 1000, true); });
+    audio.addEventListener('ended', () => stopLetterLoop());
+    audio.addEventListener('loadedmetadata', () => { syncNow(true); startLetterLoop(); });
     // 'emptied' намеренно не слушаем: смена src внутри playIndex сама вызывает
     // setTrack, и очистка по emptied отменила бы загрузку нового текста.
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) syncNow(false);
+    if (document.hidden) {
+      stopLetterLoop();
+    } else {
+      syncNow(false);
+      if (audio && !audio.paused) startLetterLoop();
+    }
   });
 
   /* ───────────────────────────── представления: регистрация ───────────────────────────── */
