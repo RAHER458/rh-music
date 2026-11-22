@@ -2243,10 +2243,10 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
   animation-duration: var(--motion-page);
   animation-timing-function: var(--ease-out);
 }
-.track-list .track:nth-child(-n+10),
-.carousel .card:nth-child(-n+10),
-.grid-cards .card:nth-child(-n+10) {
-  animation-delay: calc((var(--rh-i, 0)) * 0ms);
+.track-list .track,
+.carousel .card,
+.grid-cards .card {
+  animation-fill-mode: backwards;
 }
 .track-list .track:nth-child(1), .carousel .card:nth-child(1) { animation-delay: 0ms; }
 .track-list .track:nth-child(2), .carousel .card:nth-child(2) { animation-delay: 18ms; }
@@ -2298,9 +2298,10 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
 .volume:active::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(108,140,255,.22); }
 
 /* Panels, sheets and popovers */
-.drawer { transition: transform var(--motion-panel) var(--ease-soft), visibility var(--motion-panel); will-change: transform; }
+.drawer.is-open, .sheet.is-open .sheet-panel { will-change: transform; }
+.drawer { transition: transform var(--motion-panel) var(--ease-soft), visibility var(--motion-panel); }
 .sheet { transition: opacity var(--motion-popover) var(--ease-standard), visibility var(--motion-popover); }
-.sheet-panel { transition: transform var(--motion-panel) var(--ease-soft), border-radius var(--motion-panel) var(--ease-soft); will-change: transform; }
+.sheet-panel { transition: transform var(--motion-panel) var(--ease-soft), border-radius var(--motion-panel) var(--ease-soft); }
 .toast { transition: opacity var(--motion-popover) var(--ease-out), transform var(--motion-popover) var(--ease-out); }
 .scrim { transition: opacity var(--motion-panel) var(--ease-soft); }
 
