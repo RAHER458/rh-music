@@ -10,3 +10,6 @@ workers_dev = true
 binding = "DB"
 database_name = "rh-music-db"
 database_id = "164c51cd-2899-4daf-a669-a837f7a460b1"
+
+[triggers]
+crons = ["0 4 * * *"]
