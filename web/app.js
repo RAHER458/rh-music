@@ -62,6 +62,10 @@ const S = {
   muted: false,
   queueOpen: false,
   discoveryLoadedFor: null,
+  flow: readJson('rh_flow_v1', { moods: ['happy'], genres: [], prefs: [], scenarios: [] }),
+  flowLoading: false,
+  flowDirty: false,
+  flowRebuilding: false,
 };
 
 function emptyPage() { return { items: [], total: 0, next: null, cursor: null }; }
@@ -126,6 +130,33 @@ const ICONS = {
   down: '<svg viewBox="0 0 24 24"><path d="M12 16.5 5.6 10a1.2 1.2 0 0 1 1.7-1.7l4.7 4.7 4.7-4.7A1.2 1.2 0 0 1 18.4 10L12 16.5Z"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M10 4a1 1 0 0 1 0 2H6v12h4a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5Zm6.3 3.3a1 1 0 0 1 1.4 0l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4-1.4l2.3-2.3H11a1 1 0 1 1 0-2h7.6l-2.3-2.3a1 1 0 0 1 0-1.4Z"/></svg>',
 };
+
+const FLOW_PAUSE = '<svg viewBox="0 0 24 24"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>';
+const FLOW_MOODS = [
+  { key: 'happy', emoji: '😊', title: 'Весёлое' },
+  { key: 'sad', emoji: '😢', title: 'Грустное' },
+  { key: 'energetic', emoji: '⚡', title: 'Энергичное' },
+  { key: 'calm', emoji: '🌙', title: 'Спокойное' },
+  { key: 'romantic', emoji: '❤️', title: 'Романтичное' },
+  { key: 'drive', emoji: '🔥', title: 'Драйв' },
+  { key: 'focus', emoji: '🧠', title: 'Фокус' },
+  { key: 'melancholy', emoji: '🌧️', title: 'Меланхолия' },
+  { key: 'party', emoji: '🕺', title: 'Вечеринка' },
+  { key: 'road', emoji: '🚗', title: 'Дорога' },
+  { key: 'workout', emoji: '🏋️', title: 'Тренировка' },
+  { key: 'nostalgia', emoji: '✨', title: 'Ностальгия' },
+  { key: 'new', emoji: '🎧', title: 'Новое' },
+  { key: 'instrumental', emoji: '🎵', title: 'Без слов' },
+];
+const FLOW_GENRES = [
+  ['pop','Поп'],['rock','Рок'],['rap','Рэп'],['hiphop','Хип-хоп'],['electronic','Электронная музыка'],['edm','EDM'],['rnb','R&B'],['jazz','Джаз'],['classical','Классика'],['metal','Метал'],['indie','Инди'],['alternative','Альтернатива'],['russian','Русская музыка'],['foreign','Зарубежная музыка'],
+];
+const FLOW_PREFS = [
+  ['familiar','Больше знакомой музыки'],['fresh','Больше новых исполнителей'],['popular','Больше популярных треков'],['rare','Больше редких композиций'],['lovedArtists','Больше любимых исполнителей'],['lessRepetition','Меньше повторов'],['instrumental','Больше музыки без слов'],
+];
+const FLOW_SCENARIOS = [
+  ['work','Работа'],['study','Учёба'],['rest','Отдых'],['sleep','Сон'],['walk','Прогулка'],['trip','Поездка'],['workout','Тренировка'],['party','Вечеринка'],
+];
 
 let toastTimer = null;
 function toast(message, kind = 'error') {
@@ -429,76 +460,221 @@ async function loadHome(force = false) {
   return data;
 }
 
+/* ───────────────────────────── RH—MUSIC Flow (главная) ───────────────────────────── */
+
+function flowSelection() {
+  const raw = S.flow || {};
+  return {
+    moods: Array.isArray(raw.moods) && raw.moods.length ? raw.moods : ['happy'],
+    genres: Array.isArray(raw.genres) ? raw.genres : [],
+    prefs: Array.isArray(raw.prefs) ? raw.prefs : [],
+    scenarios: Array.isArray(raw.scenarios) ? raw.scenarios : [],
+  };
+}
+
+function saveFlowSelection() {
+  writeJson('rh_flow_v1', flowSelection());
+}
+
+function flowQuery() {
+  const selection = flowSelection();
+  const params = new URLSearchParams();
+  params.set('moods', selection.moods.join(','));
+  params.set('genres', selection.genres.join(','));
+  params.set('prefs', selection.prefs.join(','));
+  params.set('scenarios', selection.scenarios.join(','));
+  return params.toString();
+}
+
+async function requestFlow() {
+  const data = await api('/api/flow?' + flowQuery());
+  return (data && data.tracks) || [];
+}
+
+function flowMoodCardsHTML() {
+  const selection = flowSelection();
+  return FLOW_MOODS.map((mood) => `
+    <button class="flow-mood${selection.moods.includes(mood.key) ? ' is-on' : ''}" type="button"
+      data-action="flow-mood" data-mood="${mood.key}" aria-pressed="${selection.moods.includes(mood.key)}">
+      <span class="flow-mood-emoji">${mood.emoji}</span>
+      <span class="flow-mood-title">${esc(mood.title)}</span>
+    </button>`).join('');
+}
+
+function flowSettingsChips(list, selected, group) {
+  return list.map(([key, title]) => `
+    <button class="chip${selected.includes(key) ? ' is-on' : ''}" type="button"
+      data-action="flow-setting" data-group="${group}" data-key="${key}">${esc(title)}</button>`).join('');
+}
+
+function updateFlowMoodCards() {
+  const box = $('flowMoods');
+  if (!box) return;
+  box.innerHTML = flowMoodCardsHTML();
+}
+
+function openFlowSettings() {
+  const selection = flowSelection();
+  sheetOpen(`
+    <h2 class="sheet-title">Настроить поток</h2>
+    <p class="sheet-sub">Настройки влияют на следующие треки, текущая песня не прерывается.</p>
+    <div class="flow-settings-group"><h3>Жанры</h3><div class="chips">${flowSettingsChips(FLOW_GENRES, selection.genres, 'genres')}</div></div>
+    <div class="flow-settings-group"><h3>Предпочтения</h3><div class="chips">${flowSettingsChips(FLOW_PREFS, selection.prefs, 'prefs')}</div></div>
+    <div class="flow-settings-group"><h3>Сценарии</h3><div class="chips">${flowSettingsChips(FLOW_SCENARIOS, selection.scenarios, 'scenarios')}</div></div>
+  `);
+}
+
+function flowStatusText() {
+  if (S.flowLoading) return 'Формируем поток…';
+  if (S.loading) return 'Загрузка';
+  if (!S.current) return 'Готово';
+  return audio && !audio.paused ? 'Играет' : 'Пауза';
+}
+
+function updateFlowHero() {
+  if (S.route !== 'home') return;
+  const hero = $('flowHero');
+  if (!hero) return;
+  const track = S.current;
+  const title = $('flowTitle');
+  const sub = $('flowSub');
+  const status = $('flowStatus');
+  const kicker = $('flowKicker');
+  const cover = $('flowCoverImg');
+  const play = $('flowPlay');
+  const selection = flowSelection();
+  const moodTitle = FLOW_MOODS.find((mood) => mood.key === selection.moods[0]);
+  if (kicker) kicker.textContent = S.user ? 'Персональный RH—MUSIC Flow' : 'RH—MUSIC Flow';
+  if (title) title.textContent = track ? track.title : 'Нажмите Play';
+  if (sub) sub.textContent = track ? (track.artist || '') : 'Непрерывный поток по вашему настроению';
+  if (status) status.textContent = flowStatusText();
+  if (cover) {
+    const src = track && track.cover ? pic(track.cover, 600) : '';
+    if (cover.getAttribute('src') !== src) {
+      cover.classList.remove('is-loaded');
+      cover.onload = () => cover.classList.add('is-loaded');
+      if (src) cover.src = src; else cover.removeAttribute('src');
+    }
+  }
+  if (play) {
+    play.innerHTML = S.flowLoading ? '<span class="flow-spinner"></span>' : (S.playing ? FLOW_PAUSE : ICONS.play);
+    play.setAttribute('aria-label', S.playing ? 'Пауза' : 'Запустить поток');
+    play.disabled = !!S.flowLoading;
+  }
+  hero.classList.toggle('is-playing', !!(audio && !audio.paused));
+  hero.classList.toggle('is-loading', !!S.flowLoading);
+  hero.dataset.mood = moodTitle ? moodTitle.key : '';
+}
+
+async function startFlow() {
+  if (S.flowLoading) return;
+  S.flowLoading = true;
+  updateFlowHero();
+  try {
+    const tracks = await requestFlow();
+    if (!tracks.length) throw new Error('Поток пуст');
+    setQueue(tracks, 0);
+    S.flowDirty = false;
+    playIndex(0, { source: 'flow' });
+  } catch (error) {
+    toast(error.message || 'Не удалось запустить поток', 'error');
+  } finally {
+    S.flowLoading = false;
+    updateFlowHero();
+  }
+}
+
+/** Пересобирает очередь потока, не обрывая текущий трек. */
+async function rebuildFlowTail() {
+  const current = S.current;
+  const tracks = await requestFlow();
+  const rest = tracks.filter((track) => !current || String(track.id) !== String(current.id));
+  if (!rest.length) return;
+  setQueue(current ? [current, ...rest] : rest, current ? 0 : 0);
+  S.flowDirty = false;
+}
+
+async function loadFlowHomeSections() {
+  const box = $('flowSections');
+  if (!box) return;
+  try {
+    const [home, recommendations] = await Promise.all([
+      loadHome(true).catch(() => null),
+      S.user ? api('/api/recommendations').catch(() => null) : Promise.resolve(null),
+    ]);
+    const blocks = [];
+    if (recommendations && recommendations.sections) {
+      for (const block of recommendations.sections) if (block && block.type !== 'banner' && block.items && block.items.length) blocks.push(block);
+    }
+    if (home && home.sections) {
+      for (const block of home.sections) if (block && block.type !== 'banner' && block.items && block.items.length) blocks.push(block);
+    }
+    if (!blocks.length) {
+      box.innerHTML = emptyState('Подборки появятся позже', 'Каталог временно не вернул контент.', 'note');
+      return;
+    }
+    box.innerHTML = blocks.map((block, index) => {
+      const key = 'flow_' + index;
+      if (block.type === 'playlists') return section(block.title, carousel(block.items, playlistCard), { sub: block.subtitle || '', key });
+      if (block.type === 'albums') return section(block.title, carousel(block.items, albumCard), { sub: block.subtitle || '', key });
+      if (block.type === 'artists') return section(block.title, carousel(block.items, artistCard), { sub: block.subtitle || '', key });
+      S.lists[key] = block.items;
+      return section(block.title, trackList(block.items, key), { sub: block.subtitle || '', key });
+    }).join('');
+  } catch (error) {
+    box.innerHTML = emptyState('Не удалось загрузить подборки', error.message, 'alert');
+  }
+}
+
 async function renderShowcase() {
   S.route = 'home';
   setNav('home');
   document.title = 'RH—MUSIC';
-
-  if (!S.home) {
-    page.innerHTML = `
-      <div class="hero-skeleton">
-        <div class="sk sk-hero"></div>
+  const selection = flowSelection();
+  const bars = Array.from({ length: 24 }, (_, index) => `<span style="--i:${index}"></span>`).join('');
+  page.innerHTML = `
+    <section class="flow-hero" id="flowHero" data-mood="${esc(selection.moods[0] || 'happy')}">
+      <div class="flow-visual" aria-hidden="true">
+        <span class="flow-orb"></span>
+        <span class="flow-ring flow-ring-a"></span>
+        <span class="flow-ring flow-ring-b"></span>
+        <span class="flow-bars">${bars}</span>
       </div>
-      ${skeletonCards(6)}`;
-  }
-
-  let data;
-  try {
-    data = await loadHome(true);
-  } catch (error) {
-    page.innerHTML = emptyState('Витрина недоступна', error.message, 'alert',
-      'Общий контент каталога временно не отвечает — попробуйте обновить страницу.',
-      '<button class="btn btn-ghost" type="button" data-action="reload-home">Обновить</button>');
-    return;
-  }
-
-  const sections = data.sections || [];
-  const hero = data.hero || null;
-  const heroBlock = hero ? `
-    <div class="hero">
-      <div class="hero-art">
-        ${hero.cover ? `<img src="${esc(pic(hero.cover, 600))}" alt="" decoding="async" onerror="this.remove()">` : ''}
+      <div class="flow-cover" id="flowCover">
+        <img id="flowCoverImg" alt="" decoding="async">
         <span class="cover-fallback big">RH</span>
       </div>
-      <div class="hero-info">
-        <span class="hero-kicker">Популярное</span>
-        <h1 class="hero-title">${esc(hero.title)}</h1>
-        ${hero.description ? `<p class="hero-sub">${esc(hero.description)}</p>` : ''}
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="#/catalog/playlist/${esc(hero.id)}" data-link>${ICONS.play} Слушать</a>
+      <button class="flow-play" id="flowPlay" type="button" data-action="flow-toggle" aria-label="Запустить поток">${ICONS.play}</button>
+      <div class="flow-meta">
+        <span class="flow-kicker" id="flowKicker">${S.user ? 'Персональный RH—MUSIC Flow' : 'RH—MUSIC Flow'}</span>
+        <h1 class="flow-title" id="flowTitle">Нажмите Play</h1>
+        <p class="flow-sub" id="flowSub">Непрерывный поток по вашему настроению</p>
+        <div class="flow-status-row">
+          <span class="flow-status" id="flowStatus">Готово</span>
+          <span class="flow-status-sep">·</span>
+          <span class="flow-status-mood" id="flowMoodLabel">${esc((FLOW_MOODS.find((m) => m.key === selection.moods[0]) || FLOW_MOODS[0]).title)}</span>
         </div>
       </div>
-    </div>` : '';
-
-  const blocks = sections.filter((block) => block.type !== 'banner').map((block) => {
-    if (block.type === 'playlists') {
-      return section(block.title, carousel(block.items, playlistCard), { sub: block.subtitle || '', key: block.key });
-    }
-    if (block.type === 'albums') {
-      return section(block.title, carousel(block.items, albumCard), { sub: block.subtitle || '', key: block.key });
-    }
-    if (block.type === 'artists') {
-      return section(block.title, carousel(block.items, artistCard), { sub: block.subtitle || '', key: block.key });
-    }
-    S.lists['home_' + block.key] = block.items;
-    return section(block.title, trackList(block.items, 'home_' + block.key), { sub: block.subtitle || '', key: block.key });
-  });
-
-  const genres = (data.genres || []).map((genre) =>
-    `<button class="chip" type="button" data-action="genre" data-query="${esc(genre.title)}">${esc(genre.title)}</button>`).join('');
-
-  page.innerHTML = `
-    <div class="page-head">
-      <div>
-        <h1 class="page-title">${S.user ? 'Привет, ' + esc(S.user.displayName || S.user.username) : 'Витрина RH—MUSIC'}</h1>
-        <p class="page-sub">Популярные подборки, новинки и хиты</p>
+      <div class="flow-actions">
+        <button class="btn btn-ghost btn-sm" type="button" data-action="flow-settings">Настроить поток</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-action="flow-rebuild">Пересобрать</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-action="flow-queue">Очередь</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-action="flow-lyrics">Текст</button>
       </div>
-    </div>
-    ${heroBlock}
-    ${genres ? `<div class="chip-row">${genres}</div>` : ''}
-    ${blocks.join('')}
-    <p class="section-sub">${sections.length ? 'Содержимое обновляется автоматически.' : 'Контент временно недоступен.'}</p>
+    </section>
+    <section class="flow-moods">
+      <div class="flow-moods-head">
+        <div>
+          <h2 class="flow-section-title">Что сейчас по настроению?</h2>
+          <p class="flow-section-sub">Выберите одно или несколько — поток обновится со следующего трека.</p>
+        </div>
+      </div>
+      <div class="flow-mood-grid" id="flowMoods">${flowMoodCardsHTML()}</div>
+    </section>
+    <div id="flowSections">${skeletonCards(6)}</div>
   `;
+  updateFlowHero();
+  requestAnimationFrame(() => { loadFlowHomeSections(); });
 }
 
 /* ───────────────────────────── персональные рекомендации ───────────────────────────── */
@@ -2926,6 +3102,7 @@ function updateTransport() {
   }
   nowPlaying.classList.toggle('is-playing', S.playing);
   nowPlaying.classList.toggle('is-loading', S.loading);
+  if (S.route === 'home') updateFlowHero();
   $('shuffle').classList.toggle('is-on', S.shuffle);
   ['repeat'].forEach((id) => {
     const el = $(id);
@@ -3101,6 +3278,7 @@ function updateNowPlayingMeta(track) {
       });
     } catch { /* ignore */ }
   }
+  if (S.route === 'home') updateFlowHero();
 }
 
 function updateNpLike() {
@@ -3286,6 +3464,14 @@ function togglePlay() {
 
 function nextTrack(auto = false) {
   if (!S.queue.length) return;
+  if (S.flowDirty && !S.flowRebuilding) {
+    S.flowRebuilding = true;
+    rebuildFlowTail().catch(() => {}).finally(() => {
+      S.flowRebuilding = false;
+      nextTrack(auto);
+    });
+    return;
+  }
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.cancel('next');
   if (auto && S.repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
   const next = S.index + 1;
@@ -3668,6 +3854,70 @@ document.addEventListener('click', async (event) => {
     playIndex(index, { source: S.route === 'playlist' ? 'playlist' : S.route });
     return;
   }
+
+  if (action === 'flow-toggle') {
+    if (S.flowLoading) return;
+    if (!S.current || !S.queue.length) { startFlow(); return; }
+    if (audio.paused) {
+      if (S.flowDirty) { rebuildFlowTail().catch(() => {}).finally(() => togglePlay()); return; }
+      togglePlay();
+    } else {
+      audio.pause();
+    }
+    return;
+  }
+
+  if (action === 'flow-rebuild') {
+    S.flowDirty = true;
+    if (S.current && !audio.paused) {
+      rebuildFlowTail().catch(() => {}).finally(() => toast('Поток обновлён со следующего трека.', 'ok'));
+    } else {
+      startFlow();
+    }
+    return;
+  }
+
+  if (action === 'flow-mood') {
+    const mood = target.dataset.mood;
+    const selection = flowSelection();
+    selection.moods = selection.moods.includes(mood)
+      ? (selection.moods.length > 1 ? selection.moods.filter((item) => item !== mood) : selection.moods)
+      : [...selection.moods, mood];
+    S.flow = selection;
+    saveFlowSelection();
+    updateFlowMoodCards();
+    const label = document.getElementById('flowMoodLabel');
+    if (label) {
+      const first = FLOW_MOODS.find((item) => item.key === selection.moods[0]) || FLOW_MOODS[0];
+      label.textContent = first.title;
+    }
+    S.flowDirty = !!S.current;
+    if (!S.current) toast('Настроение выбрано. Нажмите Play.', 'info');
+    return;
+  }
+
+  if (action === 'flow-settings') {
+    openFlowSettings();
+    return;
+  }
+
+  if (action === 'flow-setting') {
+    const group = target.dataset.group;
+    const key = target.dataset.key;
+    const selection = flowSelection();
+    if (!Array.isArray(selection[group])) selection[group] = [];
+    selection[group] = selection[group].includes(key)
+      ? selection[group].filter((item) => item !== key)
+      : [...selection[group], key];
+    S.flow = selection;
+    saveFlowSelection();
+    target.classList.toggle('is-on', selection[group].includes(key));
+    S.flowDirty = !!S.current;
+    return;
+  }
+
+  if (action === 'flow-queue') { toggleQueue(); return; }
+  if (action === 'flow-lyrics') { toggleLyrics(); return; }
 
   if (action === 'play-all' || action === 'shuffle-list') {
     const list = S.lists[target.dataset.list];

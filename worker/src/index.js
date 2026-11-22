@@ -25,6 +25,7 @@ import {
 import { handleRecommendations } from './recommend.js';
 import { handleHome, handleCatalogPlaylist } from './home.js';
 import { handlePopular, syncPopular } from './popular.js';
+import { handleFlow } from './flow.js';
 import { handleLyrics } from './lyrics.js';
 import { handleLyricsWords } from './words.js';
 import {
@@ -389,6 +390,7 @@ async function route(request, env) {
     }
   }
   if (path === '/api/popular' && method === 'GET') return handlePopular(env);
+  if (path === '/api/flow' && method === 'GET') return handleFlow(request, env, url);
   if ((m = path.match(/^\/api\/playlist\/(\d+)$/)) && method === 'GET') return handleCatalogPlaylist(env, m[1]);
 
   /* --- каталог (как и раньше) --- */
