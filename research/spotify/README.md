@@ -178,3 +178,24 @@ Without these, full Spotify playback is not achievable in RH-MUSIC.
 - research branch: `research/spotify`
 - production RH-MUSIC untouched
 - Zvuk provider, player, AutoMix and database untouched
+
+## Variant A test — Spotify metadata + external audio
+
+A prototype was built and tested:
+
+- Spotify metadata search via anonymous Spotify API: **200 OK**;
+- YouTube search/audio via yt-dlp from local residential egress:
+  - `Get Lucky` resolved;
+  - full audio 248.661 s, Opus 48 kHz stereo, 133 kbps;
+- Railway deployment of the same resolver:
+  - YouTube returned **“Sign in to confirm you’re not a bot”**;
+  - stream endpoint failed with HTTP 500;
+- therefore a server-side free audio resolver is not production-viable without
+  YouTube cookies/proxy, which is fragile, account-bound and against the
+  intended security model.
+
+The Spotify metadata path works, but external audio cannot be reliably
+resolved from Cloudflare/Railway. The research service was deleted after the
+test. Production RH-MUSIC was not changed.
+
+Status for Variant A: **PARTIALLY CONFIRMED locally, NOT VIABLE server-side.**
