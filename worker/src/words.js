@@ -125,6 +125,7 @@ export function groupWords(text, tokens) {
     let collected = '';
     let first = null;
     let last = null;
+    const syllables = [];
     while (cursor < list.length && collected.length < need.length) {
       const token = list[cursor];
       const add = letters(token.text);
@@ -133,14 +134,21 @@ export function groupWords(text, tokens) {
       collected += add;
       if (!first) first = token;
       last = token;
+      syllables.push({
+        t: Math.round(token.start),
+        end: Math.round(Math.max(token.end, token.start + 1)),
+        text: String(token.text).trim(),
+      });
       cursor += 1;
     }
     if (!first || collected !== need) return null;
-    words.push({
+    const word = {
       t: Math.round(first.start),
       end: Math.round(Math.max(last.end, first.start + 1)),
       text: target,
-    });
+    };
+    if (syllables.length > 1) word.syllables = syllables;
+    words.push(word);
   }
   if (cursor !== list.length) return null;
   return words.length ? words : null;
@@ -425,7 +433,7 @@ async function cacheWrite(key, value, ttlSeconds) {
  */
 export async function handleLyricsWords(request, env, trackId) {
   const url = new URL(request.url);
-  const key = `${url.origin}/__lyrics-words-cache/v1/${trackId}`;
+  const key = `${url.origin}/__lyrics-words-cache/v2/${trackId}`;
 
   const cached = await cacheRead(key);
   if (cached) {

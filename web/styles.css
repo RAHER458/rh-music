@@ -2354,3 +2354,42 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
 @media (prefers-reduced-motion: reduce) {
   .lyrics-letter { transition: none; }
 }
+
+/* ── Калибровка текста ─────────────────────────────────────────── */
+.lyrics-pane-foot,
+.lyrics-sheet-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lyrics-cal {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.lyrics-cal-btn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  transition: color var(--motion-ui) var(--ease-standard), background var(--motion-ui) var(--ease-standard);
+}
+.lyrics-cal-btn:hover { color: var(--text); background: var(--glass-strong); }
+.lyrics-cal-btn:active { transform: scale(.94); }
+.lyrics-cal-value {
+  min-width: 46px;
+  text-align: center;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-cal-btn { transition: none; }
+}

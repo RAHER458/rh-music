@@ -31,6 +31,7 @@
     wordsController: null,
     wordCache: new Map(),
     letterRaf: 0,
+    calibrationMs: loadCalibration(),
   };
 
   const views = [];
@@ -39,6 +40,23 @@
 
   function reducedMotion() {
     return !!(motionQuery && motionQuery.matches);
+  }
+
+  /** Ручная калибровка текста, мс. Не меняет исходные метки источников. */
+  function loadCalibration() {
+    try {
+      const value = Number(localStorage.getItem('rh_lyrics_cal_v1'));
+      return Number.isFinite(value) ? Math.max(-3000, Math.min(3000, Math.round(value))) : 0;
+    } catch { return 0; }
+  }
+
+  function effectiveOffset() {
+    return (Number(state.data && state.data.offsetMs) || 0) + (Number(state.calibrationMs) || 0);
+  }
+
+  function calibrationLabel() {
+    const seconds = (Number(state.calibrationMs) || 0) / 1000;
+    return `${seconds > 0 ? '+' : ''}${seconds.toFixed(1)}s`;
   }
 
   /** Бинарный поиск последней строки с t <= ms. -1, если время раньше первой. */
@@ -96,6 +114,12 @@
             .map((word) => {
               const item = { t: Math.max(0, Number(word.t)), text: String(word.text).trim() };
               if (Number.isFinite(Number(word.end))) item.end = Math.max(item.t, Number(word.end));
+              if (Array.isArray(word.syllables) && word.syllables.length > 1) {
+                item.syllables = word.syllables
+                  .filter((syllable) => syllable && Number.isFinite(Number(syllable.t)) && Number.isFinite(Number(syllable.end)) && String(syllable.text || '').trim())
+                  .map((syllable) => ({ t: Math.max(0, Number(syllable.t)), end: Math.max(0, Number(syllable.end)), text: String(syllable.text).trim() }));
+                if (item.syllables.length < 2) delete item.syllables;
+              }
               return item;
             })
             .sort((a, b) => a.t - b.t);
@@ -139,23 +163,28 @@
     return next && next.t > line.t ? next.t : line.t + 4000;
   }
 
-  /**
-   * Создаёт посимвольные тайминги для слова.
-   * Метки слов настоящие; внутри слова время распределяется равномерно —
-   * это интерполяция, а не выдуманные пословные метки.
-   */
-  function letterTimingsForWord(word, wordEnd, wordIndex, words, offset) {
-    const chars = codePoints(word.text);
-    const end = Number.isFinite(wordEnd)
-      ? Math.max(word.t, wordEnd)
-      : (wordIndex + 1 < words.length ? words[wordIndex + 1].t : word.t + 1000);
-    const base = word.t + (Number(offset) || 0);
-    const span = Math.max(1, end - word.t);
-    return chars.map((ch, ci) => ({
-      ch,
-      start: base + (span * ci) / chars.length,
-      end: base + (span * (ci + 1)) / chars.length,
-    }));
+  /** Гласные тянyтся дольше согласных; пробелы и пунктуация — почти мгновенно. */
+  function isVowel(ch) {
+    return /[аеёиоуыэюяaeiouy]/i.test(ch);
+  }
+
+  function letterWeight(ch) {
+    if (/\s/.test(ch)) return 0.05;
+    if (/[.,!?;:…—–-]/.test(ch)) return 0.12;
+    return isVowel(ch) ? 2.2 : 1;
+  }
+
+  /** Взвешенное распределение времени по буквам внутри интервала. */
+  function weightedLetterTimings(chars, start, end) {
+    const weights = chars.map(letterWeight);
+    const total = weights.reduce((sum, value) => sum + value, 0) || 1;
+    let acc = 0;
+    return chars.map((ch, index) => {
+      const from = start + ((end - start) * acc) / total;
+      acc += weights[index];
+      const to = start + ((end - start) * acc) / total;
+      return { ch, start: from, end: to };
+    });
   }
 
   /** Прогресс буквы 0..1 по фактическому времени аудио. */
@@ -163,16 +192,41 @@
     return Math.max(0, Math.min(1, (ms - item.start) / Math.max(1, item.end - item.start)));
   }
 
+  /**
+   * Посимвольные тайминги слова.
+   * Если есть настоящие слоговые интервалы — буквы распределяются по ним.
+   * Иначе гласные получают больше времени, согласные — меньше.
+   */
+  function letterTimingsForWord(word, wordEnd, wordIndex, words) {
+    const chars = codePoints(word.text);
+    const end = Number.isFinite(wordEnd)
+      ? Math.max(word.t, wordEnd)
+      : (wordIndex + 1 < words.length ? words[wordIndex + 1].t : word.t + 1000);
+    const syllables = Array.isArray(word.syllables)
+      ? word.syllables.filter((item) => item && Number.isFinite(item.t) && Number.isFinite(item.end) && item.end > item.t)
+      : [];
+    if (syllables.length > 1 && syllables.length <= chars.length) {
+      const durations = syllables.map((item) => item.end - item.t);
+      const totalDuration = durations.reduce((sum, value) => sum + value, 0) || 1;
+      const counts = durations.map((duration) => Math.max(1, Math.floor((chars.length * duration) / totalDuration)));
+      let sum = counts.reduce((a, b) => a + b, 0);
+      while (sum > chars.length) { counts[counts.indexOf(Math.max(...counts))] -= 1; sum -= 1; }
+      while (sum < chars.length) { counts[counts.indexOf(Math.min(...counts))] += 1; sum += 1; }
+      const out = [];
+      let cursor = 0;
+      syllables.forEach((syllable, index) => {
+        const slice = chars.slice(cursor, cursor + counts[index]);
+        cursor += counts[index];
+        out.push(...weightedLetterTimings(slice, syllable.t, Math.max(syllable.end, syllable.t + 1)));
+      });
+      if (cursor === chars.length && out.length === chars.length) return out;
+    }
+    return weightedLetterTimings(chars, word.t, end);
+  }
+
   /** Интерполяция букв по строке, если есть только построчные метки. */
-  function letterTimingsForLine(line, end, offset) {
-    const chars = codePoints(line.text);
-    const base = line.t + (Number(offset) || 0);
-    const span = Math.max(1, end - line.t);
-    return chars.map((ch, ci) => ({
-      ch,
-      start: base + (span * ci) / chars.length,
-      end: base + (span * (ci + 1)) / chars.length,
-    }));
+  function letterTimingsForLine(line, end) {
+    return weightedLetterTimings(codePoints(line.text), line.t, Math.max(end, line.t + 1));
   }
 
   function createElement(tag, className, text) {
@@ -203,6 +257,15 @@
       box.appendChild(row);
     }
     return box;
+  }
+
+  function modeLabel(data) {
+    if (!data) return '';
+    if (data.syncLevel === 'word') {
+      const hasSyllables = (data.lines || []).some((line) => (line.words || []).some((word) => Array.isArray(word.syllables) && word.syllables.length > 1));
+      return hasSyllables ? 'Smart' : 'Word';
+    }
+    return data.syncLevel === 'line' ? 'Line' : '';
   }
 
   function setMeta(view, badge) {
@@ -266,15 +329,14 @@
         node.setAttribute('role', 'button');
         node.setAttribute('tabindex', '0');
         node._letterNodes = [];
-        const offset = Number(data.offsetMs) || 0;
-        const lineEnd = lineEndOf(data.lines, index) + offset;
+        const lineEnd = lineEndOf(data.lines, index);
         if (hasWords) {
           // Каждое слово — span, внутри него буквы — отдельные span.
           // Пробелы остаются текстовыми узлами, пунктуация — внутри слова.
           node._wordNodes = line.words.map((word, wordIndex) => {
             const span = createElement('span', 'lyrics-word');
             span.dataset.word = String(wordIndex);
-            const timings = letterTimingsForWord(word, word.end, wordIndex, line.words, offset);
+            const timings = letterTimingsForWord(word, word.end, wordIndex, line.words);
             timings.forEach((item, letterIndex) => {
               const letter = createElement('span', 'lyrics-letter', item.ch);
               letter.dataset.letter = String(letterIndex);
@@ -286,7 +348,7 @@
             return span;
           });
         } else {
-          const timings = letterTimingsForLine(line, lineEnd, offset);
+          const timings = letterTimingsForLine(line, lineEnd);
           timings.forEach((item, letterIndex) => {
             const letter = createElement('span', 'lyrics-letter', item.ch);
             letter.dataset.letter = String(letterIndex);
@@ -299,7 +361,7 @@
         view.nodes.push(node);
       });
       view.scroll.appendChild(fragment);
-      setMeta(view, '');
+      setMeta(view, modeLabel(data));
       return;
     }
 
@@ -461,7 +523,7 @@
 
   function applyActive(index, forceScroll) {
     state.active = index;
-    const ms = audio ? (audio.currentTime || 0) * 1000 - (Number(state.data && state.data.offsetMs) || 0) : 0;
+    const ms = audio ? (audio.currentTime || 0) * 1000 - effectiveOffset() : 0;
     for (const view of views) {
       if (view.activeIndex === index && !forceScroll) continue;
       if (view.activeNode) view.activeNode.classList.remove('is-active');
@@ -482,7 +544,7 @@
   function syncNow(forceScroll) {
     if (state.status !== 'ready' || !state.data || !audio) return;
     if (state.data.syncLevel !== 'line' && state.data.syncLevel !== 'word') return;
-    const ms = (audio.currentTime || 0) * 1000 - (Number(state.data.offsetMs) || 0);
+    const ms = (audio.currentTime || 0) * 1000 - effectiveOffset();
     const index = indexAt(state.data.lines, ms);
     if (index !== state.active || forceScroll) {
       applyActive(index, forceScroll);
@@ -691,7 +753,7 @@
         : null;
       const target = word && Number.isFinite(word.t) ? word.t : line.t;
       try {
-        audio.currentTime = Math.max(0, (target + (Number(state.data.offsetMs) || 0)) / 1000);
+        audio.currentTime = Math.max(0, (target + effectiveOffset()) / 1000);
       } catch { /* ignore */ }
       setUserScroll(view, false);
       applyActive(index, true);
@@ -721,12 +783,46 @@
     returnEl: document.getElementById('lyricsReturnDesktop'),
   });
 
+  bindCalibration();
+
   bindView({
     scroll: document.getElementById('lyricsScrollMobile'),
     badgeEl: document.getElementById('lyricsBadgeMobile'),
     titleEl: document.getElementById('lyricsTitleMobile'),
     returnEl: document.getElementById('lyricsReturnMobile'),
   });
+
+
+  /* ───────────────────────────── калибровка ───────────────────────────── */
+
+  function updateCalibrationUI() {
+    const label = calibrationLabel();
+    for (const id of ['lyricsCalValueDesktop', 'lyricsCalValueMobile']) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = label;
+    }
+  }
+
+  function setCalibration(delta) {
+    state.calibrationMs = Math.max(-3000, Math.min(3000, (Number(state.calibrationMs) || 0) + delta));
+    try { localStorage.setItem('rh_lyrics_cal_v1', String(state.calibrationMs)); } catch { /* ignore */ }
+    updateCalibrationUI();
+    if (state.status === 'ready') syncNow(true);
+  }
+
+  function bindCalibration() {
+    const plus = ['lyricsCalPlusDesktop', 'lyricsCalPlusMobile'];
+    const minus = ['lyricsCalMinusDesktop', 'lyricsCalMinusMobile'];
+    for (const id of plus) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => setCalibration(100));
+    }
+    for (const id of minus) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => setCalibration(-100));
+    }
+    updateCalibrationUI();
+  }
 
   /* ───────────────────────────── публичный интерфейс ───────────────────────────── */
 
@@ -748,6 +844,13 @@
       }
       if (state.status === 'ready') syncNow(true);
     },
+    setCalibration(ms) {
+      state.calibrationMs = Math.max(-3000, Math.min(3000, Number(ms) || 0));
+      try { localStorage.setItem('rh_lyrics_cal_v1', String(state.calibrationMs)); } catch { /* ignore */ }
+      updateCalibrationUI();
+      if (state.status === 'ready') syncNow(true);
+      return state.calibrationMs;
+    },
     scrollToActive() {
       for (const view of views) {
         if (!visible(view)) continue;
@@ -763,6 +866,8 @@
         activeWord: state.activeWord,
         wordsState: state.wordsState,
         syncLevel: state.data ? state.data.syncLevel : null,
+        mode: modeLabel(state.data),
+        calibrationMs: Number(state.calibrationMs) || 0,
         lines: state.data ? state.data.lines.length : 0,
       };
     },
