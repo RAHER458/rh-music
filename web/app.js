@@ -2709,8 +2709,10 @@ function syncPlayerVisibility() {
   }
   if (visible) {
     if (playerHideTimer) { clearTimeout(playerHideTimer); playerHideTimer = 0; }
+    const wasHidden = player.hidden;
     player.hidden = false;
-    requestAnimationFrame(() => player.classList.remove('is-hidden'));
+    if (wasHidden) void player.offsetWidth;
+    player.classList.remove('is-hidden');
   } else {
     player.classList.add('is-hidden');
     if (!player.hidden && !playerHideTimer) {
