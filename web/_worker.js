@@ -7,6 +7,8 @@
  */
 
 const API_ORIGIN = 'https://rh-music-api.rh-launcher.workers.dev';
+// Preview-ветка Zvuk Popular: только не-production deployment.
+const POPULAR_ORIGIN = 'https://rh-zvuk-popular-preview.rh-launcher.workers.dev';
 
 export default {
   async fetch(request, env) {
@@ -18,9 +20,10 @@ export default {
     }
 
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-      const target = new URL(url.pathname + url.search, API_ORIGIN);
+      const origin = (url.pathname === '/api/home' || url.pathname === '/api/popular') ? POPULAR_ORIGIN : API_ORIGIN;
+      const target = new URL(url.pathname + url.search, origin);
       const headers = new Headers(request.headers);
-      headers.set('Host', new URL(API_ORIGIN).host);
+      headers.set('Host', new URL(origin).host);
 
       const init = { method: request.method, headers, redirect: 'manual' };
       if (request.method !== 'GET' && request.method !== 'HEAD') init.body = request.body;

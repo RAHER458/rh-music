@@ -44,9 +44,10 @@ function artist(a) {
 }
 
 let gridCookies = '';
+let authToken = '';
 
 async function gql(query, operationName, variables) {
-  const headers = gridCookies ? { ...HEADERS, Cookie: gridCookies } : HEADERS;
+  const headers = { ...HEADERS, ...(gridCookies ? { Cookie: gridCookies } : {}), ...(authToken ? { 'X-Auth-Token': authToken } : {}) };
   const res = await fetch(GQL, { method: 'POST', headers, body: JSON.stringify({ query, operationName, variables }) });
   const text = await res.text();
   if (!res.ok) throw new Error('GraphQL HTTP ' + res.status);
@@ -70,12 +71,53 @@ async function fetchGrid() {
   return (body.result && body.result.page && body.result.page.sections || []).filter((s) => s && s.enabled !== false);
 }
 
+function dedupeStrings(items) { return [...new Set(items.map(String).filter((x) => x && x !== 'undefined'))]; }
 function unique(items) {
   const seen = new Set(); const out = [];
   for (const item of items) { const id = String(item && item.id); if (!id || id === 'undefined' || seen.has(id)) continue; seen.add(id); out.push(id); }
   return out;
 }
 const slug = (v) => String(v || 's').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 's';
+
+
+function chunk(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+async function resolvePlaylists(ids) {
+  const map = new Map();
+  for (const part of chunk(ids, 20)) {
+    try {
+      const data = await gql(PLAYLIST_QUERY, 'catalogPlaylist', { id: part, limit: 1 });
+      for (const p of data.playlists || []) map.set(String(p.id), playlist(p));
+    } catch {}
+  }
+  return map;
+}
+
+async function resolveReleases(ids) {
+  const map = new Map();
+  for (const part of chunk(ids, 20)) {
+    try {
+      const data = await gql(RELEASE_QUERY, 'getRelease', { ids: part });
+      for (const r of data.getReleases || []) map.set(String(r.id), release(r));
+    } catch {}
+  }
+  return map;
+}
+
+async function resolveArtists(ids) {
+  const map = new Map();
+  for (const part of chunk(ids, 20)) {
+    try {
+      const data = await gql(ARTIST_QUERY, 'getArtist', { ids: part });
+      for (const a of data.getArtists || []) map.set(String(a.id), artist(a));
+    } catch {}
+  }
+  return map;
+}
 
 export async function buildPopular() {
   const grid = await fetchGrid();
@@ -92,11 +134,10 @@ export async function buildPopular() {
       if (first && first.type === 'playlist') playlistIds.push(String(first.id));
     }
   }
-  const ids = (list) => list.map((id) => ({ id }));
   const [playlists, releases, artists] = await Promise.all([
-    unique(playlistIds).length ? gql(PLAYLIST_QUERY, 'catalogPlaylist', { id: unique(playlistIds), limit: 1 }).then((d) => new Map((d.playlists || []).map((p) => [String(p.id), playlist(p)]))).catch(() => new Map()) : new Map(),
-    unique(releaseIds).length ? gql(RELEASE_QUERY, 'getRelease', { ids: unique(releaseIds) }).then((d) => new Map((d.getReleases || []).map((r) => [String(r.id), release(r)]))).catch(() => new Map()) : new Map(),
-    unique(artistIds).length ? gql(ARTIST_QUERY, 'getArtist', { ids: unique(artistIds) }).then((d) => new Map((d.getArtists || []).map((a) => [String(a.id), artist(a)]))).catch(() => new Map()) : new Map(),
+    resolvePlaylists(dedupeStrings(playlistIds)),
+    resolveReleases(dedupeStrings(releaseIds)),
+    resolveArtists(dedupeStrings(artistIds)),
   ]);
   const sections = []; let hero = null;
   for (const [index, s] of grid.entries()) {
@@ -132,15 +173,23 @@ export async function buildPopular() {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
+    authToken = (env && env.ZVUK_TOKEN) || '';
     const url = new URL(request.url);
     if (url.pathname === '/debug') {
       try {
         const grid = await fetchGrid();
-        const ids = unique(grid.flatMap((s) => s.data || []).filter((x) => x.type === 'playlist').map((x) => x.id));
-        let probe = null;
-        try { probe = await gql(PLAYLIST_QUERY, 'catalogPlaylist', { id: ids.slice(0, 1), limit: 1 }); } catch (error) { probe = { error: String(error && error.message || error) }; }
-        return new Response(JSON.stringify({ cookies: gridCookies, grid: grid.length, ids: ids.slice(0, 3), probe }, null, 1), { headers: { 'Content-Type': 'application/json' } });
+        const playlists = await resolvePlaylists(unique(grid.filter((s) => s.type === 'listing' && (s.data || [])[0] && s.data[0].type === 'playlist').flatMap((s) => s.data)));
+        const releases = await resolveReleases(unique(grid.filter((s) => s.type === 'listing' && (s.data || [])[0] && s.data[0].type === 'release').flatMap((s) => s.data)));
+        return new Response(JSON.stringify({
+          cookies: !!gridCookies,
+          token: !!authToken,
+          sections: grid.map((s) => ({ type: s.type, title: s.header && s.header.title, data: (s.data || []).length, first: (s.data || [])[0] && s.data[0].type })),
+          playlistMap: playlists.size,
+          releaseMap: releases.size,
+          samplePlaylist: [...playlists.values()][0] || null,
+          sampleRelease: [...releases.values()][0] || null,
+        }, null, 1), { headers: { 'Content-Type': 'application/json' } });
       } catch (error) {
         return new Response(JSON.stringify({ error: String(error && error.message || error) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
       }
