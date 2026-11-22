@@ -2210,12 +2210,6 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
   --ease-soft: cubic-bezier(.22, .61, .36, 1);
 }
 
-@property --fill {
-  syntax: '<percentage>';
-  inherits: true;
-  initial-value: 0%;
-}
-
 /* Unified interaction feedback */
 :where(button, .btn, .chip, .tab, .side-item, .ctrl, .icon-btn, .row-btn, .card, .track, .sheet-item, .queue-panel, .search-field) {
   transition-property: background-color, color, border-color, opacity, transform, box-shadow, filter;
@@ -2292,8 +2286,6 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
 .ctrl.play:active .i-play, .ctrl.play:active .i-pause { transform: scale(.92); }
 
 /* Sliders and progress */
-.seek::-webkit-slider-runnable-track { transition: --fill var(--motion-ui) linear; }
-.seek { transition: --fill var(--motion-ui) linear; }
 .volume::-webkit-slider-thumb { transition: box-shadow var(--motion-ui) var(--ease-out); }
 .volume:active::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(108,140,255,.22); }
 

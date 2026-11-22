@@ -15,7 +15,7 @@ check('desktop hover presets exist', css.includes('@media (hover: hover) and (po
 check('player hide is animated before hidden', app.includes('playerHideTimer') && app.includes('player.classList.add(\'is-hidden\')') && app.includes('setTimeout(() => {'));
 check('player starts hidden when shown', css.includes('@starting-style') && css.includes('.mini-now'));
 check('sheet and drawer use motion tokens', css.includes('transition: transform var(--motion-panel) var(--ease-soft), visibility var(--motion-panel)') && css.includes('.sheet-panel { transition: transform var(--motion-panel)'));
-check('progress fill is animated', css.includes('@property --fill') && css.includes('transition: --fill var(--motion-ui) linear'));
+check('progress fill remains visible', css.includes('.seek::-webkit-slider-runnable-track') && css.includes('var(--fill, 0%)'));
 check('page content reveal is capped', css.includes('rh-page-in') && css.includes('#page > :where'));
 check('list stagger is capped', css.includes('.track-list .track:nth-child(n+11)'));
 check('reduced motion disables decoration', css.includes('@media (prefers-reduced-motion: reduce)') && css.includes('animation-duration: .001ms !important'));
