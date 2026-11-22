@@ -1629,6 +1629,27 @@ function estimateLufs(samples) {
     const meanPower = gated.reduce((a, b) => a + b, 0) / Math.max(1, gated.length);
     return round(-0.691 + 10 * Math.log10(meanPower + 1e-12), 2);
 }
+function buildDrumProfile(features, grid, duration, fps) {
+    if (!grid || !grid.beats.length)
+        return { kick: 0, snare: 0, hat: 0, pattern: [], confidence: 0 };
+    const max = (values) => values.reduce((m, v) => Math.max(m, v), 1e-6);
+    const maxLow = max(features.low), maxMid = max(features.mid), maxHigh = max(features.high);
+    const pattern = [];
+    let kick = 0, snare = 0, hat = 0;
+    for (const beat of grid.beats) {
+        const frame = Math.max(0, Math.min(features.low.length - 1, Math.round(beat * fps)));
+        const low = features.low[frame] / maxLow;
+        const mid = features.mid[frame] / maxMid;
+        const high = features.high[frame] / maxHigh;
+        pattern.push({ beat: round(beat, 3), low: round(low, 3), mid: round(mid, 3), high: round(high, 3) });
+        kick += low;
+        snare += mid;
+        hat += high;
+    }
+    const n = Math.max(1, grid.beats.length);
+    return { kick: round(kick / n, 3), snare: round(snare / n, 3), hat: round(hat / n, 3), pattern, confidence: round(grid.confidence, 3) };
+}
+
 function analyzeAudioBuffer(buffer, options = {}) {
     const targetRate = options.targetSampleRate || 22050;
     const maxDuration = options.maxDurationSec || 600;
@@ -1679,6 +1700,7 @@ function analyzeAudioBuffer(buffer, options = {}) {
     const vocalProfile = buildVocalProfile(sections, vocalLikelihood, transientDensity);
     const genre = classifyGenre(grid?.bpm ?? tempo.bpm, { low, mid, high }, transientDensity, mean(features.centroid), mean(features.flatness));
     const instruments = estimateInstruments({ low, mid, high }, transientDensity, mean(features.centroid), mean(features.flatness));
+    const drums = buildDrumProfile(features, grid, duration, fps);
     const rhythmMode = grid ? 'beat' : transientDensity > 0.2 ? 'event' : 'none';
     const warnings = [];
     if (tempo.confidence < 0.15)
@@ -1705,6 +1727,7 @@ function analyzeAudioBuffer(buffer, options = {}) {
         vocal: vocalProfile,
         genre,
         instruments,
+        drums,
         grid,
         key: key.key,
         camelot: key.camelot,
@@ -2339,8 +2362,8 @@ function buildEq(strategy) {
     const group = META[strategy].group;
     if (strategy === 'bass-swap') {
         return {
-            out: { low: automation([[0, 0], [0.35, 0], [0.5, -24], [1, -24]]), mid: automation([[0, 0], [0.45, 0], [1, -8]]), high: automation([[0, 0], [0.6, 0], [1, -6]]) },
-            in: { low: automation([[0, -24], [0.45, -24], [0.56, 0], [1, 0]]), mid: automation([[0, -6], [0.55, 0], [1, 0]]), high: automation([[0, -4], [0.55, 0], [1, 0]]) },
+            out: { low: automation([[0, 0], [0.5, 0], [0.68, -18], [1, -24]]), mid: automation([[0, 0], [0.5, 0], [0.8, -4], [1, -8]]), high: automation([[0, 0], [0.7, 0], [1, -6]]) },
+            in: { low: automation([[0, -24], [0.5, -24], [0.68, -18], [0.85, 0], [1, 0]]), mid: automation([[0, -6], [0.4, -3], [0.7, 0], [1, 0]]), high: automation([[0, -4], [0.45, -1], [0.7, 0], [1, 0]]) },
         };
     }
     if (strategy === 'frequency-swap') {

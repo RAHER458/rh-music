@@ -116,7 +116,7 @@
     if (state.engine) return;
     if (!state.lib) {
       setPhase('LOADING', 0);
-      state.lib = await withTimeout(import('./automix-engine.js?v=4'), 15_000, 'engine module');
+      state.lib = await withTimeout(import('./automix-engine.js?v=5'), 15_000, 'engine module');
       setPhase('LOADING', 1);
       state.core = state.lib.createAutoMixCore({ sessionId: 'rh-music' });
       state.core.initialize();
@@ -345,6 +345,17 @@
       if (!state.ownsPlayback) {
         if (!state.currentEntry) return;
         state.deckA.loadBuffer(state.currentEntry.buffer);
+      // Align the incoming downbeat with the outgoing downbeat at takeover.
+      // The outgoing deck starts at the live position, not exactly at plan.startAt;
+      // without this offset the two kicks are up to ~200 ms apart.
+      const plan = state.pending && state.pending.plan;
+      if (plan) {
+        const phaseLead = Math.max(0, Number(plan.startAt) - Number(position));
+        if (phaseLead > 0.01) {
+          plan.inStart = Math.max(0, Number(plan.inStart) - phaseLead);
+          plan.reasons = [...(plan.reasons || []), `phase lead ${phaseLead.toFixed(3)}s compensated`];
+        }
+      }
       state.deckA.setEQ(0, 0, 0);
         state.deckA.setFilter(0);
         state.deckA.setCrossfader(0.5);

@@ -23,6 +23,10 @@ const engineSource = readFileSync(join(here, '../web/ai-automix/automix-engine.j
 
 console.log('RH—MUSIC · тесты AI AutoMix\n');
 
+check('mode is named AutoMix RH AI in UI', html.includes('AutoMix RH AI') && !html.includes('>Neural AI<') && !html.includes('Neural AI AutoMix'));
+check('mode label is AutoMix RH AI in all phases', app.includes("'AutoMix RH AI · Ready'") && app.includes("'AutoMix RH AI · Mixing'"));
+check('transition completion toast is silent', app.includes('function adoptAiTrack(track, strategy, label = \'AutoMix RH AI\', options = {})') && app.includes('if (!options.silent) toast(') && app.includes('{ silent: true }'));
+check('critical AI errors still show a toast', controller.includes('state.host.onToast(message)'));
 check('one AI AutoMix button in player', (html.match(/id="aiAutomixBtn"/g) || []).length === 1);
 check('AI AutoMix chip in now playing', html.includes('id="npAiAutomix"'));
 check('controller script loaded before app.js', html.indexOf('ai-automix/controller.js') > -1 && html.indexOf('ai-automix/controller.js') < html.indexOf('app.js'));
@@ -57,9 +61,16 @@ check('timeline clears canceled plan', app.includes("el.style.setProperty('--mix
 check('MIXING shows both tracks', app.includes('MIXING · ') && app.includes('→ '));
 check('completeTransition adopts full track into RH-MUSIC state', app.includes('function adoptAiTrack') && app.includes('S.current = track') && app.includes('S.index = index'));
 check('transition view is in Now Playing', html.includes('id="aiMixStatus"'));
-check('AI ring is drawn around the play button', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.ai-ring') && app.includes('--ai-ring-progress'));
-check('AI ring has a real DOM element', html.includes('class="ai-ring"'));
-check('AI ring progress comes from real mix progress', app.includes('const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0'));
+check('mix ring is attached to the central npPlay button', html.includes('id="npPlay"') && html.includes('class="np-play-ring"') && !html.includes('np-mix-ring'));
+check('old per-button and panel rings are removed', !html.includes('class="ai-ring"') && !html.includes('np-mix-ring'));
+check('mix ring has base, fill and endpoint', html.includes('np-play-base') && html.includes('np-play-fill') && html.includes('np-play-tip'));
+check('mix ring is styled as a circle around npPlay', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('.np-play-wrap > .np-play-ring') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('--np-mix-progress'));
+check('mix ring completes at 100% then hides', app.includes('justFinished') && app.includes("dataset.aiRingDone = '1'") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('np-play-ring-finish'));
+check('mix ring is visible only during MIXING', readFileSync(join(here, '../web/styles.css'), 'utf8').includes('body[data-ai-phase="MIXING"] .np-play-wrap > .np-play-ring'));
+check('mix ring progress comes from real mix progress', app.includes('Number(mix.progress)') && app.includes('setAiRingTarget(mixProgress') && app.includes("--np-mix-progress"));
+check('ring uses one RAF loop only during MIXING', app.includes('requestAnimationFrame(tickAiRing)') && app.includes('cancelAnimationFrame') && app.includes('if (paused || document.visibilityState'));
+check('ring freezes on pause and resumes smoothly', app.includes('setAiRingTarget(mixProgress, mixKey, !!info.paused)') && app.includes('stopAiRingAnimation()'));
+check('ring is frame-rate independent', app.includes('1 - Math.exp(-dt / tau)') && app.includes('Math.min(0.04') && app.includes('Math.min(0.08'));
 check('native pause cannot flip Play during AI mix', app.includes('function aiOwnsPlayback') && app.includes("audio.addEventListener('pause', () => {\n  if (aiOwnsPlayback()) return;"));
 check('native timeupdate cannot overwrite AI timeline', app.includes("audio.addEventListener('timeupdate', () => {\n  if (aiOwnsPlayback()) return;"));
 check('transport follows real AI deck paused state', app.includes('S.playing = !ai.paused') && controller.includes('paused: !!state.paused'));
@@ -67,7 +78,7 @@ check('AI ownership is set before pausing native audio', controller.includes('st
 check('phase stays ACTIVE while next track is prepared', controller.includes('state.preparing = true') && controller.includes("if (!state.currentEntry) setPhase('PREPARING')") && controller.includes("state.preparing = false"));
 check('pause freezes both decks and AudioContext', controller.includes('state.paused = true') && controller.includes('state.ctx.suspend') && controller.includes("state.deckB && state.deckB.pause()"));
 check('resume unfreezes AudioContext and deck', controller.includes('state.paused = false') && controller.includes('state.ctx.resume'));
-check('AI ring is hidden when AI is off', app.includes('document.body.dataset.aiPhase = ringPhase') && app.includes("const ringPhase = active ?") && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('opacity: 0'));
+check('mix ring is hidden outside MIXING', app.includes('document.body.dataset.aiPhase = ringPhase') && readFileSync(join(here, '../web/styles.css'), 'utf8').includes('opacity: 0'));
 check('AI can continue after user queue ends', app.includes('getFallbackTracks') && controller.includes('fallbackCandidates') && controller.includes('fallbackPool'));
 check('AI fallback uses recommendations, not random tracks', app.includes('loadRecommendations()') && app.includes('data.sections') && !controller.includes('Math.random'));
 check('AI avoids repeating recently played tracks', controller.includes('playedIds') && controller.includes('state.playedIds.has'));
@@ -106,18 +117,25 @@ function clickTrack(bpm, seconds = 12) {
 }
 const core = lib.createAutoMixCore({ sessionId: 'rh-music-test' });
 core.initialize();
-const active = core.analyzeTrack({ id: 'a', title: 'A', artist: 'A', analysis: lib.analyzeAudioBuffer(clickTrack(120), { id: 'a' }) });
+const activeAnalysis = lib.analyzeAudioBuffer(clickTrack(120), { id: 'a' });
+const active = core.analyzeTrack({ id: 'a', title: 'A', artist: 'A', analysis: activeAnalysis });
 const candidateAnalysis = lib.analyzeAudioBuffer(clickTrack(124), { id: 'b' });
 const candidate = { id: 'b', title: 'B', artist: 'B', index: 1, analysis: candidateAnalysis, context: core.analyzeTrack({ id: 'b', title: 'B', artist: 'B', analysis: candidateAnalysis }) };
 const decision = core.decide('a', [candidate], { ids: [], artists: [] }, { position: 4, duration: 12, activeDeck: 'A', paused: false, remainingSec: 8 });
 check('AutoMixCore analyzes active track', !!active);
+check('analysis exposes kick/snare/hat profile', !!activeAnalysis.drums && activeAnalysis.drums.pattern.length > 0 && activeAnalysis.drums.kick > 0 && activeAnalysis.drums.confidence > 0);
+check('drum profile follows the beat grid', activeAnalysis.drums.pattern.every((p) => Number.isFinite(p.beat) && p.beat >= 0));
 check('AutoMixCore chooses a candidate', !!decision.chosen);
 check('AutoMixCore plans a real strategy', !!decision.plan && typeof decision.plan.strategy === 'string');
 check('outgoing gain keeps musical presence longer', engineSource.includes('function musicalBlendGain') && engineSource.includes('Math.pow(Math.cos'));
 check('deck crossfader is not double-attenuated', engineSource.includes('cross.gain.value = 1') && !engineSource.includes('setCrossfader(0.5);\n            this.decks.B'));
+check('takeover compensates incoming beat phase', controller.includes('phase lead') && controller.includes('plan.inStart = Math.max(0, Number(plan.inStart) - phaseLead)'));
 check('native pitch preservation is used for playback quality', engineSource.includes("this.stretchMode = 'native'") && engineSource.includes('stretchA = null;\n            stretchB = null;'));
 check('unsafe tempo rates fall back to 1x', engineSource.includes('const safeRate') && engineSource.includes('<= 0.02'));
 const gainAt = (points, t) => { const p = points.find((x) => x.at >= t) || points[points.length - 1]; return p.value; };
+const eqAt = (points, t) => { const p = points.find((x) => x.at >= t) || points[points.length - 1]; return p.value; };
+check('kick/bass handoff keeps one low end alive', eqAt(decision.plan.eq.out.low, 0.5) === 0 && eqAt(decision.plan.eq.in.low, 0.5) === -24);
+check('bass handoff overlaps instead of double-cutting', eqAt(decision.plan.eq.out.low, 0.68) > -24 && eqAt(decision.plan.eq.in.low, 0.68) > -24);
 check('outgoing gain stays high through the middle', gainAt(decision.plan.gain.out, 0.55) >= 0.9, JSON.stringify(decision.plan.gain.out));
 check('incoming gain rises progressively', gainAt(decision.plan.gain.in, 0.62) >= 0.4 && gainAt(decision.plan.gain.in, 1) === 1, JSON.stringify(decision.plan.gain.in));
 check('transition does not start before the latter half', decision.plan.startAt >= 12 * 0.55 - 0.01, String(decision.plan.startAt));

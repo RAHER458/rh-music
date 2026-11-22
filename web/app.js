@@ -5,7 +5,7 @@
    ========================================================================== */
 'use strict';
 
-window.RH_BUILD = 'neural-2026-11-21-4';
+window.RH_BUILD = 'neural-2026-11-21-19';
 console.info('[RH-MUSIC] build', window.RH_BUILD);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
@@ -733,7 +733,7 @@ const liveSearch = debounce((query) => {
   history.replaceState(null, '', '#/search?q=' + encodeURIComponent(query) + '&type=' + S.type);
   S.query = query;
   renderSearchBody(query, S.type);
-}, 380);
+}, 150);
 
 async function runSearch(query, type, { push = false } = {}) {
   const hash = '#/search?q=' + encodeURIComponent(query) + '&type=' + (type || 'all');
@@ -2216,6 +2216,7 @@ function applyAiMixTimeline(info) {
 }
 
 const aiDiagState = { events: [], last: '' };
+let aiLastPhase = '';
 function aiDiag(event, extra = {}) {
   try {
     const info = window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.getState ? window.RH_AI_AUTOMIX.getState() : null;
@@ -2245,11 +2246,103 @@ function aiOwnsPlayback() {
   return !!(window.RH_AI_AUTOMIX && typeof window.RH_AI_AUTOMIX.ownsPlayback === 'function' && window.RH_AI_AUTOMIX.ownsPlayback());
 }
 
+const aiRingAnim = {
+  raf: 0, target: 0, display: 0, last: 0, key: '', mixKey: '',
+  completing: false, flashUntil: 0,
+};
+
+function renderAiRing(value) {
+  const progress = Math.max(0, Math.min(1, Number(value) || 0));
+  aiRingAnim.display = progress;
+  document.querySelectorAll('.np-play-wrap').forEach((el) => {
+    el.style.setProperty('--np-mix-progress', progress.toFixed(4));
+  });
+}
+
+function stopAiRingAnimation() {
+  if (aiRingAnim.raf) cancelAnimationFrame(aiRingAnim.raf);
+  aiRingAnim.raf = 0;
+  aiRingAnim.last = 0;
+}
+
+function finishAiRing() {
+  if (!aiRingAnim.completing) return;
+  aiRingAnim.completing = false;
+  stopAiRingAnimation();
+  renderAiRing(1);
+  aiRingAnim.flashUntil = Date.now() + 650;
+  document.body.dataset.aiRingDone = '1';
+  setTimeout(() => {
+    document.body.dataset.aiRingDone = '';
+    aiRingAnim.flashUntil = 0;
+    if (!window.RH_AI_AUTOMIX || window.RH_AI_AUTOMIX.getState().phase !== 'MIXING') {
+      document.body.dataset.aiPhase = '';
+    }
+  }, 650);
+}
+
+function tickAiRing(now) {
+  aiRingAnim.raf = 0;
+  if (!aiRingAnim.last) aiRingAnim.last = now;
+  const dt = Math.min(0.04, Math.max(0, (now - aiRingAnim.last) / 1000));
+  aiRingAnim.last = now;
+  const target = aiRingAnim.target;
+  const gap = target - aiRingAnim.display;
+  // Frame-rate independent exponential smoothing. A larger target jump is
+  // followed faster so the ring never lags audibly behind the transition.
+  const tau = Math.abs(gap) > 0.15 ? 0.055 : 0.11;
+  const alpha = 1 - Math.exp(-dt / tau);
+  let next = aiRingAnim.display + Math.max(-0.08, Math.min(0.08, gap * alpha));
+  if (Math.abs(target - next) < 0.0005) next = target;
+  renderAiRing(next);
+  if (target >= 0.999 && next >= 0.999) { finishAiRing(); return; }
+  if (aiRingAnim.target > next || aiRingAnim.completing) {
+    aiRingAnim.raf = requestAnimationFrame(tickAiRing);
+  } else {
+    aiRingAnim.display = target;
+  }
+}
+
+function startAiRingAnimation() {
+  if (aiRingAnim.raf) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    renderAiRing(aiRingAnim.target);
+    if (aiRingAnim.target >= 0.999) finishAiRing();
+    return;
+  }
+  aiRingAnim.last = 0;
+  aiRingAnim.raf = requestAnimationFrame(tickAiRing);
+}
+
+function setAiRingTarget(progress, mixKey, paused) {
+  const target = Math.max(0, Math.min(1, Number(progress) || 0));
+  if (mixKey !== aiRingAnim.mixKey) {
+    aiRingAnim.mixKey = mixKey;
+    aiRingAnim.display = target;
+    aiRingAnim.target = target;
+    renderAiRing(target);
+  } else {
+    aiRingAnim.target = target;
+  }
+  if (paused || document.visibilityState === 'hidden') { stopAiRingAnimation(); return; }
+  if (target <= aiRingAnim.display + 0.0001 && !aiRingAnim.completing) {
+    stopAiRingAnimation();
+    renderAiRing(target);
+    return;
+  }
+  startAiRingAnimation();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { stopAiRingAnimation(); return; }
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.getState().phase === 'MIXING') refreshAiAutoMixUI();
+});
+
 function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
   const active = !!(info && info.active);
-  const label = phase === 'OFF' ? 'Neural AI' : phase === 'READY' ? 'Neural AI Ready' : phase === 'MIXING' ? 'Neural AI Mixing' : 'Neural AI ' + phase;
+  const label = phase === 'OFF' ? 'AutoMix RH AI' : phase === 'READY' ? 'AutoMix RH AI · Ready' : phase === 'MIXING' ? 'AutoMix RH AI · Mixing' : 'AutoMix RH AI · ' + phase;
   if (active && window.RH_SMARTMIX) {
     try {
       if (window.RH_SMARTMIX.getSettings().enabled) { aiSavedSmartMix = true; window.RH_SMARTMIX.setSettings({ enabled: false }); }
@@ -2265,10 +2358,33 @@ function refreshAiAutoMixUI() {
     if (el.id === 'npAiAutomix') el.textContent = label;
   });
   const mix = info && info.mix ? info.mix : null;
-  const ringProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0;
-  const ringPhase = active ? (phase === 'MIXING' ? 'MIXING' : (info && info.preparing ? 'PREPARING' : phase)) : '';
+  const justFinished = aiLastPhase === 'MIXING' && phase === 'ACTIVE' && active;
+  const mixProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0;
+  const mixKey = mix ? [mix.startAt, mix.durationSec, mix.strategy].join(':') : 'none';
+  if (justFinished && !aiRingAnim.completing) {
+    aiRingAnim.completing = true;
+    aiRingAnim.target = 1;
+  }
+  if (phase === 'MIXING') {
+    aiRingAnim.completing = false;
+    document.body.dataset.aiRingDone = '';
+    setAiRingTarget(mixProgress, mixKey, !!info.paused);
+  } else if (aiRingAnim.completing || Date.now() < aiRingAnim.flashUntil) {
+    // Keep the ring visible while it animates to 100% and flashes.
+    if (document.body.dataset.aiRingDone) {
+      // flash is running
+    } else {
+      startAiRingAnimation();
+    }
+  } else {
+    stopAiRingAnimation();
+    aiRingAnim.target = 0;
+    renderAiRing(0);
+  }
+  const ringPhase = active && (phase === 'MIXING' || aiRingAnim.completing || Date.now() < aiRingAnim.flashUntil) ? 'MIXING' : (active ? (info && info.preparing ? 'PREPARING' : phase) : '');
+  aiLastPhase = phase;
   document.body.dataset.aiPhase = ringPhase;
-  document.body.style.setProperty('--ai-ring-progress', ringProgress.toFixed(3));
+  document.body.dataset.aiRingDone = document.body.dataset.aiRingDone || '';
   document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
   applyAiMixTimeline(info);
   const button = $('aiAutomixBtn');
@@ -2278,7 +2394,7 @@ function refreshAiAutoMixUI() {
   if (diagKey !== aiDiagState.last) { aiDiagState.last = diagKey; aiDiag('ai_state'); }
 }
 
-function adoptAiTrack(track, strategy, label = 'AI AutoMix') {
+function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
   if (!track) return;
   aiDiag('adopt', { adopted: String(track.id), strategy: strategy || null });
   const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
@@ -2305,7 +2421,7 @@ function adoptAiTrack(track, strategy, label = 'AI AutoMix') {
   $('npDur').textContent = fmt(track.duration);
   syncSeek(0, Number(track.duration) || 0);
   updateTransport();
-  toast(label + ': ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
+  if (!options.silent) toast(label + ': ' + track.title + (strategy ? ' · ' + strategy : ''), 'info');
   refreshAiAutoMixUI();
 }
 
@@ -2346,7 +2462,7 @@ function initAiAutoMix() {
       }
       return out;
     },
-    onAdopt: adoptAiTrack,
+    onAdopt: (track, strategy) => adoptAiTrack(track, strategy, 'AutoMix RH AI', { silent: true }),
     onExit: (info) => {
       S.loading = false;
       S.playing = false;
@@ -2360,7 +2476,7 @@ function initAiAutoMix() {
         audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
       }
     },
-    log: (message) => console.debug('[AI AutoMix]', message),
+    log: (message) => console.debug('[AutoMix RH AI]', message),
   });
   refreshAiAutoMixUI();
   if (!window.__rhAiTimelineTimer) {
@@ -2572,12 +2688,40 @@ function shouldShowPlayer(state = S) {
  * она остаётся на месте и не перекрывает контент, потому что страница резервирует
  * её высоту. На телефоне пустая панель по-прежнему скрыта.
  */
-function syncPlayerVisibility() {
+let playerHideTimer = 0;
+
+function computedPlayerVisible() {
   const authRoute = S.route === 'login' || S.route === 'register';
   const emptyDesktopBar = isDesktop() && !authRoute && !S.playerHidden && !hasSelectedTrack();
-  const visible = shouldShowPlayer() || emptyDesktopBar;
-  player.hidden = !visible;
-  player.classList.toggle('is-hidden', !visible);
+  return shouldShowPlayer() || emptyDesktopBar;
+}
+
+function syncPlayerVisibility() {
+  const visible = computedPlayerVisible();
+  const reducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (!visible && reducedMotion) {
+    player.hidden = !visible;
+    player.classList.add('is-hidden');
+    document.body.classList.remove('has-player');
+    updateCompactPlayer();
+    syncLayoutHeight();
+    return;
+  }
+  if (visible) {
+    if (playerHideTimer) { clearTimeout(playerHideTimer); playerHideTimer = 0; }
+    const wasHidden = player.hidden;
+    player.hidden = false;
+    if (wasHidden) void player.offsetWidth;
+    player.classList.remove('is-hidden');
+  } else {
+    player.classList.add('is-hidden');
+    if (!player.hidden && !playerHideTimer) {
+      playerHideTimer = setTimeout(() => {
+        playerHideTimer = 0;
+        if (!computedPlayerVisible()) player.hidden = true;
+      }, 340);
+    }
+  }
   document.body.classList.toggle('has-player', visible);
   updateCompactPlayer();
   syncLayoutHeight();
@@ -2789,22 +2933,152 @@ function updateTransport() {
   syncPlayerVisibility();
 }
 
-function updateNowPlayingMeta(track) {
+let npLastTrackId = '';
+let npCoverToken = 0;
+let npTextTimer = 0;
+let npTextToken = 0;
+
+function npReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function applyNpText(track) {
   $('npTitle').textContent = track ? track.title : 'Ничего не играет';
   $('npArtist').innerHTML = track && track.artistId
     ? `<a href="#/artist/${esc(track.artistId)}" data-link>${esc(track.artist || 'Неизвестный исполнитель')}</a>`
     : esc(track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек');
   $('npSong').textContent = track ? track.title : 'Ничего не играет';
   $('npSinger').textContent = track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек';
+}
+
+let npCinemaTimer = 0;
+
+function triggerNpBurst(art) {
+  if (!art || npReducedMotion()) return;
+  art.classList.remove('is-burst');
+  void art.offsetWidth;
+  art.classList.add('is-burst');
+  if (npCinemaTimer) clearTimeout(npCinemaTimer);
+  npCinemaTimer = setTimeout(() => {
+    npCinemaTimer = 0;
+    art.classList.remove('is-burst');
+  }, 2050);
+}
+
+function setNpPalette(art, image) {
+  if (!art || !image || npReducedMotion()) return;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 24; canvas.height = 24;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(image, 0, 0, 24, 24);
+    const data = ctx.getImageData(0, 0, 24, 24).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const rr = data[i], gg = data[i + 1], bb = data[i + 2];
+      const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb);
+      if (max < 70 || max - min < 12) continue;
+      r += rr; g += gg; b += bb; n++;
+    }
+    if (!n) return;
+    r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+    // Keep the cinematic palette inside RH-MUSIC's cool range.
+    const boost = (v) => Math.max(64, Math.min(235, Math.round(v * 1.35)));
+    art.style.setProperty('--np-glow-rgb', `${boost(r)}, ${boost(g)}, ${boost(b)}`);
+    art.style.setProperty('--np-glow2-rgb', `${Math.min(255, boost(b) + 24)}, ${Math.max(40, boost(g) - 18)}, ${Math.min(255, boost(r) + 30)}`);
+  } catch (_) { /* canvas can be tainted by a cross-origin cover; keep default palette */ }
+}
+
+function startNpCinema(track) {
+  const art = $('npArt');
+  if (!art || npReducedMotion()) return;
+  art.classList.remove('is-cinema', 'is-burst');
+  document.querySelectorAll('.np-cover-layer').forEach((img) => img.classList.remove('is-cinema-in'));
+  art.style.removeProperty('--np-glow-rgb');
+  art.style.removeProperty('--np-glow2-rgb');
+  void art.offsetWidth;
+  art.classList.add('is-cinema');
+}
+
+function animateNpText(track) {
+  // Data is authoritative: apply it before any reveal animation starts.
+  applyNpText(track);
+  const info = document.querySelector('.np-info');
+  if (!info || npReducedMotion()) { info?.classList.remove('is-changing', 'is-cinema-text'); return; }
+  const token = ++npTextToken;
+  info.classList.remove('is-changing', 'is-cinema-text');
+  void info.offsetWidth;
+  info.classList.add('is-cinema-text');
+  if (npTextTimer) clearTimeout(npTextTimer);
+  npTextTimer = setTimeout(() => {
+    npTextTimer = 0;
+    if (token === npTextToken) info.classList.remove('is-cinema-text');
+  }, 2400);
+}
+
+function animateNpCover(track) {
+  const first = $('npBigCover');
+  const second = $('npBigCoverNext');
+  if (!first || !second) return;
+  const token = ++npCoverToken;
+  const current = first.classList.contains('is-active') ? first : second.classList.contains('is-active') ? second : null;
+
+  const showFallback = () => {
+    first.classList.remove('is-active', 'is-leaving', 'is-cinema-in');
+    second.classList.remove('is-active', 'is-leaving', 'is-cinema-in');
+    first.removeAttribute('src');
+    second.removeAttribute('src');
+    triggerNpBurst($('npArt'));
+  };
+
+  if (!track || !track.cover) { showFallback(); return; }
+
+  const url = pic(track.cover, 640);
+  const target = current === first ? second : first;
+  if (current && current.getAttribute('src') === url && current.complete) return;
+
+  // Switch metadata/cover immediately. If the image is not decoded yet, the
+  // existing fallback stays visible instead of leaving the previous cover
+  // under the new track title.
+  target.classList.remove('is-leaving', 'is-cinema-in');
+  target.src = url;
+  target.classList.add('is-active', 'is-cinema-in');
+  target.setAttribute('aria-hidden', 'false');
+  if (current) {
+    current.classList.remove('is-active', 'is-cinema-in');
+    current.classList.add('is-leaving');
+    current.setAttribute('aria-hidden', 'true');
+    setTimeout(() => { if (token === npCoverToken) current.classList.remove('is-leaving'); }, 1200);
+  }
+  triggerNpBurst($('npArt'));
+
+  const onReady = () => {
+    if (token !== npCoverToken) return;
+    try { setNpPalette($('npArt'), target); } catch (_) {}
+  };
+  if (target.complete && target.naturalWidth > 0) onReady();
+  else {
+    target.onload = onReady;
+    target.onerror = () => { if (token === npCoverToken) showFallback(); };
+  }
+}
+
+function updateNowPlayingMeta(track) {
+  const sameTrack = !!track && String(track.id) === String(npLastTrackId);
+  npLastTrackId = track ? String(track.id) : '';
+  if (!sameTrack) startNpCinema(track);
+  if (sameTrack) applyNpText(track); else animateNpText(track);
+  animateNpCover(track);
 
   const mini = $('npCover');
-  const big = $('npBigCover');
-  [mini, big].forEach((img) => { img.classList.remove('is-loaded'); img.removeAttribute('src'); });
-  if (track && track.cover) {
-    big.onload = () => big.classList.add('is-loaded');
-    big.src = pic(track.cover, 640);
-    mini.onload = () => mini.classList.add('is-loaded');
-    mini.src = pic(track.cover, 160);
+  if (mini) {
+    mini.classList.remove('is-loaded');
+    mini.removeAttribute('src');
+    if (track && track.cover) {
+      mini.onload = () => mini.classList.add('is-loaded');
+      mini.src = pic(track.cover, 160);
+    }
   }
   updateAmbient(track ? track.cover : null);
   $('npDur').textContent = fmt(track ? track.duration : 0);
