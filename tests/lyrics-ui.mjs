@@ -122,19 +122,7 @@ check('движок использует существующий <audio id="aud
   /getElementById\('audio'\)/.test(engine));
 check('движок не создаёт второй плеер', !/new Audio\(|createElement\('audio'\)/.test(engine));
 check('движок не меняет источник аудио', !/audio\.src\s*=/.test(engine));
-check('буквенный RAF запускается только во время воспроизведения',
-  /function startLetterLoop\(\)/.test(engine)
-  && /audio\.addEventListener\('playing', \(\) => \{ onTime\(\); startLetterLoop\(\); \}\)/.test(engine)
-  && /audio\.addEventListener\('pause', \(\) => \{ stopLetterLoop\(\)/.test(engine)
-  && /audio\.addEventListener\('ended', \(\) => stopLetterLoop\(\)\)/.test(engine)
-  && /document\.hidden\) \{\s*stopLetterLoop\(\)/.test(engine)
-  && !/setInterval/.test(engine));
-check('движок строит посимвольные тайминги и span-ы',
-  /function letterTimingsForWord/.test(engine)
-  && /createElement\('span', 'lyrics-letter'/.test(engine)
-  && /_letterNodes/.test(engine));
-check('движок пересчитывает буквы при перемотке',
-  /audio\.addEventListener\('seeked', \(\) => \{ syncNow\(true\); applyLetters\(state\.active/.test(engine));
+check('движок не запускает постоянный цикл обновления', !/setInterval|requestAnimationFrame/.test(engine));
 check('движок использует бинарный поиск', /function indexAt\(lines, ms\)/.test(engine) && />> 1/.test(engine));
 check('движок реагирует на timeupdate и seeked',
   /addEventListener\('timeupdate'/.test(engine) && /addEventListener\('seeked'/.test(engine));

@@ -11,8 +11,6 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || ((fn) => setTimeout(fn, 16));
-globalThis.cancelAnimationFrame = globalThis.cancelAnimationFrame || ((id) => clearTimeout(id));
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -47,13 +45,6 @@ console.log('RH—MUSIC · тесты word-level синхронизации\n');
   ]);
   check('groupWords: обычная строка', words && words.length === 4 && words[1].text === 'знаю');
   check('groupWords: времена сохранены', words[0].t === 1000 && words[3].end === 2600);
-  const syllables = groupWords('Привет', [
-    { text: 'При', start: 1000, end: 1500 },
-    { text: 'вет', start: 1500, end: 2000 },
-  ]);
-  check('groupWords: слоговые интервалы сохраняются',
-    syllables && syllables[0].syllables && syllables[0].syllables.length === 2
-    && syllables[0].syllables[1].t === 1500);
 
   const split = groupWords('I have enough', [
     { text: 'I', start: 0, end: 100 },
@@ -317,7 +308,7 @@ function makeElement(tag = 'div') {
   const el = {
     tagName: String(tag).toUpperCase(),
     dataset: {},
-    style: { props: {}, setProperty(n, v) { this.props[n] = String(v); }, getPropertyValue(n) { return this.props[n] || ''; } },
+    style: {},
     hidden: false,
     offsetTop: 0,
     offsetHeight: 22,

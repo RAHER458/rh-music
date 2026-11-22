@@ -13,8 +13,6 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || ((fn) => setTimeout(fn, 16));
-globalThis.cancelAnimationFrame = globalThis.cancelAnimationFrame || ((id) => clearTimeout(id));
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -301,7 +299,7 @@ function makeElement(tag = 'div') {
   const el = {
     tagName: String(tag).toUpperCase(),
     dataset: {},
-    style: { props: {}, setProperty(n, v) { this.props[n] = String(v); }, getPropertyValue(n) { return this.props[n] || ''; } },
+    style: {},
     hidden: false,
     offsetTop: 0,
     offsetHeight: 22,
@@ -351,10 +349,7 @@ function makeElement(tag = 'div') {
       contains: (name) => classes.has(name),
       toggle: (name, on) => { if (on) classes.add(name); else classes.delete(name); },
     },
-    get textContent() {
-      if (el.children.length) return el.children.map((child) => (child && child.textContent) || '').join('');
-      return text;
-    },
+    get textContent() { return text; },
     set textContent(value) {
       text = String(value == null ? '' : value);
       if (!value) { el.children.length = 0; }
