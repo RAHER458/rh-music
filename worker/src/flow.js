@@ -11,6 +11,7 @@ import { ApiError, json } from './http.js';
 import { currentUser } from './auth.js';
 import { searchTracksFor } from './zvuk.js';
 import { buildRecommendations } from './recommend.js';
+import { buildPopular } from './popular.js';
 
 const CACHE_TTL_MS = 60 * 1000;
 const MAX_QUERIES = 8;
@@ -109,6 +110,20 @@ function interleave(groups, limit) {
   return out;
 }
 
+const JUNK_RE = /(музыка|новинки|сборник|хиты|плейлист|дискотека|караоке|фоновая|для работы|для учёбы|для сна|для дороги|для машины|для спорта|для вечеринки|music|playlist|mixtape)/i;
+
+/** Грубая, но честная оценка: пользовательские компиляции не должны забивать поток. */
+export function flowTrackScore(track) {
+  if (!track || !track.title) return -10;
+  let score = 0;
+  if (track.album) score += 1;
+  if (String(track.artist || '').length > 0 && String(track.artist || '').length < 42) score += 1;
+  if (JUNK_RE.test(track.title) || JUNK_RE.test(track.artist || '')) score -= 3;
+  const duration = Number(track.duration) || 0;
+  if (duration >= 90 && duration <= 600) score += 0.5;
+  return score;
+}
+
 function dedupe(tracks, limit) {
   const seen = new Set();
   const out = [];
@@ -158,7 +173,19 @@ export async function buildFlow(request, env, selection) {
   }));
 
   const catalog = interleave(results, 28).map((track) => track);
-  const tracks = dedupe([...personal, ...catalog], MAX_TRACKS);
+  const clean = catalog.filter((track) => flowTrackScore(track) >= 0);
+  const mixed = clean.length >= 16 ? clean : [...clean, ...catalog.filter((track) => flowTrackScore(track) < 0)];
+  const tracks = dedupe([...personal, ...mixed], MAX_TRACKS);
+  if (tracks.length < 12) {
+    try {
+      const popular = await buildPopular(env);
+      const fallback = (popular.sections || []).flatMap((section) => section.items || []).filter((track) => track && track.artist);
+      for (const track of fallback) {
+        if (tracks.length >= 24) break;
+        if (!tracks.some((existing) => String(existing.id) === String(track.id))) tracks.push(track);
+      }
+    } catch { /* поток собран из каталога */ }
+  }
   if (!tracks.length) {
     throw new ApiError(502, 'FLOW_UNAVAILABLE', 'Не удалось собрать поток. Попробуйте ещё раз.');
   }
