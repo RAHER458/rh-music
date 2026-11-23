@@ -11,7 +11,7 @@ let passed = 0; const failures = [];
 const check = (name, ok) => { if (ok) passed++; else { failures.push(name); console.error('  ✗', name); } };
 console.log('RH—MUSIC · Lyrics beta tests\n');
 
-check('кнопка «Текст beta» есть в Now Playing', /id="npLyricsBeta"/.test(html) && /lyrics-beta-toggle/.test(html));
+check('основная кнопка «Текст» есть в Now Playing', /id="npLyricsBeta"/.test(html) && /lyrics-beta-toggle/.test(html) && />Текст</.test(html));
 check('скрипт beta подключён', /lyrics-beta\.js/.test(html));
 check('действие переключает режим', /lyrics-beta-toggle/.test(app) && /RH_LYRICS_BETA\.toggle\(\)/.test(app));
 check('beta использует существующий RH_LYRICS', /RH_LYRICS\.subscribe/.test(beta) && /RH_LYRICS\.getLine/.test(beta));

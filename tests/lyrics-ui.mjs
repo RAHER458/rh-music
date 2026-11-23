@@ -42,7 +42,7 @@ check('панель текста помечена hidden по умолчанию
 check('кнопка текста есть в правой группе плеера',
   /class="player-right" data-ui-only="desktop"[\s\S]*id="playerLyrics"/.test(html));
 check('кнопка текста на телефоне — в экране текущего трека',
-  /class="np-extras"[\s\S]*id="npLyrics"/.test(html));
+  /class="np-extras"[\s\S]*id="npLyricsBeta"/.test(html));
 check('мобильный слой текста помечен только для Mobile UI',
   /id="lyricsSheet"[^>]*data-ui-only="mobile"/.test(html));
 
