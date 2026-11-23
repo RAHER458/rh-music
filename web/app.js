@@ -2740,6 +2740,9 @@ function initSmartMix() {
     toast,
     onChange: refreshSmartMixUI,
   });
+  // Smart Mix удалён из интерфейса. Гасим сохранённое состояние, чтобы старый
+  // граф не занимал <audio> и не конфликтовал с эквалайзером.
+  try { window.RH_SMARTMIX.setSettings({ enabled: false, preload: false }); } catch { /* ignore */ }
   refreshSmartMixUI();
 }
 
