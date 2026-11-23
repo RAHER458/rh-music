@@ -87,10 +87,13 @@
   function enable() {
     if (!buildGraph()) return false;
     state.enabled = true;
-    if (state.ctx.state === 'suspended') state.ctx.resume().catch(() => {});
     applyGains();
     persist();
-    return true;
+    const resume = () => {
+      if (state.ctx.state === 'running') { applyGains(); return Promise.resolve(true); }
+      return state.ctx.resume().then(() => { applyGains(); return state.ctx.state === 'running'; }).catch(() => false);
+    };
+    return resume();
   }
 
   function disable() {
@@ -100,10 +103,20 @@
     return true;
   }
 
+  audio.addEventListener('play', () => {
+    if (state.enabled && !state.ctx) enable();
+    else if (state.ctx && state.ctx.state === 'suspended') state.ctx.resume().catch(() => {});
+  });
+
   window.RH_EQUALIZER = {
     bands: BANDS.slice(),
     presets: Object.keys(PRESETS),
-    init() { if (state.enabled) enable(); return state.supported; },
+    init() {
+      // Не строим граф до жеста пользователя: AudioContext в suspended
+      // состоянии глушит звук. Если эквалайзер был включён ранее, он
+      // подключится при первом воспроизведении.
+      return state.supported;
+    },
     enable,
     disable,
     toggle() { return state.enabled ? disable() : enable(); },

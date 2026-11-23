@@ -26,8 +26,8 @@ function check(name, condition, extra = '') {
 console.log('RH—MUSIC · тесты интерфейса RH Smart Mix\n');
 
 check('smartmix.js подключён после lyrics.js и до app.js',
-  html.indexOf('src="lyrics.js"') < html.indexOf('src="smartmix.js"')
-  && html.indexOf('src="smartmix.js"') < html.indexOf('src="app.js'));
+  html.indexOf('src="lyrics.js') < html.indexOf('src="smartmix.js')
+  && html.indexOf('src="smartmix.js') < html.indexOf('src="app.js'));
 check('в разметке по-прежнему один основной <audio>',
   (html.match(/<audio\b/g) || []).length === 1);
 check('кнопка эквалайзера есть в десктопном плеере',

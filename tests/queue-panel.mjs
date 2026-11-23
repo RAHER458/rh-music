@@ -32,7 +32,7 @@ console.log('RH—MUSIC · тесты панели очереди\n');
 
 check('панель есть в разметке', /id="queuePanel"/.test(html));
 check('панель скрыта атрибутом hidden в разметке', /id="queuePanel"[^>]*hidden/.test(html));
-check('у панели есть слайдер закрытия', /id="queueGrab"/.test(html) && /bindDragToClose\(\$\('queuePanel'\), \$\('queueGrab'\)/.test(app));
+check('у панели есть слайдер закрытия', /id="queueGrab"/.test(html) && /bindDragToClose\(\$\('queuePanel'\), \$\('queuePanel'\)\.querySelector\('\.queue-panel-head'\)/.test(app));
 check('кнопка в шапке помечена data-action="queue-toggle"', /id="queueToggle"[^>]*data-action="queue-toggle"/.test(html));
 check('кнопка в плеере помечена data-action="queue-toggle"', /id="playerQueue"[^>]*data-action="queue-toggle"/.test(html));
 
@@ -169,7 +169,7 @@ check('рендер списка очереди не меняет видимос
   !/openQueuePanel|queue-open/.test(renderPanelPath)
   && !/queuePanel[^A-Za-z]*\.hidden|\.hidden\s*=\s*!?\(?S\.queueOpen/.test(renderPanelPath));
 
-check('панель закрывается жестом вниз', /bindDragToClose\(\$\('queuePanel'\), \$\('queueGrab'\)/.test(app));
+check('панель закрывается жестом вниз', /bindDragToClose\(\$\('queuePanel'\), \$\('queuePanel'\)\.querySelector\('\.queue-panel-head'\)/.test(app));
 check('кнопки панели обрабатываются делегированно', /action === 'queue-toggle'/.test(app));
 check('Escape закрывает панель', /else if \(S\.queueOpen\) closeQueuePanel\(\);/.test(app));
 check('клик вне панели закрывает её', /closeQueuePanel\(\);\s*\n\}\);/.test(app) && /composedPath/.test(app));

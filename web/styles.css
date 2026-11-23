@@ -2636,14 +2636,22 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
 
 /* ── Слайдер закрытия вместо крестиков ─────────────────────────── */
 .drag-handle {
-  display: block;
-  width: 44px;
-  height: 5px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, .26);
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 34px;
+  margin: 0 auto;
+  background: transparent;
   touch-action: none;
   cursor: grab;
-  flex: none;
+  z-index: 5;
+}
+.drag-handle::before {
+  content: "";
+  width: 58px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .28);
 }
 .drag-handle:active { cursor: grabbing; }
 .np-top, .queue-panel-head, .drawer-head { position: relative; }
@@ -2651,13 +2659,13 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
 .queue-panel-head .drag-handle {
   position: absolute;
   left: 50%;
-  top: 2px;
+  top: -6px;
   transform: translateX(-50%);
 }
 .drawer-head .drag-handle {
   position: absolute;
   left: 50%;
-  top: -2px;
+  top: -8px;
   transform: translateX(-50%);
 }
 .is-dragging { transition: none !important; }

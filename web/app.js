@@ -1794,6 +1794,7 @@ function bindDragToClose(container, handle, onClose, options = {}) {
   let drag = null;
   handle.addEventListener('pointerdown', (event) => {
     if (event.button > 0) return;
+    if (event.target.closest && event.target.closest('button, a, input, select, textarea')) return;
     drag = { id: event.pointerId, y: event.clientY, t: performance.now(), dy: 0 };
     container.classList.add('is-dragging');
     try { handle.setPointerCapture(event.pointerId); } catch { /* ignore */ }
@@ -3644,9 +3645,9 @@ function setLyricsPressed() {
 /* Свайп вниз по шапке слоя текста закрывает его; содержимое прокручивается
    свободно, поэтому жест живёт только на шапке и не конфликтует со скроллом. */
 let lyricsDrag = null;
-bindDragToClose($('nowPlaying'), $('npGrab'), () => openNowPlaying(false));
-bindDragToClose($('queuePanel'), $('queueGrab'), () => openQueuePanel(false));
-bindDragToClose($('drawer'), $('drawerGrab'), () => openDrawer(false));
+bindDragToClose($('nowPlaying'), $('nowPlaying').querySelector('.np-top'), () => openNowPlaying(false));
+bindDragToClose($('queuePanel'), $('queuePanel').querySelector('.queue-panel-head'), () => openQueuePanel(false));
+bindDragToClose($('drawer'), $('drawer').querySelector('.drawer-head'), () => openDrawer(false));
 
 const lyricsSheetEl = $('lyricsSheet');
 if (lyricsSheetEl) {
