@@ -8,6 +8,7 @@
 * **API:** https://rh-music.pages.dev/api (тот же домен, что и сайт — см. «Архитектура»)
 * **Worker:** https://rh-music-api.rh-launcher.workers.dev
 * **Репозиторий:** https://github.com/RAHER458/rh-music
+* **Инструкция для агента / handover:** [HANDOVER.md](HANDOVER.md)
 
 ## Архитектура
 
