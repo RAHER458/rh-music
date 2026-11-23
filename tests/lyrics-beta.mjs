@@ -24,9 +24,9 @@ check('не дублируется загрузка текста', !/\/api\/lyri
 
 
 check('слова плавно заливаются через --p', /setProperty\('--p'/.test(beta) && css.includes('.np-lb-word') && css.includes('var(--p, 0)'));
-check('текущая строка входит с blur/сдвигом/масштабом', /npLbIn/.test(css) && /filter: blur\(8px\)/.test(css) && /is-entering/.test(beta));
+check('строка поднимается снизу с blur и уходит вверх', /npLbIn/.test(css) && /npLbOut/.test(css) && /translateY\(30px\)/.test(css) && /translateY\(-20px\)/.test(css) && /is-leaving/.test(beta));
 check('RAF работает только при воспроизведении', /requestAnimationFrame\(tick\)/.test(beta) && /audio\.paused/.test(beta) && /audio\.addEventListener\('pause', stopLoop\)/.test(beta));
-check('reduced motion отключает анимацию', /prefers-reduced-motion: reduce/.test(css) && /np-lb-line\.is-entering \{ animation: none/.test(css));
+check('reduced motion отключает анимацию', /prefers-reduced-motion: reduce/.test(css) && /np-lb-line\.is-leaving \{ animation: none/.test(css));
 
 
 check('режим не включается без синхронизированного текста', /function isSynced/.test(beta) && /if \(isSynced\(data\)\) \{ setActive\(true\); return; \}/.test(beta) && /showNotice\(reasonFor\(data\)\);/.test(beta));

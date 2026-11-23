@@ -22,6 +22,8 @@
   let noticeTimer = 0;
   let pendingEnable = false;
   let pendingTimer = 0;
+  let renderToken = 0;
+  let renderTimer = 0;
 
   function isSynced(data) {
     return !!data && data.status === 'ready' && (data.syncLevel === 'line' || data.syncLevel === 'word');
@@ -138,16 +140,28 @@
     const { main, next } = format(data);
     const key = `${data && data.index}:${main}:${data && data.words ? data.words.length : 0}:${next}`;
     if (key === lastKey) return;
+    const first = !lastKey;
     lastKey = key;
     payload = data || null;
-    buildWords({ ...data, main });
-    nextEl.textContent = next;
-    // Плавное появление строки: blur/сдвиг/масштаб, как в Apple Music.
+    const token = ++renderToken;
+    window.clearTimeout(renderTimer);
+
+    const apply = () => {
+      if (token !== renderToken || !active) return;
+      buildWords({ ...data, main });
+      nextEl.textContent = next;
+      lineEl.classList.remove('is-leaving');
+      void lineEl.offsetWidth;
+      lineEl.classList.add('is-entering');
+      updateWords();
+      startLoop();
+    };
+
+    // Плавный уход старой строки вверх с блюром, затем подъём новой снизу.
+    if (first) { apply(); return; }
     lineEl.classList.remove('is-entering');
-    void lineEl.offsetWidth;
-    lineEl.classList.add('is-entering');
-    updateWords();
-    startLoop();
+    lineEl.classList.add('is-leaving');
+    renderTimer = window.setTimeout(apply, 220);
   }
 
   function setActive(value) {
