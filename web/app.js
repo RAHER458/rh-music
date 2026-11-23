@@ -2356,7 +2356,10 @@ function refreshAiAutoMixUI() {
     el.classList.toggle('is-on', active);
     el.setAttribute('aria-pressed', active ? 'true' : 'false');
     el.dataset.phase = phase;
-    if (el.id === 'npAiAutomix') el.textContent = label;
+    if (el.id === 'npAiAutomix') {
+      el.setAttribute('aria-label', label || 'AutoMix RH AI');
+      el.dataset.label = label || '';
+    }
   });
   const mix = info && info.mix ? info.mix : null;
   const justFinished = aiLastPhase === 'MIXING' && phase === 'ACTIVE' && active;
