@@ -187,6 +187,10 @@ check('preparing is exposed without faking phase', ai2.getState().preparing === 
 
 check('DEGRADED автоматически выключает AutoMix', /phase === 'DEGRADED' && previous !== 'DEGRADED'/.test(controllerSrc) && /if \(state\.phase === 'DEGRADED'\) disable\(\)/.test(controllerSrc));
 
+
+check('выключение AutoMix полностью освобождает движок', /function teardownEngine/.test(controllerSrc) && /state\.engine = null/.test(controllerSrc) && /state\.ctx = null/.test(controllerSrc) && /teardownEngine\(\);/.test(controllerSrc));
+check('повторное включение не ломается после выключения', /const epoch = state\.planEpoch/.test(controllerSrc) && /epoch !== state\.planEpoch/.test(controllerSrc));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
 

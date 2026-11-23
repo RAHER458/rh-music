@@ -153,14 +153,28 @@
     log('Neural AI готов');
   }
 
+  function teardownEngine() {
+    if (state.engine) {
+      try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
+    }
+    try { if (state.ctx && typeof state.ctx.close === 'function') state.ctx.close(); } catch (_) {}
+    state.engine = null;
+    state.ctx = null;
+    state.deckA = null;
+    state.deckB = null;
+  }
+
   async function enable() {
     if (state.phase !== 'OFF' && state.phase !== 'ERROR') return;
+    const epoch = state.planEpoch;
     state.error = null;
     try {
       await ensureEngine();
+      if (epoch !== state.planEpoch || state.phase === 'OFF') return;
       const current = state.host.getState().current;
       if (current) await onTrackStarted(current);
     } catch (error) {
+      if (epoch !== state.planEpoch || state.phase === 'OFF') return;
       fail(error && error.message ? error.message : String(error));
     }
   }
@@ -170,15 +184,15 @@
     const position = state.deckA ? state.deckA.currentTime : 0;
     const owned = state.ownsPlayback;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
-    if (state.engine) {
-      try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
-    }
+    teardownEngine();
     state.pending = null;
     state.activePlan = null;
     state.currentEntry = null;
     state.activeTrack = null;
     state.activeIndex = -1;
     state.ownsPlayback = false;
+    state.busy = false;
+    state.preparing = false;
     setPhase('OFF', -1);
     if (owned && state.host && typeof state.host.onExit === 'function') state.host.onExit({ position });
     log('AI AutoMix выключен');
