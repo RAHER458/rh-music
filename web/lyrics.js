@@ -30,6 +30,7 @@
     wordsWanted: false,
     wordsController: null,
     wordCache: new Map(),
+    lineListeners: new Set(),
   };
 
   const views = [];
@@ -153,6 +154,27 @@
       box.appendChild(row);
     }
     return box;
+  }
+
+  function emitLine() {
+    const data = state.data;
+    const index = state.active;
+    const line = data && Array.isArray(data.lines) && index >= 0 ? data.lines[index] : null;
+    const next = data && Array.isArray(data.lines) ? data.lines[index + 1] : null;
+    const payload = {
+      status: state.status,
+      syncLevel: data ? data.syncLevel : null,
+      index,
+      text: line ? line.text : '',
+      nextText: next ? next.text : '',
+      plain: data ? data.plain : null,
+      instrumental: !!(data && (data.syncLevel === 'instrumental' || data.instrumental)),
+      error: state.error || null,
+      track: state.track,
+    };
+    for (const listener of state.lineListeners) {
+      try { listener(payload); } catch { /* ignore */ }
+    }
   }
 
   function setMeta(view, badge) {
@@ -288,6 +310,7 @@
     for (const view of views) renderView(view);
     state.active = -1;
     state.activeWord = -1;
+    emitLine();
     if (state.status === 'ready' && state.data && (state.data.syncLevel === 'line' || state.data.syncLevel === 'word')) {
       syncNow(true);
     }
@@ -398,6 +421,7 @@
     }
     applyWord(index, wordIndexFor(index, ms), ms);
     applyCinematic(index);
+    emitLine();
   }
 
   function syncNow(forceScroll) {
@@ -434,6 +458,7 @@
     state.error = null;
     state.status = 'loading';
     renderAll();
+    emitLine();
     updateAtmosphere(track);
 
     const cached = state.cache.get(id);
@@ -489,6 +514,7 @@
     state.active = -1;
     state.activeWord = -1;
     renderAll();
+    emitLine();
     updateAtmosphere(null);
   }
 
@@ -693,6 +719,19 @@
         syncLevel: state.data ? state.data.syncLevel : null,
         lines: state.data ? state.data.lines.length : 0,
       };
+    },
+    subscribe(listener) {
+      if (typeof listener !== 'function') return () => {};
+      state.lineListeners.add(listener);
+      emitLine();
+      return () => state.lineListeners.delete(listener);
+    },
+    getLine() {
+      const data = state.data;
+      const index = state.active;
+      const line = data && Array.isArray(data.lines) && index >= 0 ? data.lines[index] : null;
+      const next = data && Array.isArray(data.lines) ? data.lines[index + 1] : null;
+      return { status: state.status, syncLevel: data ? data.syncLevel : null, index, text: line ? line.text : '', nextText: next ? next.text : '', plain: data ? data.plain : null, error: state.error || null, track: state.track };
     },
     _indexAt: indexAt,
   };

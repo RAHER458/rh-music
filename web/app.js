@@ -3704,6 +3704,11 @@ document.addEventListener('click', async (event) => {
   if (action === 'smartmix-bars') { setSmartMixBars(target.dataset.bars); return; }
   if (action === 'smartmix-preload') { toggleSmartMixPreload(); return; }
   if (action === 'lyrics-toggle') { toggleLyrics(); return; }
+  if (action === 'lyrics-beta-toggle') {
+    if (window.RH_LYRICS_BETA) window.RH_LYRICS_BETA.toggle();
+    return;
+  }
+
   if (action === 'lyrics-open') {
     if (isDesktop()) toggleLyrics();
     else openLyricsSheet(true);
