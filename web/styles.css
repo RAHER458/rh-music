@@ -480,6 +480,8 @@ button.np-open { display: flex; align-items: center; gap: 10px; min-width: 0; fl
 .ctrl:disabled { opacity: .35; }
 .ctrl.ghost { color: var(--muted); }
 .ctrl.ghost.is-on { color: #C9B8FF; background: rgba(168,85,247,0.16); }
+.ctrl.is-on { color: #C9B8FF; background: rgba(168,85,247,0.2); box-shadow: inset 0 0 0 1px rgba(168,85,247,.45); }
+.ctrl.is-one .np-repeat-one { display: block; }
 .ctrl.play { width: 50px; height: 50px; background: var(--grad); color: #fff; box-shadow: var(--glow); }
 .ctrl.play.xl { width: 64px; height: 64px; }
 .ctrl.play.xl svg { width: 28px; height: 28px; }
@@ -743,7 +745,7 @@ body.np-open .tabbar { visibility: hidden; pointer-events: none; }
 
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 .toast.is-info { background: rgba(18,24,40,.97); border-color: rgba(108,140,255,.4); color: #DCE3FF; }
-.toast.is-ok { background: rgba(16,30,22,.97); border-color: rgba(74,222,128,.35); color: #C9F5D8; }
+.toast.is-ok { display: none !important; }
 
 /* ───────────────────────────── Аккаунт ───────────────────────────── */
 

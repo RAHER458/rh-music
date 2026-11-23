@@ -129,6 +129,9 @@ const ICONS = {
 
 let toastTimer = null;
 function toast(message, kind = 'error') {
+  // Зелёные успех-уведомления убраны: визуальная обратная связь
+  // остаётся у кнопок и состояний, без всплывающих подписей.
+  if (kind === 'ok') return;
   toastEl.textContent = message;
   toastEl.className = 'toast';
   if (kind === 'info') toastEl.classList.add('is-info');
