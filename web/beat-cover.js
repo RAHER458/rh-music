@@ -1,14 +1,20 @@
 /* RH—MUSIC Beat Reactive Cover
-   Анализ реального аудиопотока через MediaStreamSource + AnalyserNode.
-   Не создаёт второй <audio>, не переподключает звук и не конфликтует с
-   Smart Mix / Neural AI, которые уже переподключают звук к Web Audio. */
+   Живая обложка, реагирующая на реальные удары.
+
+   Два безопасных пути:
+   1. Если браузер умеет captureStream() — AnalysisNode в реальном времени.
+   2. Иначе — OfflineAudioContext: трек декодируется и анализируется заранее,
+      карта ударов строится по фактическому аудио и проигрывается по audio.currentTime.
+
+   В обоих случаях НЕ вызывается createMediaElementSource(): Smart Mix и Neural AI
+   уже используют его на том же <audio>, второй вызов сломал бы их.
+   Звук не переподключается, громкость и воспроизведение не меняются. */
 (() => {
   'use strict';
 
   const audio = document.getElementById('audio');
   if (!audio) return;
-
-  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+  const reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   function covers() {
     const list = [];
@@ -23,23 +29,31 @@
 
   for (const el of covers()) el.setAttribute('data-beat-cover', '');
 
+  const pulseCache = new Map();
+  let pulseMap = null;          // { values: Float32Array, hopSeconds }
+  let loadedSrc = '';
+  let loadingSrc = '';
+  let raf = 0;
+  let running = false;
+
+  /* ── live path ───────────────────────────────────────────────── */
+
   let ctx = null;
   let source = null;
   let analyser = null;
   let freq = null;
-  let raf = 0;
-  let running = false;
-  let amplitude = 0;
-  let baseline = 0;
-  let deviation = 0;
   let history = [];
+  let baseline = 0;
   let lastBeat = 0;
+  let liveAmplitude = 0;
 
   function capture() {
     if (typeof audio.captureStream === 'function') return audio.captureStream();
     if (typeof audio.mozCaptureStream === 'function') return audio.mozCaptureStream();
     return null;
   }
+
+  const liveSupported = typeof audio.captureStream === 'function' || typeof audio.mozCaptureStream === 'function';
 
   function ensureGraph() {
     if (ctx) return true;
@@ -57,32 +71,25 @@
       freq = new Uint8Array(analyser.frequencyBinCount);
       return true;
     } catch {
-      ctx = null;
-      source = null;
-      analyser = null;
+      ctx = null; source = null; analyser = null;
       return false;
     }
   }
 
-  function bassEnergy() {
+  function liveLevel(now) {
     analyser.getByteFrequencyData(freq);
     const nyquist = ctx.sampleRate / 2;
     const maxBin = Math.max(2, Math.floor((250 / nyquist) * freq.length));
     let sum = 0;
     for (let i = 0; i < maxBin; i += 1) sum += freq[i];
-    return sum / maxBin / 255;
-  }
-
-  function detect(now) {
-    const energy = bassEnergy();
+    const energy = sum / maxBin / 255;
     baseline = baseline ? baseline * 0.94 + energy * 0.06 : energy;
     const diff = energy - baseline;
     history.push(diff);
     if (history.length > 90) history.shift();
     const mean = history.reduce((a, b) => a + b, 0) / history.length;
     const variance = history.reduce((a, b) => a + (b - mean) * (b - mean), 0) / history.length;
-    deviation = Math.sqrt(variance);
-    // Адаптивный порог: не зависит от абсолютной громкости трека.
+    const deviation = Math.sqrt(variance);
     const threshold = Math.max(0.025, deviation * 1.35);
     if (diff > threshold && now - lastBeat > 150) {
       lastBeat = now;
@@ -91,29 +98,125 @@
     return 0;
   }
 
+  /* ── offline path ────────────────────────────────────────────── */
+
+  function analyzeBuffer(buffer) {
+    const data = buffer.getChannelData(0);
+    const sampleRate = buffer.sampleRate;
+    const hopSeconds = 0.02;
+    const hop = Math.max(1, Math.round(sampleRate * hopSeconds));
+    const frames = Math.max(1, Math.floor(data.length / hop));
+    const energy = new Float32Array(frames);
+    for (let f = 0; f < frames; f += 1) {
+      let sum = 0;
+      const from = f * hop;
+      const to = Math.min(from + hop, data.length);
+      for (let i = from; i < to; i += 1) sum += data[i] * data[i];
+      energy[f] = Math.sqrt(sum / Math.max(1, to - from));
+    }
+    const impulses = new Float32Array(frames);
+    const window = [];
+    let base = 0;
+    let last = -999;
+    for (let f = 0; f < frames; f += 1) {
+      const value = energy[f];
+      base = base ? base * 0.96 + value * 0.04 : value;
+      const diff = value - base;
+      window.push(diff);
+      if (window.length > 45) window.shift();
+      const mean = window.reduce((a, b) => a + b, 0) / window.length;
+      const variance = window.reduce((a, b) => a + (b - mean) * (b - mean), 0) / window.length;
+      const deviation = Math.sqrt(variance);
+      const threshold = Math.max(0.012, deviation * 1.4);
+      if (diff > threshold && f - last >= 7) {
+        impulses[f] = Math.min(1, Math.max(0.2, diff / Math.max(0.04, base + deviation)));
+        last = f;
+      }
+    }
+    const values = new Float32Array(frames);
+    let level = 0;
+    for (let f = 0; f < frames; f += 1) {
+      level = Math.max(level * 0.88, impulses[f]);
+      values[f] = level;
+    }
+    return { values, hopSeconds };
+  }
+
+  async function loadPulseMap(src) {
+    if (!src) return null;
+    if (pulseCache.has(src)) return pulseCache.get(src);
+    if (loadingSrc === src) return null;
+    loadingSrc = src;
+    try {
+      const response = await fetch(src, { credentials: 'same-origin' });
+      if (!response.ok) return null;
+      const buffer = await response.arrayBuffer();
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      const tmp = new Ctx();
+      const decoded = await tmp.decodeAudioData(buffer.slice(0));
+      tmp.close?.();
+      const map = analyzeBuffer(decoded);
+      if (map.values.length) pulseCache.set(src, map);
+      return map;
+    } catch {
+      return null;
+    } finally {
+      if (loadingSrc === src) loadingSrc = '';
+    }
+  }
+
+  function currentSrc() {
+    return audio.currentSrc || audio.getAttribute('src') || '';
+  }
+
+  /* ── animation ───────────────────────────────────────────────── */
+
+  function applyScale(scale) {
+    const value = scale.toFixed(4);
+    for (const el of covers()) el.style.transform = `scale(${value})`;
+  }
+
   function reset() {
-    amplitude = 0;
     for (const el of covers()) el.style.transform = '';
   }
 
   function frame() {
     raf = 0;
-    if (!running || !analyser) return;
-    const now = performance.now();
-    const hit = detect(now);
-    if (hit) amplitude = Math.max(amplitude, 0.018 + hit * 0.06);
-    amplitude *= 0.9;
-    if (amplitude < 0.0005) amplitude = 0;
-    const scale = 1 + amplitude;
-    for (const el of covers()) el.style.transform = `scale(${scale.toFixed(4)})`;
-    if (!audio.paused && !audio.ended) raf = requestAnimationFrame(frame);
-    else { running = false; reset(); }
+    if (!running) return;
+    if (audio.paused || audio.ended) { running = false; reset(); return; }
+    let scale = 1;
+    if (liveSupported && analyser) {
+      const hit = liveLevel(performance.now());
+      if (hit) liveAmplitude = Math.max(liveAmplitude, 0.018 + hit * 0.06);
+      liveAmplitude *= 0.9;
+      scale = 1 + liveAmplitude;
+    } else if (pulseMap && pulseMap.values.length) {
+      const index = Math.min(pulseMap.values.length - 1, Math.max(0, Math.floor(audio.currentTime / pulseMap.hopSeconds)));
+      scale = 1 + (pulseMap.values[index] || 0) * 0.055;
+    }
+    applyScale(scale);
+    raf = requestAnimationFrame(frame);
+  }
+
+  async function prepareOffline() {
+    if (liveSupported) return;
+    const src = currentSrc();
+    if (!src || src === loadedSrc) return;
+    loadedSrc = src;
+    pulseMap = null;
+    const map = await loadPulseMap(src);
+    if (map && currentSrc() === src) pulseMap = map;
   }
 
   function start() {
     if (reduceMotion && reduceMotion.matches) return;
-    if (!ensureGraph()) return;
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    if (liveSupported) {
+      if (!ensureGraph()) return;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    } else {
+      prepareOffline();
+    }
     running = true;
     if (!raf) raf = requestAnimationFrame(frame);
   }
@@ -127,6 +230,7 @@
 
   audio.addEventListener('play', start);
   audio.addEventListener('playing', start);
+  audio.addEventListener('loadedmetadata', prepareOffline);
   audio.addEventListener('pause', stop);
   audio.addEventListener('ended', stop);
   audio.addEventListener('emptied', stop);

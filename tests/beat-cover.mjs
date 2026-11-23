@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
-const js = readFileSync(join(here, '../web/beat-cover.js'), 'utf8');
+const raw = readFileSync(join(here, '../web/beat-cover.js'), 'utf8');
+const js = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 const html = readFileSync(join(here, '../web/index.html'), 'utf8');
 const css = readFileSync(join(here, '../web/styles.css'), 'utf8');
 let passed = 0; const failures = [];
@@ -21,6 +22,12 @@ check('при паузе и конце трека масштаб сбрасыв�
 check('учитывается prefers-reduced-motion', /prefers-reduced-motion/.test(js) && /prefers-reduced-motion/.test(css));
 check('обложки помечаются data-beat-cover', /setAttribute\('data-beat-cover'/.test(js) && css.includes('[data-beat-cover]'));
 check('пульсация через transform scale', /scale\(\$\{scale/.test(js) || /scale\(/.test(js));
+
+
+check('есть offline-фолбэк для Safari без captureStream', /decodeAudioData/.test(js) && /analyzeBuffer/.test(js));
+check('карта ударов строится из фактического аудио и кешируется', /pulseCache/.test(js) && /fetch\(src/.test(js));
+check('анимация offline идёт по audio.currentTime', /audio\.currentTime \/ pulseMap\.hopSeconds/.test(js));
+check('нет фиксированного BPM-таймера или setInterval', !/setInterval/.test(js));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
