@@ -362,6 +362,7 @@
   function setUserScroll(view, value) {
     if (!view) return;
     view.userScroll = !!value;
+    if (value) view.lastManualAt = Date.now();
     if (view.returnEl) view.returnEl.hidden = !value;
   }
 
@@ -415,6 +416,11 @@
       view.activeNode = node || null;
       view.activeIndex = index;
       if (node) node.classList.add('is-active');
+      // Если пользователь давно не листал вручную, следующая строка снова
+      // включает автослежение — кнопку «К текущей строке» нажимать не нужно.
+      if (view.userScroll && Date.now() - (view.lastManualAt || 0) > 3500) {
+        setUserScroll(view, false);
+      }
       if (node && !view.userScroll && visible(view)) {
         scrollToActive(view, forceScroll ? 'auto' : 'smooth');
       }

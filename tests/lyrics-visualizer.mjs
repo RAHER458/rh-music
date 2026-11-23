@@ -39,5 +39,8 @@ check('на мобильном текст прокручивается прям�
 
 check('CSS не навязывает smooth для lyrics-scroll (ломает scrollTop в WebKit)', !/\.lyrics-scroll[^{]*\{[^}]*scroll-behavior:\s*smooth/.test(css));
 
+
+check('после ручного чтения автослежение возвращается само без кнопки', /lastManualAt/.test(engine) && /Date\.now\(\) - \(view\.lastManualAt \|\| 0\) > 3500/.test(engine));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
