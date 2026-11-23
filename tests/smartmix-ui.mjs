@@ -30,10 +30,10 @@ check('smartmix.js подключён после lyrics.js и до app.js',
   && html.indexOf('src="smartmix.js"') < html.indexOf('src="app.js'));
 check('в разметке по-прежнему один основной <audio>',
   (html.match(/<audio\b/g) || []).length === 1);
-check('кнопка микса есть в десктопном плеере',
-  /id="smartmixBtn"[^>]*data-action="smartmix-open"/.test(html));
-check('чип микса есть на мобильном экране',
-  /id="npSmartMix"[^>]*data-action="smartmix-open"/.test(html));
+check('кнопка эквалайзера есть в десктопном плеере',
+  /id="equalizerBtn"[^>]*data-action="equalizer-open"/.test(html));
+check('чип эквалайзера есть на мобильном экране',
+  /id="npEqualizer"[^>]*data-action="equalizer-open"/.test(html));
 
 check('движок создаёт второй элемент только для перехода',
   /global\.document\.createElement\('audio'\)/.test(mix));
@@ -43,8 +43,8 @@ check('по умолчанию Smart Mix выключен',
   /const DEFAULTS = \{ enabled: false, bars: 8, preload: true \}/.test(mix));
 check('есть пресеты 4/8/16 тактов',
   /\[4, 8, 16\]/.test(mix) && /\[4, 8, 16\]/.test(app));
-check('настройка встроена в страницу настроек',
-  /\$\{settings \? smartMixSettingsHTML\(\) : ''\}/.test(app));
+check('эквалайзер встроен в страницу настроек',
+  /\$\{settings \? equalizerSettingsHTML\(\) : ''\}/.test(app));
 check('есть карточка настроек и пресеты в UI',
   /smartmix-card/.test(app) && /smartmix-presets/.test(app));
 

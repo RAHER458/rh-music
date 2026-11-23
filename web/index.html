@@ -262,7 +262,7 @@
         <svg viewBox="0 0 24 24"><path d="M12 2.6a1 1 0 0 1 .95.68l1.9 5.6 5.6 1.9a1 1 0 0 1 0 1.9l-5.6 1.9-1.9 5.6a1 1 0 0 1-1.9 0l-1.9-5.6-5.6-1.9a1 1 0 0 1 0-1.9l5.6-1.9 1.9-5.6A1 1 0 0 1 12 2.6Z"/></svg>
         <span class="automix-label">RH AI</span>
       </button>
-      <button class="ctrl ghost smartmix-btn" id="smartmixBtn" type="button" data-action="smartmix-open" aria-label="Музыкальные переходы" aria-pressed="false">
+      <button class="ctrl ghost equalizer-btn" id="equalizerBtn" type="button" data-action="equalizer-open" aria-label="Эквалайзер" aria-pressed="false">
         <svg viewBox="0 0 24 24"><path d="M4 7a1 1 0 0 1 1-1h4.2a1 1 0 0 1 .9.55l3.4 6.8 2.1-3.8a1 1 0 0 1 .88-.55H19a1 1 0 1 1 0 2h-1.8l-2.7 4.9a1 1 0 0 1-1.77-.05L9.4 8H5a1 1 0 0 1-1-1Zm15 10a1 1 0 0 1-1-1v-1.2a1 1 0 1 1 2 0V16a1 1 0 0 1-1 1ZM4 17a1 1 0 0 1-1-1v-1a1 1 0 1 1 2 0v1a1 1 0 0 1-1 1Z"/></svg>
       </button>
       <button class="ctrl ghost lyrics-btn" id="playerLyrics" type="button" data-action="lyrics-toggle" aria-label="Текст песни" aria-pressed="false">
@@ -345,6 +345,9 @@
     </div>
 
     <div class="np-controls">
+      <button class="ctrl" id="npShuffle" type="button" aria-label="Перемешать">
+        <svg viewBox="0 0 24 24"><path d="M17 4.3a1 1 0 0 1 1.4 0l2.4 2.4a1 1 0 0 1 0 1.4l-2.4 2.4a1 1 0 1 1-1.4-1.4l.7-.7H16c-1.1 0-1.8.5-2.5 1.4l-.7.9-1.3-1.6.6-.8C13.2 6.9 14.4 6 16 6h1.7l-.7-.7a1 1 0 0 1 0-1.4ZM4 5.6h1.7c1.6 0 2.8.9 3.9 2l.6.8-1.3 1.6-.7-.9C7.5 8.2 6.8 7.6 5.7 7.6H4a1 1 0 0 1 0-2Zm13 8.7a1 1 0 0 1 1.4 0l2.4 2.4a1 1 0 0 1 0 1.4l-2.4 2.4a1 1 0 1 1-1.4-1.4l.7-.7H16c-1.6 0-2.8-.9-3.9-2l-.6-.8 1.3-1.6.7.9c.7.9 1.4 1.5 2.5 1.5h1.7l-.7-.7a1 1 0 0 1 0-1.4ZM4 14.4h1.7c1.1 0 1.8-.5 2.5-1.4l.7-.9 1.3 1.6-.6.8c-1.1 1.1-2.3 2-3.9 2H4a1 1 0 0 1 0-2Z"/></svg>
+      </button>
       <button class="ctrl" id="npPrev" type="button" aria-label="Предыдущий трек" disabled>
         <svg viewBox="0 0 24 24"><path d="M6 5a1 1 0 0 1 2 0v5.2l8.4-5.6A1.2 1.2 0 0 1 18 5.6v12.8a1.2 1.2 0 0 1-1.6 1L8 13.8V19a1 1 0 1 1-2 0V5Z"/></svg>
       </button>
@@ -371,10 +374,14 @@
       <button class="ctrl" id="npNext" type="button" aria-label="Следующий трек" disabled>
         <svg viewBox="0 0 24 24"><path d="M18 5a1 1 0 0 0-2 0v5.2L7.6 4.6A1.2 1.2 0 0 0 6 5.6v12.8a1.2 1.2 0 0 0 1.6 1L16 13.8V19a1 1 0 1 0 2 0V5Z"/></svg>
       </button>
+      <button class="ctrl" id="npRepeat" type="button" aria-label="Повтор">
+        <svg viewBox="0 0 24 24"><path d="M7 5h10a3 3 0 0 1 3 3v1a1 1 0 1 1-2 0V8a1 1 0 0 0-1-1H7a1 1 0 0 1 0-2Zm10 14H7a3 3 0 0 1-3-3v-1a1 1 0 1 1 2 0v1a1 1 0 0 0 1 1h10a1 1 0 1 1 0 2Z"/><path d="M5.3 6.3 8 9 5.3 11.7a1 1 0 1 1-1.4-1.4L5.6 9l-1.7-1.7a1 1 0 0 1 1.4-1.4Zm13.4 6.6a1 1 0 0 1 1.4 1.4L18.4 16l1.7 1.7a1 1 0 0 1-1.4 1.4L16 16.4l2.7-2.7Z"/></svg>
+        <span class="np-repeat-one">1</span>
+      </button>
     </div>
 
     <div class="np-extras">
-      <button class="icon-btn round np-extra" id="npSmartMix" type="button" data-action="smartmix-open" aria-label="Микс">
+      <button class="icon-btn round np-extra" id="npEqualizer" type="button" data-action="equalizer-open" aria-label="Эквалайзер">
         <svg viewBox="0 0 24 24"><path d="M4 6h7a3 3 0 1 1 0 2H4a1 1 0 1 1 0-2Zm10 10h6a1 1 0 1 1 0 2h-6a3 3 0 1 1 0-2Z"/><circle cx="14" cy="7" r="2.4"/><circle cx="10" cy="17" r="2.4"/></svg>
       </button>
       <button class="icon-btn round np-extra" id="npAiAutomix" type="button" data-action="ai-automix-toggle" aria-label="AutoMix RH AI">
@@ -382,13 +389,6 @@
       </button>
       <button class="icon-btn round np-extra" id="npLyricsBeta" type="button" data-action="lyrics-beta-toggle" aria-label="Текст">
         <svg viewBox="0 0 24 24"><path d="M5 4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3.6l2.9 2.8a1 1 0 0 0 1.7-.7V17H19a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5Zm2.2 4h9.6a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Zm0 4h6.2a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Z"/></svg>
-      </button>
-      <button class="icon-btn round np-extra" id="npShuffle" type="button" aria-label="Перемешать">
-        <svg viewBox="0 0 24 24"><path d="M17 4.3a1 1 0 0 1 1.4 0l2.4 2.4a1 1 0 0 1 0 1.4l-2.4 2.4a1 1 0 1 1-1.4-1.4l.7-.7H16c-1.1 0-1.8.5-2.5 1.4l-.7.9-1.3-1.6.6-.8C13.2 6.9 14.4 6 16 6h1.7l-.7-.7a1 1 0 0 1 0-1.4ZM4 5.6h1.7c1.6 0 2.8.9 3.9 2l.6.8-1.3 1.6-.7-.9C7.5 8.2 6.8 7.6 5.7 7.6H4a1 1 0 0 1 0-2Zm13 8.7a1 1 0 0 1 1.4 0l2.4 2.4a1 1 0 0 1 0 1.4l-2.4 2.4a1 1 0 1 1-1.4-1.4l.7-.7H16c-1.6 0-2.8-.9-3.9-2l-.6-.8 1.3-1.6.7.9c.7.9 1.4 1.5 2.5 1.5h1.7l-.7-.7a1 1 0 0 1 0-1.4ZM4 14.4h1.7c1.1 0 1.8-.5 2.5-1.4l.7-.9 1.3 1.6-.6.8c-1.1 1.1-2.3 2-3.9 2H4a1 1 0 0 1 0-2Z"/></svg>
-      </button>
-      <button class="icon-btn round np-extra np-repeat" id="npRepeat" type="button" aria-label="Повтор">
-        <svg viewBox="0 0 24 24"><path d="M7 5h10a3 3 0 0 1 3 3v1a1 1 0 1 1-2 0V8a1 1 0 0 0-1-1H7a1 1 0 0 1 0-2Zm10 14H7a3 3 0 0 1-3-3v-1a1 1 0 1 1 2 0v1a1 1 0 0 0 1 1h10a1 1 0 1 1 0 2Z"/><path d="M5.3 6.3 8 9 5.3 11.7a1 1 0 1 1-1.4-1.4L5.6 9l-1.7-1.7a1 1 0 0 1 1.4-1.4Zm13.4 6.6a1 1 0 0 1 1.4 1.4L18.4 16l1.7 1.7a1 1 0 0 1-1.4 1.4L16 16.4l2.7-2.7Z"/></svg>
-        <span class="np-repeat-one">1</span>
       </button>
       <button class="icon-btn round np-extra" id="npLike" type="button" aria-label="Сохранить в библиотеку">
         <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.6 5.2 5.2 0 0 1 21.3 12c-1.8 4.4-9.3 9-9.3 9Z"/></svg>
@@ -445,6 +445,7 @@
 <script src="lyrics.js"></script>
 <script src="lyrics-beta.js"></script>
 <script src="smartmix.js"></script>
+<script src="equalizer.js"></script>
 <script src="ai-automix/controller.js?v=release1"></script>
 <script src="app.js?v=release1"></script>
 <script src="beat-cover.js"></script>

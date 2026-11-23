@@ -1685,7 +1685,7 @@ async function renderAccount(options = {}) {
       <button class="sheet-item" type="button" data-action="logout">${ICONS.logout} Выйти из аккаунта</button>
     </div>
 
-    ${settings ? smartMixSettingsHTML() : ''}
+    ${settings ? equalizerSettingsHTML() : ''}
 
     <section class="section danger-zone">
       <div class="section-head">
@@ -1970,6 +1970,81 @@ function smartMixSettingsHTML() {
       </div>
       <div class="smartmix-card">${smartMixControlsHTML()}</div>
     </section>`;
+}
+
+function equalizerControlsHTML() {
+  const state = window.RH_EQUALIZER
+    ? window.RH_EQUALIZER.getState()
+    : { enabled: false, preset: 'flat', gains: new Array(10).fill(0), supported: null };
+  const labels = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
+  const presets = ['flat', 'pop', 'rock', 'jazz', 'classical', 'electronic', 'hiphop', 'vocal']
+    .map((name) => `<button class="chip${state.preset === name ? ' is-active' : ''}" type="button" data-action="equalizer-preset" data-preset="${name}" aria-pressed="${state.preset === name ? 'true' : 'false'}">${name === 'flat' ? 'Ровно' : name[0].toUpperCase() + name.slice(1)}</button>`)
+    .join('');
+  const bands = state.gains.map((gain, index) => `
+    <label class="eq-band">
+      <input type="range" min="-12" max="12" step="1" value="${Number(gain) || 0}" data-action="equalizer-band" data-band="${index}" aria-label="${labels[index]} Гц">
+      <span>${labels[index]}</span>
+    </label>`).join('');
+  const disabled = state.supported === false;
+  return `
+    <div class="equalizer-row">
+      <div class="equalizer-text">
+        <b>Эквалайзер</b>
+        <small data-equalizer-state>${disabled ? 'Недоступен: аудиограф занят' : state.enabled ? 'Включён' : 'Выключен'}</small>
+      </div>
+      <button class="btn-mini" type="button" data-action="equalizer-toggle" aria-pressed="${state.enabled ? 'true' : 'false'}" ${disabled ? 'disabled' : ''}>${state.enabled ? 'Выключить' : 'Включить'}</button>
+    </div>
+    <div class="equalizer-presets" role="group" aria-label="Пресеты эквалайзера">${presets}</div>
+    <div class="equalizer-bands" role="group" aria-label="Частотные полосы">${bands}</div>
+    <p class="hint" data-equalizer-hint>${disabled ? 'Другой аудиограф уже использует этот элемент. Перезагрузите страницу и включите эквалайзер первым.' : 'Настройте полосы вручную или выберите пресет: Pop, Rock, Jazz, Classical, Electronic, Hip-Hop, Vocal.'}</p>`;
+}
+
+function equalizerSettingsHTML() {
+  return `
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Эквалайзер</h2>
+          <p class="section-sub">Настройка звука под жанр или наушники</p>
+        </div>
+      </div>
+      <div class="equalizer-card">${equalizerControlsHTML()}</div>
+    </section>`;
+}
+
+function refreshEqualizerUI() {
+  const state = window.RH_EQUALIZER ? window.RH_EQUALIZER.getState() : null;
+  if (!state) return;
+  document.querySelectorAll('[data-action="equalizer-toggle"]').forEach((el) => {
+    el.textContent = state.enabled ? 'Выключить' : 'Включить';
+    el.setAttribute('aria-pressed', state.enabled ? 'true' : 'false');
+    el.disabled = state.supported === false;
+  });
+  document.querySelectorAll('[data-equalizer-state]').forEach((el) => {
+    el.textContent = state.supported === false ? 'Недоступен: аудиограф занят' : state.enabled ? 'Включён' : 'Выключен';
+  });
+  document.querySelectorAll('[data-action="equalizer-preset"]').forEach((el) => {
+    const active = el.dataset.preset === state.preset;
+    el.classList.toggle('is-active', active);
+    el.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-action="equalizer-band"]').forEach((el) => {
+    const index = Number(el.dataset.band);
+    el.value = String(state.gains[index] || 0);
+  });
+  for (const id of ['equalizerBtn', 'npEqualizer']) {
+    const button = $(id);
+    if (button) button.classList.toggle('is-on', state.enabled);
+  }
+}
+
+function openEqualizerSheet() {
+  sheetOpen(`
+    <h2 class="sheet-title">Эквалайзер</h2>
+    <p class="sheet-sub">Настройка звука: 10 полос, ручной режим и жанровые пресеты.</p>
+    <div class="equalizer-card">${equalizerControlsHTML()}</div>
+  `);
+  refreshEqualizerUI();
 }
 
 function refreshSmartMixUI() {
@@ -3648,6 +3723,12 @@ function route() {
 
 /* ───────────────────────────── события ───────────────────────────── */
 
+document.addEventListener('input', (event) => {
+  const band = event.target.closest && event.target.closest('[data-action="equalizer-band"]');
+  if (!band || !window.RH_EQUALIZER) return;
+  window.RH_EQUALIZER.setBand(Number(band.dataset.band), band.value);
+});
+
 document.addEventListener('click', async (event) => {
   const closeSheetTarget = event.target.closest('[data-close-sheet], [data-sheet-close]');
   if (closeSheetTarget) { sheetClose(); return; }
@@ -3705,10 +3786,9 @@ document.addEventListener('click', async (event) => {
     refreshAiAutoMixUI();
     return;
   }
-  if (action === 'smartmix-open') { openSmartMixSheet(); return; }
-  if (action === 'smartmix-toggle') { toggleSmartMix(); return; }
-  if (action === 'smartmix-bars') { setSmartMixBars(target.dataset.bars); return; }
-  if (action === 'smartmix-preload') { toggleSmartMixPreload(); return; }
+  if (action === 'equalizer-open') { openEqualizerSheet(); return; }
+  if (action === 'equalizer-toggle') { if (window.RH_EQUALIZER) window.RH_EQUALIZER.toggle(); refreshEqualizerUI(); return; }
+  if (action === 'equalizer-preset') { if (window.RH_EQUALIZER) window.RH_EQUALIZER.setPreset(target.dataset.preset); refreshEqualizerUI(); return; }
   if (action === 'lyrics-toggle') { toggleLyrics(); return; }
   if (action === 'lyrics-beta-toggle') {
     if (window.RH_LYRICS_BETA) window.RH_LYRICS_BETA.toggle();
@@ -4412,6 +4492,7 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   if (layout && layout.sidebarCollapsed) document.body.classList.add('sidebar-collapsed');
   restorePlayerState();
   initSmartMix();
+  if (window.RH_EQUALIZER) window.RH_EQUALIZER.init();
   initAiAutoMix();
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   updateTransport();
