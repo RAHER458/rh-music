@@ -28,7 +28,8 @@ check('при отсутствии активной строки прокрут�
 check('открытие панели вызывает syncNow после layout', /window\.setTimeout\(\(\) => syncNow\(true\), 0\)/.test(engine));
 
 
-check('ручной скролл сам возвращает автослежение у текущей строки', /view\.scroll\.addEventListener\('scroll'/.test(engine) && /setUserScroll\(view, false\)/.test(engine));
+check('ручной скролл отключает автослежение только при движении пальца', /addEventListener\('touchmove', manual/.test(engine) && !/addEventListener\('touchstart', manual/.test(engine));
+check('нет неожиданного возврата к середине при обычной прокрутке', !/view\.scroll\.addEventListener\('scroll', \(\) => \{/.test(engine));
 check('кнопка «Текст» на десктопе открывает вкладку текста', /if \(isDesktop\(\)\) toggleLyrics\(\);/.test(readFileSync(join(here, '../web/app.js'), 'utf8')));
 check('на десктопе текст крупнее и панель шире', css.includes('queue-panel.is-lyrics') && css.includes('font-size: 18.5px'));
 

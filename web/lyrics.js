@@ -607,19 +607,9 @@
       setUserScroll(view, true);
     };
     view.scroll.addEventListener('wheel', manual, { passive: true });
-    view.scroll.addEventListener('touchstart', manual, { passive: true });
-    // Ручной скролл возвращается к автослежению, когда пользователь сам
-    // подвёл текущую строку к центру — отдельная кнопка для этого не нужна.
-    view.scroll.addEventListener('scroll', () => {
-      if (!view.userScroll || view.programmatic || state.active < 0) return;
-      const node = view.nodes && view.nodes[state.active];
-      if (!node) return;
-      const host = view.scroll.getBoundingClientRect();
-      const rect = node.getBoundingClientRect();
-      const nodeCenter = rect.top + rect.height / 2;
-      const hostCenter = host.top + host.height / 2;
-      if (Math.abs(nodeCenter - hostCenter) < host.height * 0.24) setUserScroll(view, false);
-    }, { passive: true });
+    // Только реальное движение пальца отключает автослежение: одиночный тап
+    // по строке не должен оставлять панель в «ручном» режиме.
+    view.scroll.addEventListener('touchmove', manual, { passive: true });
     view.scroll.addEventListener('keydown', (event) => {
       if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) manual();
     });
