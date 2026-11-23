@@ -35,5 +35,8 @@ check('на десктопе текст крупнее и панель шире'
 
 check('на мобильном текст прокручивается прямым scrollTop, без сбоев smooth', /function isMobileUI\(\)/.test(engine) && /!isMobileUI\(\) \? 'smooth' : 'auto'/.test(engine));
 
+
+check('CSS не навязывает smooth для lyrics-scroll (ломает scrollTop в WebKit)', !/\.lyrics-scroll[^{]*\{[^}]*scroll-behavior:\s*smooth/.test(css));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

@@ -2360,7 +2360,6 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
   gap: 14px;
   padding-top: 18px;
   padding-bottom: 34%;
-  scroll-behavior: smooth;
 }
 .lyrics-pane.is-cinematic .lyrics-line,
 .lyrics-sheet-inner.is-cinematic .lyrics-line {
