@@ -2743,3 +2743,13 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
 }
 #npShuffle.is-on svg,
 #npRepeat.is-on svg { fill: #C9B8FF !important; }
+
+/* Кнопка «Текст» заблокирована, если синхронизированного текста нет */
+.np-extra.is-disabled,
+.np-extra:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+  filter: grayscale(.5);
+}
+.np-extra.is-disabled:hover,
+.np-extra:disabled:hover { background: var(--glass); color: var(--muted); }

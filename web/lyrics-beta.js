@@ -37,6 +37,20 @@
     return 'Синхронизированный текст для этой песни недоступен.';
   }
 
+  function updateButton(data) {
+    const button = document.getElementById('npLyricsBeta');
+    if (!button) return;
+    const synced = isSynced(data);
+    const loading = !!data && data.status === 'loading';
+    const blocked = !synced && !loading;
+    button.classList.toggle('is-disabled', blocked);
+    button.classList.toggle('is-on', active);
+    button.disabled = blocked;
+    button.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+    if (blocked) button.title = reasonFor(data);
+    else button.removeAttribute('title');
+  }
+
   function showNotice(message) {
     if (!art) return;
     if (!noticeEl) {
@@ -168,10 +182,8 @@
     active = !!value;
     art.classList.toggle('is-lyrics-beta', active);
     const button = document.getElementById('npLyricsBeta');
-    if (button) {
-      button.classList.toggle('is-on', active);
-      button.setAttribute('aria-pressed', String(active));
-    }
+    if (button) button.setAttribute('aria-pressed', String(active));
+    updateButton(window.RH_LYRICS && window.RH_LYRICS.getLine ? window.RH_LYRICS.getLine() : null);
     if (active) {
       ensureText();
       lastKey = '';
@@ -185,6 +197,7 @@
 
   if (window.RH_LYRICS && typeof window.RH_LYRICS.subscribe === 'function') {
     window.RH_LYRICS.subscribe((data) => {
+      updateButton(data);
       if (pendingEnable && isSynced(data)) {
         pendingEnable = false;
         window.clearTimeout(pendingTimer);

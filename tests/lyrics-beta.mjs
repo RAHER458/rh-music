@@ -34,5 +34,10 @@ check('при plain/none режим выключается и показывае
 check('предупреждение красиво анимировано', css.includes('.np-lyrics-notice') && css.includes('.np-lyrics-notice.is-visible'));
 check('предупреждение также уходит в общий toast', /rh-toast/.test(beta) && /rh-toast/.test(app));
 
+
+check('кнопка блокируется без синхронизированного текста', /function updateButton/.test(beta) && /button\.disabled = blocked/.test(beta) && /is-disabled/.test(beta));
+check('кнопка разблокируется, когда текст синхронизирован', /const synced = isSynced\(data\)/.test(beta) && /const blocked = !synced && !loading/.test(beta));
+check('заблокированная кнопка выглядит неактивной', css.includes('.np-extra.is-disabled') && css.includes('cursor: not-allowed'));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
