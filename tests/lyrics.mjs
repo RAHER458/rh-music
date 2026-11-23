@@ -536,6 +536,9 @@ function linesPayload(trackId, lines, extra = {}) {
 
 restoreFetch();
 
+
+check('синхронизация текста умеет брать время из деки AutoMix', /positionProvider/.test(engineSource) && /positionMs\(\) -/.test(engineSource));
+
 console.log(`\nПройдено: ${passed}, провалено: ${failures.length}`);
 if (failures.length) {
   console.log('Провалы:');

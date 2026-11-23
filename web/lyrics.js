@@ -438,7 +438,7 @@
 
   function applyActive(index, forceScroll) {
     state.active = index;
-    const ms = audio ? (audio.currentTime || 0) * 1000 - (Number(state.data && state.data.offsetMs) || 0) : 0;
+    const ms = positionMs() - (Number(state.data && state.data.offsetMs) || 0);
     for (const view of views) {
       if (view.activeIndex === index && !forceScroll) continue;
       if (view.activeNode) view.activeNode.classList.remove('is-active');
@@ -464,7 +464,7 @@
   function syncNow(forceScroll) {
     if (state.status !== 'ready' || !state.data || !audio) return;
     if (state.data.syncLevel !== 'line' && state.data.syncLevel !== 'word') return;
-    const ms = (audio.currentTime || 0) * 1000 - (Number(state.data.offsetMs) || 0);
+    const ms = positionMs() - (Number(state.data.offsetMs) || 0);
     const index = indexAt(state.data.lines, ms);
     if (index !== state.active || forceScroll) {
       applyActive(index, forceScroll);
