@@ -415,8 +415,11 @@
   function positionMs() {
     if (typeof state.positionProvider === 'function') {
       try {
-        const value = Number(state.positionProvider());
-        if (Number.isFinite(value)) return Math.max(0, value * 1000);
+        const raw = state.positionProvider();
+        if (raw !== null && raw !== undefined) {
+          const value = Number(raw);
+          if (Number.isFinite(value)) return Math.max(0, value * 1000);
+        }
       } catch { /* ignore */ }
     }
     return (audio && audio.currentTime ? audio.currentTime : 0) * 1000;

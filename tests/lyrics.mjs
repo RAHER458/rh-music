@@ -538,6 +538,7 @@ restoreFetch();
 
 
 check('синхронизация текста умеет брать время из деки AutoMix', /positionProvider/.test(engineSource) && /positionMs\(\) -/.test(engineSource));
+check('null от провайдера не обнуляет время текста', /raw !== null && raw !== undefined/.test(engineSource));
 
 console.log(`\nПройдено: ${passed}, провалено: ${failures.length}`);
 if (failures.length) {
