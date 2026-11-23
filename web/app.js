@@ -2628,6 +2628,12 @@ function initAiAutoMix() {
         $('npDur').textContent = fmt(deck.duration);
       }
       if (window.RH_LYRICS) window.RH_LYRICS.refresh();
+      // Страховка: если автопереход прошел, а текст еще от прошлого трека,
+      // подтягиваем слова для активной деки AutoMix.
+      const activeTrack = info.activeTrack;
+      if (activeTrack && (!S.current || String(activeTrack.id) !== String(S.current.id)) && window.RH_LYRICS) {
+        window.RH_LYRICS.setTrack(activeTrack);
+      }
       refreshAiAutoMixUI();
     }, 250);
   }
