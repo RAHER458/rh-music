@@ -2545,3 +2545,35 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
   .np-art.is-lyrics-beta .np-lyrics-beta-text { animation: none !important; }
   .np-lb-word { transition: none !important; }
 }
+
+/* ── Now Playing: без списка очереди, кнопки-иконки без текстовых подписей ── */
+.np-inner { overflow: hidden; }
+.np-art { width: min(74vw, 40dvh, 380px); }
+.np-extras {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+  margin-top: 2px;
+}
+.np-extra {
+  width: 42px;
+  height: 42px;
+  color: var(--muted);
+  background: var(--glass);
+  border: 1px solid var(--border);
+  transition: color var(--motion-ui) var(--ease-standard), background var(--motion-ui) var(--ease-standard), border-color var(--motion-ui) var(--ease-standard), transform var(--motion-micro) var(--ease-out);
+}
+.np-extra svg { width: 21px; height: 21px; fill: currentColor; }
+.np-extra:hover { color: var(--text); background: var(--glass-strong); }
+.np-extra:active { transform: scale(.94); }
+.np-extra.is-on {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(108, 140, 255, .3), rgba(168, 85, 247, .26));
+  border-color: rgba(139, 92, 246, .5);
+}
+@media (max-width: 720px) {
+  .np-extras { gap: 10px; }
+  .np-extra { width: 40px; height: 40px; }
+}

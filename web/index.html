@@ -374,14 +374,22 @@
     </div>
 
     <div class="np-extras">
-      <button class="chip" id="npSmartMix" type="button" data-action="smartmix-open">Микс</button>
-      <button class="chip" id="npAiAutomix" type="button" data-action="ai-automix-toggle">AutoMix RH AI</button>
-      <button class="chip" id="npLyricsBeta" type="button" data-action="lyrics-beta-toggle">Текст</button>
-      <button class="chip" id="npLike" type="button">В библиотеку</button>
-      <button class="chip" id="npAdd" type="button">В плейлист</button>
+      <button class="icon-btn round np-extra" id="npSmartMix" type="button" data-action="smartmix-open" aria-label="Микс">
+        <svg viewBox="0 0 24 24"><path d="M4 6h7a3 3 0 1 1 0 2H4a1 1 0 1 1 0-2Zm10 10h6a1 1 0 1 1 0 2h-6a3 3 0 1 1 0-2Z"/><circle cx="14" cy="7" r="2.4"/><circle cx="10" cy="17" r="2.4"/></svg>
+      </button>
+      <button class="icon-btn round np-extra" id="npAiAutomix" type="button" data-action="ai-automix-toggle" aria-label="AutoMix RH AI">
+        <svg viewBox="0 0 24 24"><path d="M12 3.2a1 1 0 0 1 .95.68l1.6 4.7 4.7 1.6a1 1 0 0 1 0 1.9l-4.7 1.6-1.6 4.7a1 1 0 0 1-1.9 0l-1.6-4.7-4.7-1.6a1 1 0 0 1 0-1.9l4.7-1.6 1.6-4.7A1 1 0 0 1 12 3.2Z"/></svg>
+      </button>
+      <button class="icon-btn round np-extra" id="npLyricsBeta" type="button" data-action="lyrics-beta-toggle" aria-label="Текст">
+        <svg viewBox="0 0 24 24"><path d="M5 4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3.6l2.9 2.8a1 1 0 0 0 1.7-.7V17H19a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5Zm2.2 4h9.6a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Zm0 4h6.2a1 1 0 1 1 0 2H7.2a1 1 0 1 1 0-2Z"/></svg>
+      </button>
+      <button class="icon-btn round np-extra" id="npLike" type="button" aria-label="Сохранить в библиотеку">
+        <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.6 5.2 5.2 0 0 1 21.3 12c-1.8 4.4-9.3 9-9.3 9Z"/></svg>
+      </button>
+      <button class="icon-btn round np-extra" id="npAdd" type="button" aria-label="В плейлист">
+        <svg viewBox="0 0 24 24"><path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5a1 1 0 0 1 1-1Z"/></svg>
+      </button>
     </div>
-
-    <div class="np-queue" id="npQueueList"></div>
   </div>
 </section>
 

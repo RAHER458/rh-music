@@ -3107,7 +3107,8 @@ function updateNpLike() {
   const saved = !!(S.current && S.libraryIds.has(String(S.current.id)));
   const button = $('npLike');
   if (button) {
-    button.textContent = saved ? 'В моей музыке' : 'В библиотеку';
+    button.innerHTML = saved ? ICONS.heartFilled : ICONS.heart;
+    button.setAttribute('aria-label', saved ? 'Убрать из библиотеки' : 'Сохранить в библиотеку');
     button.classList.toggle('is-on', saved);
   }
   const playerLike = $('playerLike');
