@@ -4555,7 +4555,7 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   if (layout && layout.sidebarCollapsed) document.body.classList.add('sidebar-collapsed');
   restorePlayerState();
   initSmartMix();
-  if (window.RH_EQUALIZER) window.RH_EQUALIZER.init();
+  if (window.RH_EQUALIZER) { window.RH_EQUALIZER.init(); refreshEqualizerUI(); }
   initAiAutoMix();
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
   updateTransport();

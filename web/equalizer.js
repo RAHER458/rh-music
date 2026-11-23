@@ -112,9 +112,11 @@
     bands: BANDS.slice(),
     presets: Object.keys(PRESETS),
     init() {
-      // Не строим граф до жеста пользователя: AudioContext в suspended
-      // состоянии глушит звук. Если эквалайзер был включён ранее, он
-      // подключится при первом воспроизведении.
+      // Не подключаем граф автоматически при загрузке: AudioContext в
+      // suspended состоянии глушит звук. Пользователь включает эквалайзер
+      // вручную уже во время воспроизведения.
+      state.enabled = false;
+      persist();
       return state.supported;
     },
     enable,
