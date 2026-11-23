@@ -295,6 +295,10 @@
 
   /* ───────────────────────────── прокрутка ───────────────────────────── */
 
+  function isMobileUI() {
+    return document.documentElement && document.documentElement.dataset.ui === 'mobile';
+  }
+
   function visible(view) {
     return !!view.scroll && view.scroll.clientHeight > 0 && view.scroll.offsetParent !== null;
   }
@@ -309,7 +313,7 @@
     const nodeTop = (nodeRect.top - hostRect.top) + view.scroll.scrollTop;
     const top = nodeTop - view.scroll.clientHeight * 0.44 + nodeRect.height / 2;
     const target = Math.max(0, top);
-    const mode = behavior === 'smooth' && reducedMotion() ? 'auto' : behavior;
+    const mode = behavior === 'smooth' && !reducedMotion() && !isMobileUI() ? 'smooth' : 'auto';
     const before = view.scroll.scrollTop;
     view.programmatic = true;
     if (mode === 'auto') {

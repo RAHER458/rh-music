@@ -32,5 +32,8 @@ check('ручной скролл сам возвращает автослеже�
 check('кнопка «Текст» на десктопе открывает вкладку текста', /if \(isDesktop\(\)\) toggleLyrics\(\);/.test(readFileSync(join(here, '../web/app.js'), 'utf8')));
 check('на десктопе текст крупнее и панель шире', css.includes('queue-panel.is-lyrics') && css.includes('font-size: 18.5px'));
 
+
+check('на мобильном текст прокручивается прямым scrollTop, без сбоев smooth', /function isMobileUI\(\)/.test(engine) && /!isMobileUI\(\) \? 'smooth' : 'auto'/.test(engine));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
