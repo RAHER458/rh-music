@@ -31,6 +31,8 @@
     wordsController: null,
     wordCache: new Map(),
     lineListeners: new Set(),
+    positionProvider: null,
+    seekHandler: null,
   };
 
   const views = [];
@@ -410,6 +412,24 @@
     }
   }
 
+  function positionMs() {
+    if (typeof state.positionProvider === 'function') {
+      try {
+        const value = Number(state.positionProvider());
+        if (Number.isFinite(value)) return Math.max(0, value * 1000);
+      } catch { /* ignore */ }
+    }
+    return (audio && audio.currentTime ? audio.currentTime : 0) * 1000;
+  }
+
+  function seekTo(seconds) {
+    const target = Math.max(0, Number(seconds) || 0);
+    if (typeof state.seekHandler === 'function') {
+      try { state.seekHandler(target); return; } catch { /* ignore */ }
+    }
+    if (audio) { try { audio.currentTime = target; } catch { /* ignore */ } }
+  }
+
   function wordIndexFor(index, ms) {
     const line = state.data && state.data.lines[index];
     if (!line || !Array.isArray(line.words) || !line.words.length) return -1;
@@ -726,6 +746,13 @@
         syncLevel: state.data ? state.data.syncLevel : null,
         lines: state.data ? state.data.lines.length : 0,
       };
+    },
+    setPositionProvider(fn) {
+      state.positionProvider = typeof fn === 'function' ? fn : null;
+      if (state.status === 'ready') syncNow(true);
+    },
+    setSeekHandler(fn) {
+      state.seekHandler = typeof fn === 'function' ? fn : null;
     },
     subscribe(listener) {
       if (typeof listener !== 'function') return () => {};

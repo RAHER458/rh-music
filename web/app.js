@@ -1787,6 +1787,41 @@ function swipeCloses(dy, velocity, distance = 90, speed = 0.5) {
   return Number(velocity) >= speed && delta >= 24;
 }
 
+function bindDragToClose(container, handle, onClose, options = {}) {
+  if (!container || !handle) return;
+  const distance = Number(options.distance) || 90;
+  const speed = Number(options.speed) || 0.45;
+  let drag = null;
+  handle.addEventListener('pointerdown', (event) => {
+    if (event.button > 0) return;
+    drag = { id: event.pointerId, y: event.clientY, t: performance.now(), dy: 0 };
+    container.classList.add('is-dragging');
+    try { handle.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+  });
+  handle.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dy = Math.max(0, event.clientY - drag.y);
+    drag.dy = dy;
+    container.style.transform = dy ? `translateY(${dy}px)` : '';
+  }, { passive: true });
+  const end = (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const { dy, t, id } = drag;
+    drag = null;
+    container.classList.remove('is-dragging');
+    try { handle.releasePointerCapture(id); } catch { /* ignore */ }
+    const velocity = dy / Math.max(1, performance.now() - t);
+    if (swipeCloses(dy, velocity, distance, speed)) {
+      container.style.transform = 'translateY(110%)';
+      window.setTimeout(() => { container.style.transform = ''; onClose(); }, 170);
+    } else {
+      container.style.transform = '';
+    }
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
 function hideScrim() {
   scrim.classList.remove('is-open');
   setTimeout(() => { if (!S.sheetOpen && !S.drawerOpen && !S.npOpen) scrim.hidden = true; }, 260);
@@ -2506,6 +2541,25 @@ function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
 
 function initAiAutoMix() {
   if (!window.RH_AI_AUTOMIX) return;
+  if (window.RH_LYRICS) {
+    window.RH_LYRICS.setPositionProvider(() => {
+      const ai = window.RH_AI_AUTOMIX;
+      if (ai && typeof ai.ownsPlayback === 'function' && ai.ownsPlayback()) {
+        const state = ai.getState();
+        const deck = state && state.deckA;
+        if (deck && Number.isFinite(deck.time)) return deck.time;
+      }
+      return null;
+    });
+    window.RH_LYRICS.setSeekHandler((seconds) => {
+      const ai = window.RH_AI_AUTOMIX;
+      if (ai && typeof ai.ownsPlayback === 'function' && ai.ownsPlayback()) {
+        ai.seek(seconds);
+        return;
+      }
+      try { audio.currentTime = seconds; } catch { /* ignore */ }
+    });
+  }
   window.RH_AI_AUTOMIX.init({
     getState: () => {
       const ai = window.RH_AI_AUTOMIX;
@@ -2569,6 +2623,7 @@ function initAiAutoMix() {
         $('npCur').textContent = fmt(deck.time);
         $('npDur').textContent = fmt(deck.duration);
       }
+      if (window.RH_LYRICS) window.RH_LYRICS.refresh();
       refreshAiAutoMixUI();
     }, 250);
   }
@@ -3589,6 +3644,10 @@ function setLyricsPressed() {
 /* Свайп вниз по шапке слоя текста закрывает его; содержимое прокручивается
    свободно, поэтому жест живёт только на шапке и не конфликтует со скроллом. */
 let lyricsDrag = null;
+bindDragToClose($('nowPlaying'), $('npGrab'), () => openNowPlaying(false));
+bindDragToClose($('queuePanel'), $('queueGrab'), () => openQueuePanel(false));
+bindDragToClose($('drawer'), $('drawerGrab'), () => openDrawer(false));
+
 const lyricsSheetEl = $('lyricsSheet');
 if (lyricsSheetEl) {
   const head = lyricsSheetEl.querySelector('.lyrics-sheet-head');
@@ -4135,7 +4194,7 @@ $('npShuffle').addEventListener('click', toggleShuffle);
 $('npRepeat').addEventListener('click', cycleRepeat);
 $('repeat').addEventListener('click', cycleRepeat);
 $('npOpen').addEventListener('click', () => openNowPlaying(true));
-$('npClose').addEventListener('click', () => openNowPlaying(false));
+
 $('npQueue').addEventListener('click', () => toggleQueue(true));
 ['qpTabQueue', 'qpTabLyrics'].forEach((id) => {
   const tab = $(id);

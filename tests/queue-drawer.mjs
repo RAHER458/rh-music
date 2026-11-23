@@ -36,8 +36,8 @@ check('в разметке ровно два контейнера очереди
   && (html.match(/id="drawer"/g) || []).length === 1);
 check('правая панель скрыта атрибутом hidden', /id="queuePanel"[^>]*hidden/.test(html));
 check('шторка помечена aria-hidden', /id="drawer"[^>]*aria-hidden="true"/.test(html));
-check('у шторки есть крестик с делегированным действием',
-  /id="drawerClose"[^>]*data-action="drawer-close"/.test(html));
+check('у шторки есть слайдер закрытия',
+  /id="drawerGrab"/.test(html) && /bindDragToClose\(\$\('drawer'\), \$\('drawerGrab'\)/.test(app));
 
 /* ───────────────── CSS: скрытое состояние структурное ───────────────── */
 
@@ -120,7 +120,7 @@ for (const [name, re] of [
 check('шторка закрывается при переходе между разделами', /if \(S\.drawerOpen\) openDrawer\(false\);\s*\n\s*if \(path ===/.test(app.replace(/\n\s*\n/g, '\n')) || /if \(S\.drawerOpen\) openDrawer\(false\);/.test(app));
 check('шторка закрывается при переходе на десктопную ширину',
   /if \(isDesktop\(\) && S\.drawerOpen\) openDrawer\(false\);/.test(app));
-check('крестик шторки обрабатывается делегированно', /action === 'drawer-close'/.test(app));
+check('шторка закрывается жестом вниз', /bindDragToClose\(\$\('drawer'\), \$\('drawerGrab'\)/.test(app));
 check('нет дублирующей прямой привязки крестика шторки',
   !/\$\('drawerClose'\)\.addEventListener/.test(app));
 

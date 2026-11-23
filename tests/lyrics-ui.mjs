@@ -50,8 +50,8 @@ const desktopMarkup = html.slice(html.indexOf('id="queuePanel"'), html.indexOf('
 check('desktop: вкладки и текст живут в панели, а не вместо неё',
   desktopMarkup.includes('qpTabLyrics') && desktopMarkup.includes('lyricsPane') && desktopMarkup.includes('qpList'));
 check('desktop: кнопка возврата к строке есть', /id="lyricsReturnDesktop"/.test(html));
-check('mobile: у слоя есть закрытие и возврат к строке',
-  /id="lyricsCloseMobile"/.test(html) && /id="lyricsReturnMobile"/.test(html));
+check('mobile: слой закрывается слайдером и имеет возврат к строке',
+  /lyrics-sheet-grip/.test(html) && /id="lyricsReturnMobile"/.test(html) && !/id="lyricsCloseMobile"/.test(html));
 check('mobile: слой не перекрывает разметку очереди (отдельная секция)',
   html.indexOf('id="lyricsSheet"') < html.indexOf('id="drawer"'));
 

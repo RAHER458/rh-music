@@ -2633,3 +2633,31 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
 @media (max-width: 520px) {
   .eq-band input[type="range"] { height: 104px; }
 }
+
+/* ── Слайдер закрытия вместо крестиков ─────────────────────────── */
+.drag-handle {
+  display: block;
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .26);
+  touch-action: none;
+  cursor: grab;
+  flex: none;
+}
+.drag-handle:active { cursor: grabbing; }
+.np-top, .queue-panel-head, .drawer-head { position: relative; }
+.np-top .drag-handle,
+.queue-panel-head .drag-handle {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  transform: translateX(-50%);
+}
+.drawer-head .drag-handle {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  transform: translateX(-50%);
+}
+.is-dragging { transition: none !important; }
