@@ -3704,7 +3704,11 @@ document.addEventListener('click', async (event) => {
   if (action === 'smartmix-bars') { setSmartMixBars(target.dataset.bars); return; }
   if (action === 'smartmix-preload') { toggleSmartMixPreload(); return; }
   if (action === 'lyrics-toggle') { toggleLyrics(); return; }
-  if (action === 'lyrics-open') { openLyricsSheet(true); return; }
+  if (action === 'lyrics-open') {
+    if (isDesktop()) toggleLyrics();
+    else openLyricsSheet(true);
+    return;
+  }
   if (action === 'lyrics-close') { openLyricsSheet(false); return; }
   if (action === 'drawer-close') { openDrawer(false); return; }
 

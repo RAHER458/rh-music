@@ -2450,3 +2450,8 @@ body[data-ai-ring-done="1"] .np-play-wrap > .np-play-ring {
 @media (prefers-reduced-motion: reduce) {
   [data-beat-cover] { transform: none !important; }
 }
+
+/* Lyrics: комфортная ширина и крупный текст на десктопе */
+html[data-ui="desktop"] .queue-panel.is-lyrics { width: min(88vw, 430px); }
+html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line { font-size: 16.5px; }
+html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-size: 18.5px; }

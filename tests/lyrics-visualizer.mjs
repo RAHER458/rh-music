@@ -27,5 +27,10 @@ check('позиция строки считается по rect, а не offsetT
 check('при отсутствии активной строки прокрутка возвращается к началу', /if \(index < 0\) view\.scroll\.scrollTop = 0;/.test(engine));
 check('открытие панели вызывает syncNow после layout', /window\.setTimeout\(\(\) => syncNow\(true\), 0\)/.test(engine));
 
+
+check('ручной скролл сам возвращает автослежение у текущей строки', /view\.scroll\.addEventListener\('scroll'/.test(engine) && /setUserScroll\(view, false\)/.test(engine));
+check('кнопка «Текст» на десктопе открывает вкладку текста', /if \(isDesktop\(\)\) toggleLyrics\(\);/.test(readFileSync(join(here, '../web/app.js'), 'utf8')));
+check('на десктопе текст крупнее и панель шире', css.includes('queue-panel.is-lyrics') && css.includes('font-size: 18.5px'));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
