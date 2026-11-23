@@ -21,5 +21,11 @@ check('не создаётся второй аудиоплеер', !/new Audio\(
 check('reduced motion отключает переходы', /prefers-reduced-motion: reduce/.test(css) && /is-cinematic \.lyrics-word/.test(css));
 check('обычный plain-текст не выдаётся за синхронизированный', /syncLevel === 'plain'/.test(engine) && /Без синхронизации/.test(engine));
 
+
+check('текст всегда начинается с начала списка', /view\.scroll\.scrollTop = 0;/.test(engine));
+check('позиция строки считается по rect, а не offsetTop', /getBoundingClientRect\(\)/.test(engine) && /nodeRect\.top - hostRect\.top/.test(engine));
+check('при отсутствии активной строки прокрутка возвращается к началу', /if \(index < 0\) view\.scroll\.scrollTop = 0;/.test(engine));
+check('открытие панели вызывает syncNow после layout', /window\.setTimeout\(\(\) => syncNow\(true\), 0\)/.test(engine));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

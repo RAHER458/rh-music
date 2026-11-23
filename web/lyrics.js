@@ -210,6 +210,7 @@
   function renderView(view) {
     if (!view || !view.scroll) return;
     view.scroll.textContent = '';
+    view.scroll.scrollTop = 0;
     view.nodes = [];
     view.activeNode = null;
     view.activeWordNode = null;
@@ -301,7 +302,12 @@
   function scrollToActive(view, behavior) {
     const node = view.nodes && view.nodes[state.active];
     if (!node) return;
-    const top = node.offsetTop - view.scroll.clientHeight * 0.44 + node.offsetHeight / 2;
+    // offsetTop зависит от ближайшего позиционированного предка и на скрытых
+    // панелях даёт скачок «в середину». Считаем позицию от фактического rect.
+    const nodeRect = node.getBoundingClientRect();
+    const hostRect = view.scroll.getBoundingClientRect();
+    const nodeTop = (nodeRect.top - hostRect.top) + view.scroll.scrollTop;
+    const top = nodeTop - view.scroll.clientHeight * 0.44 + nodeRect.height / 2;
     const target = Math.max(0, top);
     const mode = behavior === 'smooth' && reducedMotion() ? 'auto' : behavior;
     const before = view.scroll.scrollTop;
@@ -377,6 +383,7 @@
     for (const view of views) {
       if (view.activeIndex === index && !forceScroll) continue;
       if (view.activeNode) view.activeNode.classList.remove('is-active');
+      if (index < 0) view.scroll.scrollTop = 0;
       const node = view.nodes && view.nodes[index];
       view.activeNode = node || null;
       view.activeIndex = index;
@@ -648,7 +655,10 @@
       for (const view of views) {
         if (view.returnEl) view.returnEl.hidden = !view.userScroll;
       }
-      if (state.status === 'ready') syncNow(true);
+      if (state.status === 'ready') {
+        // Панель могла только что открыться: даём layout и затем ведём к строке.
+        window.setTimeout(() => syncNow(true), 0);
+      }
     },
     scrollToActive() {
       for (const view of views) {
