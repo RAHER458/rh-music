@@ -18,6 +18,7 @@ function check(name, condition, extra = '') {
 
 const html = readFileSync(join(here, '../web/index.html'), 'utf8');
 const app = readFileSync(join(here, '../web/app.js'), 'utf8');
+const controllerSrc = readFileSync(join(here, '../web/ai-automix/controller.js'), 'utf8');
 const controller = readFileSync(join(here, '../web/ai-automix/controller.js'), 'utf8');
 const engineSource = readFileSync(join(here, '../web/ai-automix/automix-engine.js'), 'utf8');
 
@@ -182,6 +183,9 @@ check('resume reports playing and resumes audio', ai2.getState().paused === fals
 ai2._state.currentEntry = { track: { id: 'x' } };
 ai2._state.preparing = true;
 check('preparing is exposed without faking phase', ai2.getState().preparing === true);
+
+
+check('DEGRADED автоматически выключает AutoMix', /phase === 'DEGRADED' && previous !== 'DEGRADED'/.test(controllerSrc) && /if \(state\.phase === 'DEGRADED'\) disable\(\)/.test(controllerSrc));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

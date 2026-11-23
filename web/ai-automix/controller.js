@@ -59,9 +59,17 @@
   }
 
   function setPhase(phase, step) {
+    const previous = state.phase;
     state.phase = phase;
     if (typeof step === 'number') state.step = step;
     emit();
+    // DEGRADED — не рабочее состояние AutoMix: выключаем режим, чтобы
+    // пользователь мог запустить его заново одной кнопкой.
+    if (phase === 'DEGRADED' && previous !== 'DEGRADED' && previous !== 'OFF') {
+      window.setTimeout(() => {
+        if (state.phase === 'DEGRADED') disable();
+      }, 0);
+    }
   }
 
   function fail(message) {

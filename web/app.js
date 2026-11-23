@@ -2930,6 +2930,8 @@ function updateTransport() {
   nowPlaying.classList.toggle('is-playing', S.playing);
   nowPlaying.classList.toggle('is-loading', S.loading);
   $('shuffle').classList.toggle('is-on', S.shuffle);
+  const npShuffle = $('npShuffle'); if (npShuffle) npShuffle.classList.toggle('is-on', S.shuffle);
+  const npRepeat = $('npRepeat'); if (npRepeat) { npRepeat.classList.toggle('is-on', S.repeat !== 'off'); npRepeat.classList.toggle('is-one', S.repeat === 'one'); }
   ['repeat'].forEach((id) => {
     const el = $(id);
     el.classList.toggle('is-on', S.repeat !== 'off');
@@ -4046,6 +4048,8 @@ $('npNext').addEventListener('click', () => nextTrack(false));
 $('prev').addEventListener('click', prevTrack);
 $('npPrev').addEventListener('click', prevTrack);
 $('shuffle').addEventListener('click', toggleShuffle);
+$('npShuffle').addEventListener('click', toggleShuffle);
+$('npRepeat').addEventListener('click', cycleRepeat);
 $('repeat').addEventListener('click', cycleRepeat);
 $('npOpen').addEventListener('click', () => openNowPlaying(true));
 $('npClose').addEventListener('click', () => openNowPlaying(false));

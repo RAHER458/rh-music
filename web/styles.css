@@ -2555,7 +2555,8 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
   align-items: center;
   gap: 14px;
   flex-wrap: nowrap;
-  margin-top: 2px;
+  margin-top: auto;
+  padding-bottom: max(4px, env(safe-area-inset-bottom));
 }
 .np-extra {
   width: 42px;
@@ -2565,7 +2566,19 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
   border: 1px solid var(--border);
   transition: color var(--motion-ui) var(--ease-standard), background var(--motion-ui) var(--ease-standard), border-color var(--motion-ui) var(--ease-standard), transform var(--motion-micro) var(--ease-out);
 }
+.np-extra { position: relative; }
 .np-extra svg { width: 21px; height: 21px; fill: currentColor; }
+.np-repeat-one {
+  display: none;
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  color: currentColor;
+}
+.np-repeat.is-one .np-repeat-one { display: block; }
 .np-extra:hover { color: var(--text); background: var(--glass-strong); }
 .np-extra:active { transform: scale(.94); }
 .np-extra.is-on {
