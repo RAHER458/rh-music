@@ -1,0 +1,25 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const here = dirname(fileURLToPath(import.meta.url));
+const engine = readFileSync(join(here, '../web/lyrics.js'), 'utf8');
+const css = readFileSync(join(here, '../web/styles.css'), 'utf8');
+let passed = 0; const failures = [];
+const check = (name, ok) => { if (ok) passed++; else { failures.push(name); console.error('  ✗', name); } };
+console.log('RH—MUSIC · Lyrics Visualizer tests\n');
+
+check('вкладка «Текст» получает кинематографический режим', /is-cinematic/.test(engine) && css.includes('.lyrics-pane.is-cinematic'));
+check('динамический фон из обложки', /lyrics-atmosphere/.test(engine) && /lyrics-atmosphere/.test(css) && /backdrop|blur\(64px\)/.test(css));
+check('активная строка — визуальный центр', /\.lyrics-pane\.is-cinematic \.lyrics-line\.is-active/.test(css));
+check('прошлые и будущие строки приглушены и размыты', /\.is-prev/.test(css) && /\.is-next/.test(css) && css.includes('filter: blur(2px)'));
+check('пословная прогрессивная заливка через --p', /setProperty\('--p'/.test(engine) && /var\(--p, 0\)/.test(css));
+check('прошлые слова остаются подсвеченными', /is-done/.test(engine) && css.includes('.lyrics-word.is-done'));
+check('активное слово увеличивается и светится', /\.lyrics-word\.is-active/.test(css) && css.includes('drop-shadow'));
+check('паузы и инструментал отмечаются', /is-instrumental/.test(engine) && css.includes('content: "♪"'));
+check('синхронизация идёт от audio.currentTime', /audio\.currentTime/.test(engine));
+check('не создаётся второй аудиоплеер', !/new Audio\(|createElement\('audio'\)/.test(engine));
+check('reduced motion отключает переходы', /prefers-reduced-motion: reduce/.test(css) && /is-cinematic \.lyrics-word/.test(css));
+check('обычный plain-текст не выдаётся за синхронизированный', /syncLevel === 'plain'/.test(engine) && /Без синхронизации/.test(engine));
+
+console.log(`\n${passed} passed, ${failures.length} failed`);
+if (failures.length) process.exit(1);

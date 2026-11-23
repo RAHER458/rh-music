@@ -166,6 +166,47 @@
     }
   }
 
+  function ensureAtmosphere(view) {
+    if (!view || !view.scroll || !view.scroll.parentElement) return null;
+    let el = view.scroll.parentElement.querySelector(':scope > .lyrics-atmosphere');
+    if (!el) {
+      el = createElement('div', 'lyrics-atmosphere');
+      view.scroll.parentElement.insertBefore(el, view.scroll);
+    }
+    view.atmosphere = el;
+    return el;
+  }
+
+  function updateAtmosphere(track) {
+    for (const view of views) {
+      const el = ensureAtmosphere(view);
+      if (!el) continue;
+      if (track && track.cover) {
+        el.style.backgroundImage = `url("${String(track.cover).replace(/"/g, '')}")`;
+        el.classList.add('has-art');
+      } else {
+        el.style.backgroundImage = '';
+        el.classList.remove('has-art');
+      }
+    }
+  }
+
+  function applyCinematic(index) {
+    for (const view of views) {
+      if (!view.nodes) continue;
+      view.nodes.forEach((node, i) => {
+        node.classList.toggle('is-prev', index >= 0 && i < index);
+        node.classList.toggle('is-next', index >= 0 && i > index);
+      });
+      const host = view.scroll && view.scroll.parentElement;
+      if (host) {
+        host.classList.add('is-cinematic');
+        host.classList.toggle('is-instrumental', index < 0);
+      }
+      if (view.atmosphere) view.atmosphere.classList.toggle('is-active', index >= 0);
+    }
+  }
+
   function renderView(view) {
     if (!view || !view.scroll) return;
     view.scroll.textContent = '';
@@ -175,6 +216,9 @@
     view.activeIndex = -1;
     view.userScroll = false;
     if (view.returnEl) view.returnEl.hidden = true;
+    const host = view.scroll.parentElement;
+    if (host) host.classList.add('is-cinematic');
+    ensureAtmosphere(view);
 
     if (state.status === 'loading') {
       view.scroll.appendChild(skeleton());
@@ -229,6 +273,8 @@
         view.nodes.push(node);
       });
       view.scroll.appendChild(fragment);
+      updateAtmosphere(state.track);
+      applyCinematic(-1);
       setMeta(view, '');
       return;
     }
@@ -286,7 +332,7 @@
     if (view.returnEl) view.returnEl.hidden = !value;
   }
 
-  function applyWord(index, wordIndex) {
+  function applyWord(index, wordIndex, ms) {
     state.activeWord = wordIndex;
     for (const view of views) {
       if (view.activeWordNode) view.activeWordNode.classList.remove('is-active');
@@ -295,6 +341,27 @@
       const node = nodes && nodes[wordIndex] ? nodes[wordIndex] : null;
       view.activeWordNode = node;
       if (node) node.classList.add('is-active');
+      const line = state.data && state.data.lines[index];
+      if (line && Array.isArray(line.words)) {
+        line.words.forEach((word, i) => {
+          const target = nodes && nodes[i];
+          if (!target) return;
+          const at = Number.isFinite(ms) ? ms : 0;
+          if (at >= word.end) {
+            target.classList.add('is-done');
+            target.classList.remove('is-active');
+            target.style.setProperty('--p', '1');
+          } else if (at >= word.t) {
+            const progress = Math.max(0, Math.min(1, (at - word.t) / Math.max(1, word.end - word.t)));
+            target.classList.remove('is-done');
+            if (i !== wordIndex) target.classList.remove('is-active');
+            target.style.setProperty('--p', progress.toFixed(3));
+          } else {
+            target.classList.remove('is-active', 'is-done');
+            target.style.setProperty('--p', '0');
+          }
+        });
+      }
     }
   }
 
@@ -318,7 +385,8 @@
         scrollToActive(view, forceScroll ? 'auto' : 'smooth');
       }
     }
-    applyWord(index, wordIndexFor(index, ms));
+    applyWord(index, wordIndexFor(index, ms), ms);
+    applyCinematic(index);
   }
 
   function syncNow(forceScroll) {
@@ -331,7 +399,7 @@
       return;
     }
     const wordIndex = wordIndexFor(index, ms);
-    if (wordIndex !== state.activeWord) applyWord(index, wordIndex);
+    applyWord(index, wordIndex, ms);
   }
 
   /* ───────────────────────────── загрузка ───────────────────────────── */
@@ -355,6 +423,7 @@
     state.error = null;
     state.status = 'loading';
     renderAll();
+    updateAtmosphere(track);
 
     const cached = state.cache.get(id);
     if (cached && !force) {
@@ -409,6 +478,7 @@
     state.active = -1;
     state.activeWord = -1;
     renderAll();
+    updateAtmosphere(null);
   }
 
   /* ───────────────────────────── слова (word-level) ───────────────────────────── */

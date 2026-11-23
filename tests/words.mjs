@@ -308,7 +308,7 @@ function makeElement(tag = 'div') {
   const el = {
     tagName: String(tag).toUpperCase(),
     dataset: {},
-    style: {},
+    style: { props: {}, setProperty(n, v) { this.props[n] = String(v); }, getPropertyValue(n) { return this.props[n] || ''; } },
     hidden: false,
     offsetTop: 0,
     offsetHeight: 22,
