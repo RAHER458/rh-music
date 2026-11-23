@@ -3786,6 +3786,11 @@ function route() {
 
 /* ───────────────────────────── события ───────────────────────────── */
 
+window.addEventListener('rh-toast', (event) => {
+  const detail = event && event.detail ? event.detail : {};
+  if (detail.message) toast(detail.message, detail.kind || 'info');
+});
+
 document.addEventListener('input', (event) => {
   const band = event.target.closest && event.target.closest('[data-action="equalizer-band"]');
   if (!band || !window.RH_EQUALIZER) return;

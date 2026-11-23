@@ -28,5 +28,11 @@ check('текущая строка входит с blur/сдвигом/масш�
 check('RAF работает только при воспроизведении', /requestAnimationFrame\(tick\)/.test(beta) && /audio\.paused/.test(beta) && /audio\.addEventListener\('pause', stopLoop\)/.test(beta));
 check('reduced motion отключает анимацию', /prefers-reduced-motion: reduce/.test(css) && /np-lb-line\.is-entering \{ animation: none/.test(css));
 
+
+check('режим не включается без синхронизированного текста', /function isSynced/.test(beta) && /if \(isSynced\(data\)\) \{ setActive\(true\); return; \}/.test(beta) && /showNotice\(reasonFor\(data\)\);/.test(beta));
+check('при plain/none режим выключается и показывается предупреждение', /if \(active && data && data.status === 'ready' && !isSynced\(data\)\)/.test(beta) && /showNotice\(reasonFor\(data\)\)/.test(beta));
+check('предупреждение красиво анимировано', css.includes('.np-lyrics-notice') && css.includes('.np-lyrics-notice.is-visible'));
+check('предупреждение также уходит в общий toast', /rh-toast/.test(beta) && /rh-toast/.test(app));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

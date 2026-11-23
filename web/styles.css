@@ -2669,3 +2669,42 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
   transform: translateX(-50%);
 }
 .is-dragging { transition: none !important; }
+
+/* ── «Текст»: предупреждение об отсутствии синхронизации ───────── */
+.np-lyrics-notice {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 18px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(20, 24, 40, .97);
+  border: 1px solid rgba(139, 92, 246, .45);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  opacity: 0;
+  transform: translateY(16px);
+  pointer-events: none;
+  transition: opacity .32s var(--ease-out, ease), transform .32s var(--ease-out, ease);
+}
+.np-lyrics-notice.is-visible { opacity: 1; transform: none; }
+.np-ln-icon {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(108, 140, 255, .4), rgba(168, 85, 247, .35));
+  font-size: 14px;
+}
+.np-ln-text { min-width: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .np-lyrics-notice { transition: none; }
+}
