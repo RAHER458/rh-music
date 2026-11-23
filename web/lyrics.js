@@ -156,22 +156,33 @@
     return box;
   }
 
-  function emitLine() {
+  function lyricPayload() {
     const data = state.data;
     const index = state.active;
     const line = data && Array.isArray(data.lines) && index >= 0 ? data.lines[index] : null;
     const next = data && Array.isArray(data.lines) ? data.lines[index + 1] : null;
-    const payload = {
+    const words = line && Array.isArray(line.words) && line.words.length
+      ? line.words.map((word) => ({ text: word.text, t: Number(word.t) || 0, end: Number(word.end) || Number(word.t) || 0 }))
+      : null;
+    return {
       status: state.status,
       syncLevel: data ? data.syncLevel : null,
       index,
       text: line ? line.text : '',
       nextText: next ? next.text : '',
+      words,
+      lineStart: line ? Number(line.t) || 0 : 0,
+      lineEnd: line ? (Number(line.end) || (next ? Number(next.t) : 0)) : 0,
+      offsetMs: data ? Number(data.offsetMs) || 0 : 0,
       plain: data ? data.plain : null,
       instrumental: !!(data && (data.syncLevel === 'instrumental' || data.instrumental)),
       error: state.error || null,
       track: state.track,
     };
+  }
+
+  function emitLine() {
+    const payload = lyricPayload();
     for (const listener of state.lineListeners) {
       try { listener(payload); } catch { /* ignore */ }
     }
@@ -723,11 +734,7 @@
       return () => state.lineListeners.delete(listener);
     },
     getLine() {
-      const data = state.data;
-      const index = state.active;
-      const line = data && Array.isArray(data.lines) && index >= 0 ? data.lines[index] : null;
-      const next = data && Array.isArray(data.lines) ? data.lines[index + 1] : null;
-      return { status: state.status, syncLevel: data ? data.syncLevel : null, index, text: line ? line.text : '', nextText: next ? next.text : '', plain: data ? data.plain : null, error: state.error || null, track: state.track };
+      return lyricPayload();
     },
     _indexAt: indexAt,
   };

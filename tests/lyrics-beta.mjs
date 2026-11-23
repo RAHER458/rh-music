@@ -22,5 +22,11 @@ check('поддерживаются plain, loading, error, instrumental', /syncL
 check('не создаётся второй аудиоплеер', !/new Audio\(|createElement\('audio'\)/.test(beta));
 check('не дублируется загрузка текста', !/\/api\/lyrics/.test(beta));
 
+
+check('слова плавно заливаются через --p', /setProperty\('--p'/.test(beta) && css.includes('.np-lb-word') && css.includes('var(--p, 0)'));
+check('текущая строка входит с blur/сдвигом/масштабом', /npLbIn/.test(css) && /filter: blur\(8px\)/.test(css) && /is-entering/.test(beta));
+check('RAF работает только при воспроизведении', /requestAnimationFrame\(tick\)/.test(beta) && /audio\.paused/.test(beta) && /audio\.addEventListener\('pause', stopLoop\)/.test(beta));
+check('reduced motion отключает анимацию', /prefers-reduced-motion: reduce/.test(css) && /np-lb-line\.is-entering \{ animation: none/.test(css));
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
