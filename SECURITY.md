@@ -15,7 +15,7 @@
 | 5 | Параметризованный SQL | ✅ | Только `prepare().bind()`, проверено по всем worker-модулям |
 | 6 | XSS-экранирование | ✅ | `esc()` для всего пользовательского текста, CSP без `unsafe-inline` для скриптов |
 | 7 | CSRF | ✅ | `X-RH-Request` + Origin + `Sec-Fetch-Site`; HTTPS для мутаций |
-| 8 | HTTPS везде | ⚠️ | Worker перенаправляет HTTP→HTTPS; для Pages нужно включить «Always Use HTTPS» (см. остаточные риски) |
+| 8 | HTTPS везде | ⚠️ | HSTS + клиентский редирект http→https; для pages.dev настройка Always Use HTTPS недоступна через API (см. остаточные риски) |
 | 9 | Заголовки безопасности | ✅ | HSTS, CSP, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy, COOP/CORP |
 | 10 | CORS только свой домен | ✅ | Только `SITE_URL` и `ALLOWED_ORIGINS`; wildcard убран |
 | 11 | Лимиты на вход и формы | ✅ | Вход/регистрация по IP в D1 + общий лимит на все изменяющие запросы |
@@ -146,11 +146,17 @@ ES-модули и файлы. `npm audit` неприменим, обновля�
 
 ## Остаточные риски и что сделать в Cloudflare
 
-1. **«Always Use HTTPS» для Pages.** Pages Function видит уже https-запрос,
-   поэтому `http://rh-music.pages.dev` сейчас отвечает `200`, а не редиректом.
-   Включите в Cloudflare: Pages → проект `rh-music` → Settings/Domains →
-   Always Use HTTPS (или соответствующую настройку custom domain).
-   Браузер дополнительно защищён HSTS после первого HTTPS-визита.
+1. **«Always Use HTTPS» для Pages.** `rh-music.pages.dev` — зона Cloudflare,
+   недоступная аккаунту: зональную настройку Always Use HTTPS через API включить
+   нельзя (зон `pages.dev`/`rh-music.pages.dev` в аккаунте нет, у Pages API
+   такого поля тоже нет). Что сделано сейчас: HSTS с preload на всех ответах и
+   клиентский редирект `web/https-redirect.js`, который переводит первый
+   http-визит на https. Для полноценного 301-редиректа подключите собственный
+   домен в Pages и включите для его зоны Always Use HTTPS — тогда все http-запросы
+   будут перенаправляться на уровне Cloudflare.
+6. **Неиспользуемый секрет Pages.** В настройках Pages-проекта остался пустой
+   `YANDEX_MUSIC_TOKEN`, который код не читает. Его стоит удалить, чтобы не
+   плодить неучтённые переменные.
 2. **Direct `workers.dev` включён.** Нужен, потому что Pages Function ходит
    в Worker по этому адресу. Cookie туда не отправляются (другой домен),
    CORS сужен, лимиты включены. При переходе на service bindings/route можно

@@ -39,10 +39,14 @@ const SECURITY_HEADERS = {
 };
 
 function withSecurity(headers, stripCors = false) {
+  // временная диагностика схемы (удаляется сразу после проверки)
+
   const out = new Headers(headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     if (!out.has(name)) out.set(name, value);
   }
+  // диагностика
+  // (см. ниже: headers пробрасываются как есть)
   if (stripCors) {
     // Статика не должна отдавать CORS-wildcard: API живёт на том же домене.
     out.delete('Access-Control-Allow-Origin');
