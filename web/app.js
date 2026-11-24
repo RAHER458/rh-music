@@ -3947,6 +3947,12 @@ function route() {
   const hash = location.hash.replace(/^#/, '') || '/';
   const path = hash.split('?')[0];
   let m;
+  // При входе и переходах всегда показываем начало страницы. Иначе iOS
+  // восстанавливает старую прокрутку (например, на «Топ 100» с BEARWOLF).
+  try {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  } catch { /* ignore */ }
+  window.scrollTo(0, 0);
 
   document.body.classList.toggle('auth-route', path === '/login' || path === '/register');
   // Шторка очереди — модальная: при навигации она закрывается, чтобы не висеть поверх страницы.
