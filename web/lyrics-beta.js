@@ -28,6 +28,9 @@
   let pendingTimer = 0;
   let lastIndex = null;
   let hasRendered = false;
+  let lastMain = '';
+  let lastNext = '';
+  let lastPrev = '';
 
   function isSynced(data) {
     return !!data && data.status === 'ready' && (data.syncLevel === 'line' || data.syncLevel === 'word');
@@ -126,14 +129,21 @@
     });
   }
 
-  function shift() {
-    if (reduceMotion && reduceMotion.matches) return;
-    for (const slot of [slotPrev, slotCurr, slotNext]) {
-      if (!slot) continue;
-      slot.classList.remove('is-shift');
-      void slot.offsetWidth;
-      slot.classList.add('is-shift');
-    }
+  function animateLine(el, fromRect, toRect, fromScale, toScale, fromFilter, toFilter, fromOpacity = 1, toOpacity = 1) {
+    if (!el || typeof el.animate !== 'function' || (reduceMotion && reduceMotion.matches)) return;
+    const delta = Number(fromRect && fromRect.top) - Number(toRect && toRect.top);
+    if (!Number.isFinite(delta) || Math.abs(delta) < 0.5) return;
+    try {
+      el.getAnimations().forEach((animation) => animation.cancel());
+      el.animate([
+        { transform: `translateY(${delta}px) scale(${fromScale})`, opacity: fromOpacity, filter: fromFilter },
+        { transform: `translateY(0) scale(${toScale})`, opacity: toOpacity, filter: toFilter },
+      ], {
+        duration: 560,
+        easing: 'cubic-bezier(.22, .61, .36, 1)',
+        fill: 'none',
+      });
+    } catch { /* WebKit без WAAPI — просто обновляем текст */ }
   }
 
   function render(data) {
@@ -143,15 +153,52 @@
     const key = `${data && data.index}:${prev}:${main}:${next}:${data && data.words ? data.words.length : 0}`;
     if (key === lastKey) return;
     const sameLine = data && Number.isFinite(Number(data.index)) && Number(data.index) === lastIndex
-      && (data.text || '') === (payload && payload.text);
+      && (data.text || '') === lastMain;
+    const nextIndex = data && Number.isFinite(Number(data.index)) ? Number(data.index) : null;
+    const direction = nextIndex != null && lastIndex != null ? nextIndex - lastIndex : 0;
+
+    // Снимаем размеры до смены текста: по ним строки «переезжают» в новые слоты.
+    const oldPrev = linePrev.getBoundingClientRect();
+    const oldCurr = lineCurr.getBoundingClientRect();
+    const oldNext = lineNext.getBoundingClientRect();
+    const oldMain = lastMain || lineCurr.textContent || '';
+    const oldNextText = lastNext || lineNext.textContent || '';
+
     lastKey = key;
     payload = data || null;
-    lastIndex = data && Number.isFinite(Number(data.index)) ? Number(data.index) : null;
+    lastIndex = nextIndex;
 
-    linePrev.textContent = prev;
-    lineNext.textContent = next;
-    setWords(lineCurr, data, main);
-    if (hasRendered && !sameLine) shift();
+    if (direction === 1 && hasRendered) {
+      // Нижняя → центр, текущая → верх, новая нижняя появляется снизу.
+      linePrev.textContent = oldMain;
+      setWords(lineCurr, data, main);
+      lineNext.textContent = next;
+      const targetPrev = linePrev.getBoundingClientRect();
+      const targetCurr = lineCurr.getBoundingClientRect();
+      const targetNext = lineNext.getBoundingClientRect();
+      animateLine(linePrev, oldCurr, targetPrev, 1, .78, 'blur(0px)', 'blur(1px)');
+      animateLine(lineCurr, oldNext, targetCurr, .78, 1, 'blur(1px)', 'none');
+      animateLine(lineNext, { top: targetNext.top + 28 }, targetNext, .78, .78, 'blur(1px)', 'blur(1px)', 0, 1);
+    } else if (direction === -1 && hasRendered) {
+      // Обратный переход: текущая → низ, предыдущая → центр, новая верхняя.
+      lineNext.textContent = oldMain;
+      setWords(lineCurr, data, main);
+      linePrev.textContent = prev;
+      const targetPrev = linePrev.getBoundingClientRect();
+      const targetCurr = lineCurr.getBoundingClientRect();
+      const targetNext = lineNext.getBoundingClientRect();
+      animateLine(lineNext, oldCurr, targetNext, 1, .78, 'blur(0px)', 'blur(1px)');
+      animateLine(lineCurr, oldPrev, targetCurr, .78, 1, 'blur(1px)', 'none');
+      animateLine(linePrev, { top: targetPrev.top - 28 }, targetPrev, .78, .78, 'blur(1px)', 'blur(1px)', 0, 1);
+    } else {
+      linePrev.textContent = prev;
+      setWords(lineCurr, data, main);
+      lineNext.textContent = next;
+    }
+
+    lastMain = main;
+    lastNext = next;
+    lastPrev = prev;
     hasRendered = true;
     updateWords();
     startLoop();
@@ -207,6 +254,9 @@
       lastKey = '';
       lastIndex = null;
       hasRendered = false;
+      lastMain = '';
+      lastNext = '';
+      lastPrev = '';
       if (window.RH_LYRICS && typeof window.RH_LYRICS.ensure === 'function') window.RH_LYRICS.ensure();
       render(window.RH_LYRICS && window.RH_LYRICS.getLine ? window.RH_LYRICS.getLine() : null);
     } else {
