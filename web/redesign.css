@@ -630,3 +630,10 @@ input[type="range"] { accent-color: var(--blue); }
     -webkit-backdrop-filter: none;
   }
 }
+
+/* Телефон: убираем декоративные треугольные/полупрозрачные акценты,
+   оставляя только функциональные кнопки плеера. */
+@media (max-width: 1023px), (pointer: coarse) {
+  html[data-ui="mobile"] .section-title::before { display: none; }
+  html[data-ui="mobile"] .card-play { display: none; }
+}
