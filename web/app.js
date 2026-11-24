@@ -4756,17 +4756,37 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
 
 /* ───────────────────────────── старт ───────────────────────────── */
 
+function isStandaloneApp() {
+  return window.navigator.standalone === true
+    || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+}
+
 function normalizeLaunchRoute() {
   // На iOS PWA при запуске восстанавливается последний URL, например
   // #/artist/<id>. Пользователь ждёт Главную, а не случайную страницу артиста.
-  const standalone = window.navigator.standalone === true
-    || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-  if (!standalone) return;
+  if (!isStandaloneApp()) return;
   const hash = location.hash || '';
   if (!hash || hash === '#/' || hash === '#/home') return;
   try { history.replaceState(null, '', '#/home'); } catch { location.hash = '#/home'; }
   window.scrollTo(0, 0);
 }
+
+// iOS часто не перезагружает PWA, а возвращает её из фона со старым URL.
+// После заметной паузы показываем Главную, чтобы приложение открывалось
+// предсказуемо, а не на странице артиста из прошлой сессии.
+let pwaHiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { pwaHiddenAt = Date.now(); return; }
+  if (!isStandaloneApp() || !pwaHiddenAt) return;
+  const hiddenFor = Date.now() - pwaHiddenAt;
+  pwaHiddenAt = 0;
+  if (hiddenFor < 20000) return;
+  const hash = location.hash || '';
+  if (!hash || hash === '#/' || hash === '#/home') { window.scrollTo(0, 0); return; }
+  try { history.replaceState(null, '', '#/home'); } catch { location.hash = '#/home'; }
+  route();
+  window.scrollTo(0, 0);
+});
 
 (async function boot() {
   normalizeLaunchRoute();
