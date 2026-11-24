@@ -23,7 +23,8 @@ check('snipped и encrypted транскодинги отбрасываются'
 check('HLS отдаётся как m3u8 того же origin', /application\/vnd\.apple\.mpegurl/.test(sc) && /streamUrl\(track\)/.test(app) && /api\/sc\/play\//.test(app));
 check('для SoundCloud подключается hls.js на не-Safari', /Hls\.isSupported/.test(app) && /vendor\/hls\.min\.js/.test(index) && existsSync(join(here, '../web/vendor/hls.min.js')));
 check('пульсация обложки умеет HLS через fMP4', /loadHlsAudio/.test(read('web/beat-cover.js')) && /EXT-X-MAP/.test(read('web/beat-cover.js')) && /decodeAudioData/.test(read('web/beat-cover.js')) && /dataset\.beatSrc/.test(app));
-check('AutoMix блокируется для SoundCloud', /isSoundCloudTrack\(S\.current\)/.test(app) && /el\.disabled = blocked/.test(app) && /if \(isSoundCloudTrack\(S\.current\)\) return;/.test(app));
+check('AutoMix блокируется для SoundCloud', /isSoundCloudTrack\(S\.current\)/.test(app) && /el\.disabled = blocked/.test(app) && /if \(isSoundCloudTrack\(S\.current\)\) return;/.test(app) && /isSoundCloudTrack\(track\)\) \{\s*if \(window\.RH_AI_AUTOMIX\)/.test(app));
+check('AutoMix не получает SoundCloud и не гаснет в середине перехода', /isSoundCloudTrack\(item\)\) continue/.test(app) && /phase !== 'MIXING'/.test(app));
 check('Smart Mix не работает с SoundCloud, а текст загружается через LRCLIB', app.includes("smartMixAdoptFailure('unsupported_source'") && /syncLyricsTrack[\s\S]{0,80}setTrack\(track \|\| null\)/.test(app) && /getSoundCloudTrack/.test(read('worker/src/lyrics.js')));
 check('в CSP разрешены обложки и HLS-домены SoundCloud', /\*\.sndcdn\.com/.test(headers) && /\*\.soundcloud\.cloud/.test(headers));
 check('CSP Pages Function разрешает SoundCloud', /sndcdn/.test(pagesWorker) && /soundcloud\.cloud/.test(pagesWorker));

@@ -2536,9 +2536,6 @@ function refreshAiAutoMixUI() {
   const active = !!(info && info.active);
   const blocked = isSoundCloudTrack(S.current);
   const label = phase === 'OFF' ? 'AutoMix RH AI' : phase === 'READY' ? 'AutoMix RH AI · Ready' : phase === 'MIXING' ? 'AutoMix RH AI · Mixing' : 'AutoMix RH AI · ' + phase;
-  if (blocked && active) {
-    try { window.RH_AI_AUTOMIX.disable(); } catch (_) {}
-  }
   if (active && window.RH_SMARTMIX) {
     try {
       if (window.RH_SMARTMIX.getSettings().enabled) { aiSavedSmartMix = true; window.RH_SMARTMIX.setSettings({ enabled: false }); }
@@ -2599,6 +2596,10 @@ function refreshAiAutoMixUI() {
 
 function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
   if (!track) return;
+  if (isSoundCloudTrack(track)) {
+    if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.disable();
+    return;
+  }
   aiDiag('adopt', { adopted: String(track.id), strategy: strategy || null });
   const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
   if (index >= 0) S.index = index;
@@ -2679,6 +2680,7 @@ function initAiAutoMix() {
       for (const sectionData of (data && data.sections) || []) {
         for (const item of (sectionData && sectionData.items) || []) {
           if (!item || !item.id || !item.title || !item.artist) continue;
+          if (isSoundCloudTrack(item)) continue;
           if (seen.has(String(item.id))) continue;
           seen.add(String(item.id));
           out.push(item);
