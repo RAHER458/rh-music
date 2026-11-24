@@ -3714,7 +3714,13 @@ class AudioEngine {
         // Cancel any stale automation before touching transition-owned params.
         outDeck.cancelAutomation();
         inDeck.cancelAutomation();
-        const safeRate = (value) => Math.abs((Number(value) || 1) - 1) <= 0.02 ? (Number(value) || 1) : 1;
+        // Движок использует AudioBufferSource, у которого playbackRate меняет
+        // высоту тона. Без проверенного pitch-lock допускаем только ±2%;
+        // более сильный tempo shift политика переводит в безопасный fade.
+        const safeRate = (value) => {
+            const n = Number(value) || 1;
+            return Math.abs(n - 1) <= 0.02 ? n : 1;
+        };
         plan.rateOut = safeRate(plan.rateOut);
         plan.rateIn = safeRate(plan.rateIn);
         outDeck.setRate(plan.rateOut);

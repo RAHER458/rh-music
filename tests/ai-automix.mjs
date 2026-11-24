@@ -44,7 +44,7 @@ check('AI enable does not pause standard audio', !controller.includes("getAudio(
 check('AI background analysis does not play Deck A', !/onTrackStarted[\s\S]{0,1200}deckA\.play/.test(controller));
 check('only one next candidate is prepared', controller.includes('const candidate = candidates[0]'));
 check('preparation has timeout', controller.includes('audio preparation') && controller.includes('30_000'));
-check('transition has timeout', controller.includes("'transition'"));
+check('transition has timeout', controller.includes('waitForTransition') && controller.includes("'transition timeout'"));
 check('AI takes over from host position', controller.includes('host.currentTime') && controller.includes('takeOverAndMix'));
 check('AI can release playback to standard player', controller.includes('releaseToStandard') && app.includes('ownsPlayback()'));
 check('AI pause uses player state, not paused standard element', app.includes('if (S.playing) {\n      window.RH_AI_AUTOMIX.pause();'));
@@ -132,7 +132,7 @@ check('outgoing gain keeps musical presence longer', engineSource.includes('func
 check('deck crossfader is not double-attenuated', engineSource.includes('cross.gain.value = 1') && !engineSource.includes('setCrossfader(0.5);\n            this.decks.B'));
 check('takeover compensates incoming beat phase', controller.includes('phase lead') && controller.includes('plan.inStart = Math.max(0, Number(plan.inStart) - phaseLead)'));
 check('native pitch preservation is used for playback quality', engineSource.includes("this.stretchMode = 'native'") && engineSource.includes('stretchA = null;\n            stretchB = null;'));
-check('unsafe tempo rates fall back to 1x', engineSource.includes('const safeRate') && engineSource.includes('<= 0.02'));
+check('tempo rates above 2% fall back to 1x', engineSource.includes('const safeRate') && engineSource.includes('<= 0.02'));
 const gainAt = (points, t) => { const p = points.find((x) => x.at >= t) || points[points.length - 1]; return p.value; };
 const eqAt = (points, t) => { const p = points.find((x) => x.at >= t) || points[points.length - 1]; return p.value; };
 check('kick/bass handoff keeps one low end alive', eqAt(decision.plan.eq.out.low, 0.5) === 0 && eqAt(decision.plan.eq.in.low, 0.5) === -24);

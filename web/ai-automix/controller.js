@@ -4,6 +4,10 @@
 (function () {
   'use strict';
 
+  const CONTROLLER_BASE = (typeof document !== 'undefined' && document.currentScript && document.currentScript.src)
+    || (typeof location !== 'undefined' ? location.href : 'https://rh-music.pages.dev/');
+  const MODULE_BASE = new URL('.', CONTROLLER_BASE);
+
   const PHASES = ['OFF', 'LOADING', 'READY', 'ANALYZING', 'PREPARING', 'MIXING', 'ACTIVE', 'DEGRADED', 'ERROR'];
   const LOAD_STEPS = [
     'Initializing Neural Engine',
@@ -26,6 +30,8 @@
     core: null,
     engine: null,
     ctx: null,
+    policy: null,
+    transitionSeq: 0,
     deckA: null,
     deckB: null,
     activeTrack: null,
@@ -125,6 +131,11 @@
     if (!state.lib) {
       setPhase('LOADING', 0);
       state.lib = await withTimeout(import('./automix-engine.js?v=5'), 15_000, 'engine module');
+      try {
+        state.policy = await import(new URL('transition-policy.js?v=1', MODULE_BASE).href);
+      } catch {
+        state.policy = null; // политика не критична: движок продолжает работать
+      }
       setPhase('LOADING', 1);
       state.core = state.lib.createAutoMixCore({ sessionId: 'rh-music' });
       state.core.initialize();
@@ -164,6 +175,52 @@
     state.deckB = null;
   }
 
+  function resetDeck(deck) {
+    if (!deck) return;
+    try {
+      deck.cancelAutomation();
+      deck.setRate(1);
+      deck.setEQ(0, 0, 0);
+      deck.setFilter(0);
+      deck.setEcho(0);
+      deck.setReverb(0);
+      deck.fadeTo(0, 0.01);
+    } catch { /* дек мог быть уже остановлен */ }
+  }
+
+  function resetDecks() {
+    resetDeck(state.deckA);
+    resetDeck(state.deckB);
+  }
+
+  /** Отмена перехода с возвратом управления стандартному плееру. */
+  function cancelTransition(reason = 'cancelled', position = null) {
+    state.transitionSeq += 1;
+    state.planEpoch += 1;
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    state.pending = null;
+    state.activePlan = null;
+    resetDecks();
+    try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
+    const wasOwned = state.ownsPlayback;
+    state.ownsPlayback = false;
+    state.busy = false;
+    state.preparing = false;
+    if (state.phase === 'MIXING') setPhase('ACTIVE');
+    if (wasOwned && state.host && typeof state.host.onExit === 'function') {
+      const pos = position == null
+        ? (state.deckA ? state.deckA.currentTime : 0)
+        : Math.max(0, Number(position) || 0);
+      state.host.onExit({ position: pos });
+      // После возврата в стандартный плеер продолжаем планировать следующий
+      // переход, иначе AutoMix остаётся включённым, но больше не микширует.
+      setTimeout(() => {
+        if (state.phase !== 'OFF' && state.phase !== 'ERROR' && state.currentEntry) void planNext();
+      }, 400);
+    }
+    log('Переход отменён: ' + reason);
+  }
+
   async function enable() {
     if (state.phase !== 'OFF' && state.phase !== 'ERROR') return;
     const epoch = state.planEpoch;
@@ -184,6 +241,7 @@
     const position = state.deckA ? state.deckA.currentTime : 0;
     const owned = state.ownsPlayback;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    resetDecks();
     teardownEngine();
     state.pending = null;
     state.activePlan = null;
@@ -201,11 +259,13 @@
   function releaseToStandard(restart = true) {
     if (!state.ownsPlayback) return;
     state.planEpoch += 1;
+    state.transitionSeq += 1;
     const position = state.deckA ? state.deckA.currentTime : 0;
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.pending = null;
     state.activePlan = null;
     state.ownsPlayback = false;
+    resetDecks();
     try { state.deckA && state.deckA.stop(); state.deckB && state.deckB.stop(); } catch (_) {}
     if (restart && state.host && typeof state.host.onExit === 'function') state.host.onExit({ position });
     state.activeTrack = null;
@@ -321,7 +381,28 @@
       }], history, playback, {});
       if (epoch !== state.planEpoch) return;
       if (!decision.chosen || !decision.plan) { setPhase('DEGRADED'); log('AI не нашёл переход: ' + decision.reason); return; }
-      state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan: decision.plan, fallback: !!candidate.fallback };
+      let plan = decision.plan;
+      if (state.policy) {
+        const assessment = state.policy.assessPlan(plan, {
+          bpmA: state.currentEntry.analysis && state.currentEntry.analysis.bpm,
+          bpmB: entry.analysis && entry.analysis.bpm,
+        });
+        if (!assessment.safe) {
+          try {
+            const safe = state.lib.planTransition(state.currentEntry.analysis, entry.analysis, playback, state.policy.safePlanOptions());
+            if (safe) {
+              plan = { ...safe, confidenceFallback: true, reasons: [...(safe.reasons || []), ...assessment.reasons] };
+              log('Confidence fallback: ' + assessment.reasons.join('; '));
+            }
+          } catch (error) {
+            log('Confidence fallback не удался, оставляю исходный план: ' + (error && error.message ? error.message : String(error)));
+          }
+        }
+        const normalized = state.policy.clampPlanRates(plan, state.policy.MAX_RATE_DELTA);
+        plan = normalized.plan;
+        if (normalized.clamped) log('Tempo shift ограничен безопасным диапазоном');
+      }
+      state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan, fallback: !!candidate.fallback };
       state.deckB.loadBuffer(entry.buffer);
       state.deckB.cancelAutomation();
       log('AI выбрал: ' + decision.chosen.title + ' · ' + decision.plan.strategy);
@@ -406,27 +487,50 @@
     }
   }
 
+  function waitForTransition(tokenStart, durationSec, seq) {
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      let pausedMs = 0;
+      let last = started;
+      const timer = setInterval(() => {
+        if (seq !== state.transitionSeq || state.phase === 'OFF' || !state.engine) {
+          clearInterval(timer);
+          resolve();
+          return;
+        }
+        const now = Date.now();
+        if (state.paused) pausedMs += now - last;
+        last = now;
+        const wallLimit = (Number(durationSec) + 10) * 1000 + pausedMs;
+        if (now - started > wallLimit) {
+          clearInterval(timer);
+          reject(new Error('transition timeout'));
+          return;
+        }
+        if (!state.paused && state.ctx && (state.ctx.currentTime - tokenStart) >= Number(durationSec)) {
+          clearInterval(timer);
+          resolve();
+          return;
+        }
+        if (Math.floor((now - started) / 100) % 2 === 0) emit();
+      }, 80);
+    });
+  }
+
   async function executeTransition() {
     const pending = state.pending;
     if (!pending) return;
     state.pending = null;
     state.activePlan = pending;
+    const seq = ++state.transitionSeq;
     try {
       setPhase('MIXING');
       const engine = state.engine;
       const outDeck = state.deckA;
       const inDeck = state.deckB;
       const startAt = await engine.beginTransition(pending.plan, outDeck, inDeck);
-      const tokenStart = startAt;
-      await withTimeout(new Promise((resolve) => {
-        const timer = setInterval(() => {
-          if (!state.engine || state.phase === 'OFF') { clearInterval(timer); resolve(); return; }
-          const elapsed = state.ctx.currentTime - tokenStart;
-          if (elapsed >= pending.plan.durationSec) { clearInterval(timer); resolve(); }
-          else if (Math.floor(elapsed * 10) % 2 === 0) emit();
-        }, 80);
-      }), (pending.plan.durationSec + 10) * 1000, 'transition');
-      if (state.phase === 'OFF') return;
+      await waitForTransition(startAt, pending.plan.durationSec, seq);
+      if (seq !== state.transitionSeq || state.phase === 'OFF') return;
       engine.completeTransition(outDeck, inDeck);
       state.activePlan = null;
       state.deckA = inDeck;
@@ -443,6 +547,8 @@
       setPhase('ACTIVE');
       await planNext();
     } catch (error) {
+      state.transitionSeq += 1;
+      resetDecks();
       if (state.ownsPlayback) {
         const position = state.deckA ? state.deckA.currentTime : 0;
         state.ownsPlayback = false;
@@ -454,6 +560,10 @@
   }
 
   function invalidatePlan() {
+    if (state.phase === 'MIXING') {
+      cancelTransition('invalidate');
+      return;
+    }
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.planEpoch += 1;
     state.pending = null;
@@ -465,7 +575,12 @@
   }
 
   function seek(position) {
-    if (!state.ownsPlayback || !state.deckA || state.phase === 'MIXING') return false;
+    if (state.phase === 'MIXING') {
+      const target = Math.max(0, Number(position) || 0);
+      cancelTransition('seek', target);
+      return true;
+    }
+    if (!state.ownsPlayback || !state.deckA) return false;
     state.planEpoch += 1;
     const target = Math.max(0, Math.min(Number(position) || 0, state.deckA.duration - 0.05));
     state.deckA.seek(target);
@@ -487,6 +602,7 @@
     try { if (state.ctx && typeof state.ctx.resume === 'function') state.ctx.resume(); } catch (_) {}
     try {
       if (state.deckA && state.deckA.paused && state.deckA.currentTime < state.deckA.duration) state.deckA.play(state.deckA.currentTime, 1);
+      if (state.phase === 'MIXING' && state.deckB && state.deckB.paused) state.deckB.play(state.deckB.currentTime, state.deckB.bufferRate || 1);
     } catch (_) {}
     emit();
   }
@@ -536,6 +652,7 @@
     isActive() { return state.phase !== 'OFF' && state.phase !== 'ERROR'; },
     ownsPlayback() { return state.ownsPlayback; },
     releaseToStandard,
+    cancelTransition,
     _state: state,
     _internal: { queueCandidates, fallbackCandidates },
   };
