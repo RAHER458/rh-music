@@ -17,6 +17,10 @@ import {
   MAX_LIMIT, DEFAULT_LIMIT, CDN_IMAGE_HOST,
 } from './zvuk.js';
 import {
+  searchSoundCloud, getSoundCloudTrack, soundCloudStreamUrl, soundCloudPlayResponse,
+  encodeSearchCursor, decodeSearchCursor, mergeTrackLists, soundCloudId,
+} from './soundcloud.js';
+import {
   handleRegister, handleLogin, handleLogout, handleMe, handleUpdateProfile,
   handleChangePassword, handleDeleteAccount, handlePreferences, handleReauth, requireUser,
 } from './auth.js';
@@ -60,7 +64,7 @@ function parseLimit(url, fallback = DEFAULT_LIMIT) {
 function parseCursor(url) {
   const raw = url.searchParams.get('cursor');
   if (!raw) return null;
-  if (raw.length > 512 || !/^[A-Za-z0-9+/=_-]+$/.test(raw)) {
+  if (raw.length > 4096 || !/^[A-Za-z0-9+/=_.-]+$/.test(raw)) {
     throw new ApiError(400, 'BAD_CURSOR', 'Некорректная страница результатов.');
   }
   return raw;
@@ -74,14 +78,48 @@ function parseQuality(url) {
 
 /* ───────────────────────────── медиа-обработчики ───────────────────────────── */
 
+async function soundCloudSearchPage(env, query, limit, next) {
+  if (!env || !env.SC_CLIENT_ID) return { items: [], total: 0, next: false };
+  try {
+    return await searchSoundCloud(env, query, { limit, next: next || null });
+  } catch {
+    // Источник не должен ломать поиск по каталогу: просто не даём его треки
+    // и помечаем страницу как завершённую, чтобы не повторять запрос.
+    return { items: [], total: 0, next: false };
+  }
+}
+
+function combineSearchCursor(zvukCursor, soundCloudNext) {
+  const sc = soundCloudNext === false ? false : (soundCloudNext || null);
+  if (!zvukCursor && typeof sc !== 'string') return null;
+  return encodeSearchCursor(zvukCursor || null, sc);
+}
+
 async function handleSearch(env, url, type) {
   const query = parseQuery(url);
   const limit = parseLimit(url);
   const cursor = parseCursor(url);
+  const decoded = decodeSearchCursor(cursor);
 
   if (type === 'tracks') {
-    const data = await gql(env, Q.searchTracks, 'searchTracks', { query, limit, cursor });
-    return json({ ok: true, type, query, tracks: pageOf(data.search && data.search.tracks, normalizeTrack, 300) });
+    const [data, soundCloud] = await Promise.all([
+      gql(env, Q.searchTracks, 'searchTracks', { query, limit, cursor: decoded.zvuk }),
+      soundCloudSearchPage(env, query, limit, decoded.sc),
+    ]);
+    const page = pageOf(data.search && data.search.tracks, normalizeTrack, 300);
+    const cursorNext = combineSearchCursor(page.cursor, soundCloud.next);
+    return json({
+      ok: true,
+      type,
+      query,
+      tracks: {
+        ...page,
+        total: page.total + (soundCloud.total || 0),
+        next: !!cursorNext,
+        cursor: cursorNext,
+        items: mergeTrackLists(page.items, soundCloud.items),
+      },
+    });
   }
   if (type === 'artists') {
     const data = await gql(env, Q.searchArtists, 'searchArtists', { query, limit, cursor });
@@ -92,25 +130,51 @@ async function handleSearch(env, url, type) {
     return json({ ok: true, type, query, albums: pageOf(data.search && data.search.releases, normalizeRelease, 400) });
   }
 
-  const data = await gql(env, Q.searchAll, 'searchAll', {
-    query,
-    limit: Math.min(limit, 20),
-    tracks: true,
-    artists: true,
-    releases: true,
-    trackCursor: cursor,
-    artistsCursor: null,
-    releasesCursor: null,
-  });
+  const soundCloudLimit = Math.min(limit, 20);
+  const [data, soundCloud] = await Promise.all([
+    gql(env, Q.searchAll, 'searchAll', {
+      query,
+      limit: Math.min(limit, 20),
+      tracks: true,
+      artists: true,
+      releases: true,
+      trackCursor: decoded.zvuk,
+      artistsCursor: null,
+      releasesCursor: null,
+    }),
+    soundCloudSearchPage(env, query, soundCloudLimit, decoded.sc),
+  ]);
   const s = data.search || {};
+  const tracks = pageOf(s.tracks, normalizeTrack, 300);
+  const cursorNext = combineSearchCursor(tracks.cursor, soundCloud.next);
   return json({
     ok: true,
     type: 'all',
     query,
-    tracks: pageOf(s.tracks, normalizeTrack, 300),
+    tracks: {
+      ...tracks,
+      total: tracks.total + (soundCloud.total || 0),
+      next: !!cursorNext,
+      cursor: cursorNext,
+      items: mergeTrackLists(tracks.items, soundCloud.items),
+    },
     artists: pageOf(s.artists, normalizeArtist, 400),
     albums: pageOf(s.releases, normalizeRelease, 400),
   });
+}
+
+async function handleSoundCloudTrack(env, id) {
+  const track = await getSoundCloudTrack(env, id);
+  return json({ ok: true, track });
+}
+
+async function handleSoundCloudStream(env, id) {
+  const info = await soundCloudStreamUrl(env, id);
+  return json({ ok: true, id, ...info });
+}
+
+async function handleSoundCloudPlay(env, id) {
+  return soundCloudPlayResponse(env, id);
 }
 
 async function handleTrack(env, id) {
@@ -433,6 +497,18 @@ async function route(request, env) {
   if (path === '/api/search/tracks' && method === 'GET') return handleSearch(env, url, 'tracks');
   if (path === '/api/search/artists' && method === 'GET') return handleSearch(env, url, 'artists');
   if (path === '/api/search/albums' && method === 'GET') return handleSearch(env, url, 'albums');
+
+  /* --- SoundCloud: поиск, метаданные и поток --- */
+  if ((m = path.match(/^\/api\/track\/(sc:\d+)$/)) && method === 'GET') return handleSoundCloudTrack(env, m[1]);
+  if ((m = path.match(/^\/api\/sc\/track\/(?:sc:)?(\d+)$/)) && method === 'GET') return handleSoundCloudTrack(env, m[1]);
+  if ((m = path.match(/^\/api\/sc\/stream\/(?:sc:)?(\d+)$/)) && method === 'GET') return handleSoundCloudStream(env, m[1]);
+  if ((m = path.match(/^\/api\/sc\/play\/(?:sc:)?(\d+)$/)) && (method === 'GET' || method === 'HEAD')) return handleSoundCloudPlay(env, m[1]);
+  if (path === '/api/sc/search' && method === 'GET') {
+    const q = parseQuery(url);
+    const limit = parseLimit(url);
+    const page = await soundCloudSearchPage(env, q, limit, url.searchParams.get('next'));
+    return json({ ok: true, query: q, tracks: { total: page.total, cursor: page.next || null, items: page.items } });
+  }
 
   if ((m = path.match(/^\/api\/lyrics\/([^/]+)\/words$/)) && method === 'GET') return handleLyricsWords(request, env, validId(m[1]));
   if ((m = path.match(/^\/api\/lyrics\/([^/]+)$/)) && method === 'GET') return handleLyrics(request, env, validId(m[1]));

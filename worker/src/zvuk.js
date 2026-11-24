@@ -146,6 +146,8 @@ export function normalizeTrack(t, size = 300) {
   const artists = Array.isArray(t.artists) ? t.artists.filter((a) => a && a.title) : [];
   return {
     id: String(t.id),
+    source: 'zvuk',
+    streamKind: 'progressive',
     title: t.title || 'Без названия',
     duration: Number(t.duration) || 0,
     artist: artists.map((a) => a.title).join(', '),

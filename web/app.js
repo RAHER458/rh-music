@@ -1958,9 +1958,82 @@ function setQueue(tracks, index) {
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onQueue();
 }
 
+function isSoundCloudTrack(track) {
+  return !!(track && track.source === 'soundcloud');
+}
+
+function soundCloudMediaId(track) {
+  return String(track && track.id ? track.id : '').replace(/^sc:/i, '');
+}
+
 function streamUrl(track) {
+  if (isSoundCloudTrack(track)) {
+    // Тот же origin: Worker отдаёт m3u8 (или 302 на progressive-CDN),
+    // поэтому <audio> и hls.js не зависят от CORS JSON-API.
+    return API + '/api/sc/play/' + encodeURIComponent(soundCloudMediaId(track));
+  }
   // Качество всегда MID (128 kbps) — пользователь его не выбирает.
   return API + '/api/stream/' + encodeURIComponent(track.id) + '?quality=mid';
+}
+
+function streamUrlWithCacheBust(track) {
+  const url = streamUrl(track);
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+}
+
+/* ── HLS: Safari играет нативно, Chrome — через hls.js ─────────────── */
+let activeHls = null;
+
+function destroyActiveHls() {
+  if (!activeHls) return;
+  try { activeHls.destroy(); } catch { /* ignore */ }
+  activeHls = null;
+}
+
+function nativeHlsPlayback() {
+  try { return !!audio.canPlayType('application/vnd.apple.mpegurl'); } catch { return false; }
+}
+
+/**
+ * Ставит источник трека в <audio>. Для SoundCloud HLS на не-Safari
+ * подключается hls.js; для каталога остаётся прежний <audio src>.
+ */
+function applyAudioSource(track, { autoplay = false, onError = null } = {}) {
+  destroyActiveHls();
+  if (!track) return;
+  const useHlsJs = isSoundCloudTrack(track) && !nativeHlsPlayback() && window.Hls && window.Hls.isSupported();
+  if (useHlsJs) {
+    activeHls = new window.Hls({ enableWorker: true, lowLatencyMode: false });
+    activeHls.attachMedia(audio);
+    activeHls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+      if (autoplay) audio.play().catch((error) => { if (onError) onError(error); });
+    });
+    activeHls.on(window.Hls.Events.ERROR, (event, data) => {
+      if (data && data.fatal) {
+        destroyActiveHls();
+        if (onError) onError(new Error('hls_fatal_' + (data.type || 'error')));
+      }
+    });
+    activeHls.loadSource(streamUrl(track));
+    return;
+  }
+  audio.src = streamUrl(track);
+  audio.load();
+  if (autoplay) audio.play().catch((error) => { if (onError) onError(error); });
+}
+
+function restoreStandardSource(resumeAt = 0) {
+  if (!S.current) return;
+  applyAudioSource(S.current, { autoplay: true });
+  if (resumeAt > 0) {
+    audio.addEventListener('loadedmetadata', () => {
+      try { audio.currentTime = resumeAt; } catch { /* ignore */ }
+    }, { once: true });
+  }
+}
+
+function syncLyricsTrack(track) {
+  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(isSoundCloudTrack(track) ? null : track);
 }
 
 
@@ -2209,6 +2282,7 @@ async function adoptSmartMixTrack(index, position, options = {}) {
   if (index < 0 || index >= S.queue.length) return smartMixAdoptFailure('bad_index', false);
   const resume = options.retry === true || options.resume === true;
   const track = S.queue[index];
+  if (isSoundCloudTrack(track)) return smartMixAdoptFailure('unsupported_source', false);
   const token = ++smartMixAdoptionToken;
 
   if (resume && (!S.current || String(S.current.id) !== String(track.id) || !audio.src)) {
@@ -2221,7 +2295,7 @@ async function adoptSmartMixTrack(index, position, options = {}) {
     S.current = track;
     S.retried = false;
     updateNowPlayingMeta(track);
-    if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
+    syncLyricsTrack(track);
     renderQueue();
     markCurrentRow();
     S.loading = true;
@@ -2229,8 +2303,7 @@ async function adoptSmartMixTrack(index, position, options = {}) {
     // load() может вызвать pause старого источника: это внутренняя операция,
     // а не пользовательская пауза.
     smartMixAdopting = true;
-    audio.src = streamUrl(track);
-    audio.load();
+    applyAudioSource(track, { autoplay: false });
   } else {
     smartMixAdopting = true;
   }
@@ -2457,7 +2530,11 @@ function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
   const active = !!(info && info.active);
+  const blocked = isSoundCloudTrack(S.current);
   const label = phase === 'OFF' ? 'AutoMix RH AI' : phase === 'READY' ? 'AutoMix RH AI · Ready' : phase === 'MIXING' ? 'AutoMix RH AI · Mixing' : 'AutoMix RH AI · ' + phase;
+  if (blocked && active) {
+    try { window.RH_AI_AUTOMIX.disable(); } catch (_) {}
+  }
   if (active && window.RH_SMARTMIX) {
     try {
       if (window.RH_SMARTMIX.getSettings().enabled) { aiSavedSmartMix = true; window.RH_SMARTMIX.setSettings({ enabled: false }); }
@@ -2468,11 +2545,15 @@ function refreshAiAutoMixUI() {
   }
   document.querySelectorAll('[data-action="ai-automix-toggle"]').forEach((el) => {
     el.classList.toggle('is-on', active);
+    el.classList.toggle('is-disabled', blocked);
+    el.disabled = blocked;
+    el.setAttribute('aria-disabled', blocked ? 'true' : 'false');
     el.setAttribute('aria-pressed', active ? 'true' : 'false');
     el.dataset.phase = phase;
+    if (blocked) el.title = 'Недоступно для этой композиции';
     if (el.id === 'npAiAutomix') {
-      el.setAttribute('aria-label', label || 'AutoMix RH AI');
-      el.dataset.label = label || '';
+      el.setAttribute('aria-label', blocked ? 'Недоступно для этой композиции' : (label || 'AutoMix RH AI'));
+      el.dataset.label = blocked ? '' : (label || '');
     }
   });
   const mix = info && info.mix ? info.mix : null;
@@ -2531,7 +2612,7 @@ function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
 
   updateNowPlayingMeta(track);
   renderCompactTrack(track);
-  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
+  syncLyricsTrack(track);
   renderQueue();
   markCurrentRow();
   savePlayerState(0);
@@ -2569,10 +2650,12 @@ function initAiAutoMix() {
       const ai = window.RH_AI_AUTOMIX;
       const owned = !!(ai && typeof ai.ownsPlayback === 'function' && ai.ownsPlayback());
       const deck = owned ? ai.getState().deckA : null;
+      const aiQueue = Array.isArray(S.queue) ? S.queue.filter((item) => !isSoundCloudTrack(item)) : [];
+      const aiIndex = S.current && !isSoundCloudTrack(S.current) ? aiQueue.findIndex((item) => String(item.id) === String(S.current.id)) : -1;
       return {
-        current: S.current,
-        index: S.index,
-        queue: S.queue,
+        current: isSoundCloudTrack(S.current) ? null : S.current,
+        index: aiIndex,
+        queue: aiQueue,
         paused: deck ? !!deck.paused : audio.paused,
         currentTime: deck ? deck.time : (audio.currentTime || 0),
         duration: deck ? deck.duration : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0)),
@@ -2605,12 +2688,9 @@ function initAiAutoMix() {
       S.playing = false;
       updateTransport();
       if (S.current) {
-        audio.src = streamUrl(S.current);
-        audio.load();
         const resumeAt = info && Number.isFinite(info.position) ? info.position : 0;
-        const start = () => { try { if (resumeAt > 0) audio.currentTime = resumeAt; } catch (_) {} };
-        audio.addEventListener('loadedmetadata', start, { once: true });
-        audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
+        restoreStandardSource(resumeAt);
+        updateTransport();
       }
     },
     log: (message) => { if (RH_DEBUG) console.debug('[AutoMix RH AI]', message); },
@@ -2632,7 +2712,7 @@ function initAiAutoMix() {
       // подтягиваем слова для активной деки AutoMix.
       const activeTrack = info.activeTrack;
       if (activeTrack && (!S.current || String(activeTrack.id) !== String(S.current.id)) && window.RH_LYRICS) {
-        window.RH_LYRICS.setTrack(activeTrack);
+        syncLyricsTrack(activeTrack);
       }
       refreshAiAutoMixUI();
     }, 250);
@@ -2727,10 +2807,9 @@ function initAiMixBeta() {
     onExit: (info) => {
       S.loading = false; S.playing = false; updateTransport();
       if (S.current) {
-        audio.src = streamUrl(S.current); audio.load();
         const resumeAt = info && Number.isFinite(info.position) ? info.position : 0;
-        audio.addEventListener('loadedmetadata', () => { try { if (resumeAt > 0) audio.currentTime = resumeAt; } catch (_) {} }, { once: true });
-        audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
+        restoreStandardSource(resumeAt);
+        updateTransport();
       }
     },
     log: (message) => { if (RH_DEBUG) console.debug('[AI Mix Beta]', message); },
@@ -2782,10 +2861,9 @@ function initAutoMix2() {
     onExit: (info) => {
       S.loading = false; S.playing = false; updateTransport();
       if (S.current) {
-        audio.src = streamUrl(S.current); audio.load();
         const resumeAt = info && Number.isFinite(info.position) ? info.position : 0;
-        audio.addEventListener('loadedmetadata', () => { try { if (resumeAt > 0) audio.currentTime = resumeAt; } catch (_) {} }, { once: true });
-        audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
+        restoreStandardSource(resumeAt);
+        updateTransport();
       }
     },
     log: (message) => { if (RH_DEBUG) console.debug('[AutoMix2]', message); },
@@ -3005,7 +3083,7 @@ function restorePlayerState() {
   S.lastStateSave = Date.now();
 
   updateNowPlayingMeta(S.current);
-  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(S.current);
+  syncLyricsTrack(S.current);
   renderQueue();
   updateTransport();
 
@@ -3318,7 +3396,7 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   if (reveal) S.playerHidden = false;
 
   updateNowPlayingMeta(track);
-  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track);
+  syncLyricsTrack(track);
   renderQueue();
   markCurrentRow();
   S.loading = true;
@@ -3327,8 +3405,6 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.ownsPlayback && window.RH_AI_AUTOMIX.ownsPlayback()) {
     window.RH_AI_AUTOMIX.releaseToStandard(false);
   }
-
-  audio.src = streamUrl(track);
 
   // Продолжение с места, где остановились после перезагрузки страницы.
   // Только для того же трека: иначе новая песня начиналась бы с чужой секунды.
@@ -3349,23 +3425,25 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
     S.restoreTrackId = null;
   }
 
-  audio.load();
-  if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
-  startPlaybackSession(track, source);
-  savePlayerState(0);
-  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) window.RH_AI_AUTOMIX.onTrackStarted(track);
-
-  if (autoplay) {
-    const promise = audio.play();
-    if (promise && promise.catch) {
-      promise.catch((error) => {
-        S.loading = false;
-        updateTransport();
-        if (error && error.name === 'NotAllowedError') toast('Нажмите Play, чтобы разрешить воспроизведение', 'info');
-        else if (error && error.name !== 'AbortError') handleAudioFailure(error.message);
-      });
+  const autoplayError = (error) => {
+    S.loading = false;
+    updateTransport();
+    if (error && error.name === 'NotAllowedError') toast('Нажмите Play, чтобы разрешить воспроизведение', 'info');
+    else if (error && error.name !== 'AbortError') handleAudioFailure(error.message);
+  };
+  applyAudioSource(track, { autoplay, onError: autoplayError });
+  if (window.RH_SMARTMIX) {
+    if (isSoundCloudTrack(track)) {
+      try { if (window.RH_SMARTMIX.getSettings().enabled) window.RH_SMARTMIX.setSettings({ enabled: false }); } catch (_) {}
+    } else {
+      window.RH_SMARTMIX.onTrack();
     }
   }
+  startPlaybackSession(track, source);
+  savePlayerState(0);
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive() && !isSoundCloudTrack(track)) window.RH_AI_AUTOMIX.onTrackStarted(track);
+  if (isSoundCloudTrack(track) && window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) window.RH_AI_AUTOMIX.disable();
+  refreshAiAutoMixUI();
 }
 
 function handleAudioFailure(detail) {
@@ -3373,12 +3451,13 @@ function handleAudioFailure(detail) {
   if (!S.retried) {
     // Повтор через тот же прокси с обходом кэша: подписанная ссылка запрашивается заново.
     S.retried = true;
-    audio.src = streamUrl(S.current) + '&t=' + Date.now();
-    audio.load();
-    audio.play().catch(() => {
-      S.loading = false;
-      updateTransport();
-      toast('Не удалось воспроизвести трек. Попробуйте другой.');
+    applyAudioSource(S.current, {
+      autoplay: true,
+      onError: () => {
+        S.loading = false;
+        updateTransport();
+        toast('Не удалось воспроизвести трек. Попробуйте другой.');
+      },
     });
     return;
   }
@@ -3859,6 +3938,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
   if (action === 'ai-automix-toggle') {
+    if (isSoundCloudTrack(S.current)) return;
     if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
     refreshAiAutoMixUI();
     return;
@@ -4148,7 +4228,7 @@ document.addEventListener('click', async (event) => {
       S.queue = [];
       S.current = null;
       S.index = -1;
-      if (window.RH_LYRICS) window.RH_LYRICS.setTrack(null);
+      syncLyricsTrack(null);
       S.lists = {};
       S.restorePosition = 0;
       clearPlayerState();

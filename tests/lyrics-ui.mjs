@@ -91,11 +91,11 @@ check('класс np-open не превращает body в flex-контейн�
 /* ───────────────────────────── app.js: точки подключения ───────────────────────────── */
 
 check('смена трека в playIndex обновляет текст',
-  /updateNowPlayingMeta\(track\);\s*\n\s*if \(window\.RH_LYRICS\) window\.RH_LYRICS\.setTrack\(track\);/.test(app));
+  /updateNowPlayingMeta\(track\);\s*\n\s*syncLyricsTrack\(track\);/.test(app));
 check('восстановление трека обновляет текст',
-  /updateNowPlayingMeta\(S\.current\);\s*\n\s*if \(window\.RH_LYRICS\) window\.RH_LYRICS\.setTrack\(S\.current\);/.test(app));
+  /updateNowPlayingMeta\(S\.current\);\s*\n\s*syncLyricsTrack\(S\.current\);/.test(app));
 check('выход из аккаунта очищает текст',
-  /S\.current = null;[\s\S]{0,220}RH_LYRICS\) window\.RH_LYRICS\.setTrack\(null\)/.test(app));
+  /S\.current = null;[\s\S]{0,220}syncLyricsTrack\(null\)/.test(app));
 check('есть единая точка переключения текста', /function toggleLyrics\(\)/.test(app));
 check('есть открытие мобильного слоя', /function openLyricsSheet\(open = true\)/.test(app));
 check('есть переключение вкладки панели', /function setQueueTab\(tab = 'queue'\)/.test(app));

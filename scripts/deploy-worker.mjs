@@ -71,12 +71,21 @@ const publicBindings = PUBLIC_VARS
   .filter((name) => process.env[name] && String(process.env[name]).trim())
   .map((name) => ({ type: 'plain_text', name, text: String(process.env[name]).trim() }));
 
+// SC_CLIENT_ID передаётся как секрет: значение не логируется и не пишется на диск.
+const secretBindings = process.env.SC_CLIENT_ID && String(process.env.SC_CLIENT_ID).trim()
+  ? [{ type: 'secret_text', name: 'SC_CLIENT_ID', text: String(process.env.SC_CLIENT_ID).trim() }]
+  : [];
+
 const metadata = {
   main_module: 'index.js',
   compatibility_date: '2025-01-15',
+  // Smart Placement уводит исходящие запросы Worker из «плохих» для
+  // внешних API POP; без него SoundCloud отвечает 401 на egress Cloudflare.
+  placement: { mode: 'smart' },
   bindings: [
     { type: 'plain_text', name: 'SERVICE_NAME', text: 'rh-music-api' },
     ...publicBindings,
+    ...secretBindings,
     { type: 'd1', name: 'DB', id: D1_DATABASE_ID },
   ],
   // Секрет ZVUK_TOKEN не перезаписывается при обновлении кода.

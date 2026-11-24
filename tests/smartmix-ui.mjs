@@ -65,7 +65,7 @@ check('изменение очереди и shuffle уведомляют дви�
 check('финализация перехода передаёт трек приложению',
   /adoptTrack: adoptSmartMixTrack/.test(app) && /async function adoptSmartMixTrack/.test(app));
 check('при смене трека текст переключается только при adopt',
-  /async function adoptSmartMixTrack[\s\S]{0,900}RH_LYRICS\.setTrack\(track\)/.test(app));
+  /async function adoptSmartMixTrack[\s\S]{0,900}syncLyricsTrack\(track\)/.test(app));
 
 check('анализ использует Range-префикс, а не полную загрузку',
   /bytes=0-\$\{PREFIX_BYTES - 1\}/.test(mix) && /PREFIX_BYTES = 512 \* 1024/.test(mix));
