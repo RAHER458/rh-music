@@ -637,3 +637,17 @@ input[type="range"] { accent-color: var(--blue); }
   html[data-ui="mobile"] .section-title::before { display: none; }
   html[data-ui="mobile"] .card-play { display: none; }
 }
+
+/* Короткие страницы (Поиск/Плейлисты) не должны менять высоту вьюпорта:
+   иначе iOS сдвигает фиксированную нижнюю панель вкладок. */
+@media (max-width: 1023px), (pointer: coarse) {
+  html[data-ui="mobile"], html[data-ui="mobile"] body { min-height: 100dvh; }
+  html[data-ui="mobile"] .page {
+    min-height: calc(100dvh - var(--topbar-h) - var(--player-h) - var(--tabbar-h) - var(--safe-bottom));
+  }
+  html[data-ui="mobile"] .tabbar,
+  html[data-ui="mobile"] .player {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
+}
