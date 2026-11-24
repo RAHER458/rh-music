@@ -2033,7 +2033,7 @@ function restoreStandardSource(resumeAt = 0) {
 }
 
 function syncLyricsTrack(track) {
-  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(isSoundCloudTrack(track) ? null : track);
+  if (window.RH_LYRICS) window.RH_LYRICS.setTrack(track || null);
 }
 
 

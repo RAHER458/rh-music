@@ -48,6 +48,13 @@ function validId(raw) {
   return raw;
 }
 
+function lyricsId(raw) {
+  let decoded = String(raw || '');
+  try { decoded = decodeURIComponent(decoded); } catch { /* ignore */ }
+  if (/^sc:\d+$/i.test(decoded)) return decoded;
+  return validId(raw);
+}
+
 function parseQuery(url) {
   const q = (url.searchParams.get('q') || '').trim();
   if (!q) throw new ApiError(400, 'EMPTY_QUERY', 'Введите поисковый запрос.');
@@ -518,8 +525,8 @@ async function route(request, env) {
     return json({ ok: true, query: q, tracks: { total: page.total, cursor: page.next || null, items: page.items } });
   }
 
-  if ((m = path.match(/^\/api\/lyrics\/([^/]+)\/words$/)) && method === 'GET') return handleLyricsWords(request, env, validId(m[1]));
-  if ((m = path.match(/^\/api\/lyrics\/([^/]+)$/)) && method === 'GET') return handleLyrics(request, env, validId(m[1]));
+  if ((m = path.match(/^\/api\/lyrics\/([^/]+)\/words$/)) && method === 'GET') return handleLyricsWords(request, env, lyricsId(m[1]));
+  if ((m = path.match(/^\/api\/lyrics\/([^/]+)$/)) && method === 'GET') return handleLyrics(request, env, lyricsId(m[1]));
   if ((m = path.match(/^\/api\/track\/([^/]+)\/stream$/)) && method === 'GET') return handleStreamInfo(env, validId(m[1]), url);
   if ((m = path.match(/^\/api\/track\/([^/]+)$/)) && method === 'GET') return handleTrack(env, validId(m[1]));
   if ((m = path.match(/^\/api\/stream\/([^/]+)$/)) && (method === 'GET' || method === 'HEAD')) {

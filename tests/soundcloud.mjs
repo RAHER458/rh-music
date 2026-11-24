@@ -23,7 +23,7 @@ check('snipped и encrypted транскодинги отбрасываются'
 check('HLS отдаётся как m3u8 того же origin', /application\/vnd\.apple\.mpegurl/.test(sc) && /streamUrl\(track\)/.test(app) && /api\/sc\/play\//.test(app));
 check('для SoundCloud подключается hls.js на не-Safari', /Hls\.isSupported/.test(app) && /vendor\/hls\.min\.js/.test(index) && existsSync(join(here, '../web/vendor/hls.min.js')));
 check('AutoMix блокируется для SoundCloud', /isSoundCloudTrack\(S\.current\)/.test(app) && /el\.disabled = blocked/.test(app) && /if \(isSoundCloudTrack\(S\.current\)\) return;/.test(app));
-check('Smart Mix и текст не работают с SoundCloud', app.includes("smartMixAdoptFailure('unsupported_source'") && app.includes('isSoundCloudTrack(track) ? null : track'));
+check('Smart Mix не работает с SoundCloud, а текст загружается через LRCLIB', app.includes("smartMixAdoptFailure('unsupported_source'") && /syncLyricsTrack[\s\S]{0,80}setTrack\(track \|\| null\)/.test(app) && /getSoundCloudTrack/.test(read('worker/src/lyrics.js')));
 check('в CSP разрешены обложки и HLS-домены SoundCloud', /\*\.sndcdn\.com/.test(headers) && /\*\.soundcloud\.cloud/.test(headers));
 check('CSP Pages Function разрешает SoundCloud', /sndcdn/.test(pagesWorker) && /soundcloud\.cloud/.test(pagesWorker));
 const row = app.slice(app.indexOf('function trackRow'), app.indexOf('function trackList'));

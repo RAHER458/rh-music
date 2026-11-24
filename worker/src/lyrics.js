@@ -20,6 +20,7 @@
 
 import { ApiError, json } from './http.js';
 import { gql } from './zvuk.js';
+import { getSoundCloudTrack } from './soundcloud.js';
 
 const ZVUK_TINY_URL = 'https://zvuk.com/api/tiny/lyrics';
 const LRCLIB_BASE = 'https://lrclib.net/api';
@@ -516,6 +517,17 @@ query lyricsTrack($ids: [ID!]!) {
 }`;
 
 export async function loadTrackMeta(env, trackId) {
+  if (/^sc:/i.test(String(trackId || ''))) {
+    const track = await getSoundCloudTrack(env, trackId);
+    return {
+      id: track.id,
+      title: String(track.title || '').trim(),
+      artist: String(track.artist || '').trim(),
+      album: String(track.album || '').trim(),
+      duration: Number(track.duration) || 0,
+      hasLyrics: false,
+    };
+  }
   const data = await gql(env, TRACK_META_QUERY, 'lyricsTrack', { ids: [trackId] });
   const found = (data.getTracks || []).find((item) => item && item.id);
   if (!found) return null;

@@ -43,9 +43,19 @@ function allowedOrigins(env) {
 
 export function originAllowed(origin, env) {
   if (!origin) return false;
-  let normalized = origin;
+  let normalized;
   try { normalized = new URL(origin).origin; } catch { return false; }
-  return allowedOrigins(env).includes(normalized);
+  const list = allowedOrigins(env);
+  if (list.includes(normalized)) return true;
+  // Preview-деплои Cloudflare Pages (*.rh-music.pages.dev) используют тот же сайт.
+  try {
+    const originHost = new URL(normalized).hostname;
+    for (const item of list) {
+      const siteHost = new URL(item).hostname;
+      if (siteHost.endsWith('.pages.dev') && originHost.endsWith('.' + siteHost)) return true;
+    }
+  } catch { /* ignore */ }
+  return false;
 }
 
 export function corsHeaders(request, env) {
