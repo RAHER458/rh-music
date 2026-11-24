@@ -24,9 +24,9 @@ check('не дублируется загрузка текста', !/\/api\/lyri
 
 
 check('слова плавно заливаются через --p', /setProperty\('--p'/.test(beta) && css.includes('.np-lb-word') && css.includes('var(--p, 0)'));
-check('смена строки — мягкий подъём с лёгким блюром', /function shift/.test(beta) && /is-shift/.test(beta) && /npLbCurrIn/.test(css) && /translateY\(10px\)/.test(css) && /blur\(3px\)/.test(css));
+check('смена строки — мягкий подъём с лёгким блюром', /function shift/.test(beta) && /is-shift/.test(beta) && /npLbCurrIn/.test(css) && /translateY\(8px\)/.test(css) && /blur\(2px\)/.test(css));
 const betaCss = css.slice(css.indexOf('.np-lyrics-beta-text'), css.indexOf('.np-lb-word'));
-check('блюр краёв умеренный, без сильного размытия', /blur\(1\.5px\)/.test(betaCss) && !/blur\([5-9]px\)/.test(betaCss));
+check('блюр краёв умеренный, без сильного размытия', /blur\(1px\)/.test(betaCss) && !/blur\([5-9]px\)/.test(betaCss));
 check('в lyrics.js есть предыдущая строка', /prevText/.test(lyrics) && /data\.lines\[index - 1\]/.test(lyrics));
 check('RAF работает только при воспроизведении', /requestAnimationFrame\(tick\)/.test(beta) && /audio\.paused/.test(beta) && /audio\.addEventListener\('pause', stopLoop\)/.test(beta));
 check('reduced motion отключает анимацию', /prefers-reduced-motion: reduce/.test(css) && /\.np-lb-slot\.is-shift \.np-lb-line \{ animation: none/.test(css));
