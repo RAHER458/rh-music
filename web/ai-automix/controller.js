@@ -110,10 +110,17 @@
     const cached = state.cache.get(String(track.id));
     if (cached) return cached;
     const url = state.host.streamUrl(track);
-    const response = await fetch(url, { headers: { Accept: 'audio/mpeg' } });
-    if (!response.ok) throw new Error('stream HTTP ' + response.status);
-    const data = await response.arrayBuffer();
-    if (data.byteLength < 1024) throw new Error('stream too short');
+    // Каталог отдаёт MP3, SoundCloud — HLS. Хост сам решает, как получить
+    // единый ArrayBuffer: для HLS склеивает init + fMP4-сегменты.
+    let data;
+    if (state.host && typeof state.host.fetchAudioBytes === 'function') {
+      data = await state.host.fetchAudioBytes(track, url);
+    } else {
+      const response = await fetch(url, { headers: { Accept: 'audio/mpeg' } });
+      if (!response.ok) throw new Error('stream HTTP ' + response.status);
+      data = await response.arrayBuffer();
+    }
+    if (!data || data.byteLength < 1024) throw new Error('stream too short');
     const buffer = await state.ctx.decodeAudioData(data.slice(0));
     const analysis = state.lib.analyzeAudioBuffer(adapter(buffer), {
       id: String(track.id), title: track.title, artist: track.artist,
