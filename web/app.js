@@ -3955,8 +3955,13 @@ function route() {
   window.scrollTo(0, 0);
 
   document.body.classList.toggle('auth-route', path === '/login' || path === '/register');
-  // Шторка очереди — модальная: при навигации она закрывается, чтобы не висеть поверх страницы.
+  // Все полноэкранные слои закрываются при смене маршрута: иначе текст песни,
+  // очередь или Now Playing могут остаться поверх новой страницы.
+  if (S.lyricsOpen) openLyricsSheet(false);
+  if (S.sheetOpen) sheetClose();
   if (S.drawerOpen) openDrawer(false);
+  if (S.npOpen) openNowPlaying(false);
+  if (S.queueOpen) closeQueuePanel();
 
   updateSectionTitle(path);
 
