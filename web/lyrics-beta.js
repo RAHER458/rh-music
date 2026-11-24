@@ -176,12 +176,10 @@
       currEl = oldNext;
       nextEl = null;
       if (prevEl) {
-        prevEl.classList.remove(...prevEl.classList);
         prevEl.className = 'np-lb-line is-prev';
         setPlain(prevEl, lastMain);
       }
       if (currEl) {
-        currEl.classList.remove(...currEl.classList);
         currEl.className = 'np-lb-line is-current';
         setWords(currEl, payloadData);
       }
@@ -200,12 +198,10 @@
       currEl = oldPrev;
       prevEl = null;
       if (nextEl) {
-        nextEl.classList.remove(...nextEl.classList);
         nextEl.className = 'np-lb-line is-next';
         setPlain(nextEl, lastMain);
       }
       if (currEl) {
-        currEl.classList.remove(...currEl.classList);
         currEl.className = 'np-lb-line is-current';
         setWords(currEl, payloadData);
       }
