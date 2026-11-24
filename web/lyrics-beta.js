@@ -27,6 +27,7 @@
   let pendingEnable = false;
   let pendingTimer = 0;
   let lastIndex = null;
+  let hasRendered = false;
 
   function isSynced(data) {
     return !!data && data.status === 'ready' && (data.syncLevel === 'line' || data.syncLevel === 'word');
@@ -150,7 +151,8 @@
     linePrev.textContent = prev;
     lineNext.textContent = next;
     setWords(lineCurr, data, main);
-    if (!sameLine) shift();
+    if (hasRendered && !sameLine) shift();
+    hasRendered = true;
     updateWords();
     startLoop();
   }
@@ -204,6 +206,7 @@
       ensureText();
       lastKey = '';
       lastIndex = null;
+      hasRendered = false;
       if (window.RH_LYRICS && typeof window.RH_LYRICS.ensure === 'function') window.RH_LYRICS.ensure();
       render(window.RH_LYRICS && window.RH_LYRICS.getLine ? window.RH_LYRICS.getLine() : null);
     } else {
