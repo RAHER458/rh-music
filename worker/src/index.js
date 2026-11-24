@@ -277,13 +277,21 @@ async function handleImage(request, url) {
   } catch {
     throw new ApiError(400, 'BAD_URL', 'Некорректный адрес обложки.');
   }
-  if (target.protocol !== 'https:' || target.hostname !== CDN_IMAGE_HOST) {
+  const isSoundCloudImage = target.hostname === 'i1.sndcdn.com' || target.hostname.endsWith('.sndcdn.com');
+  if (target.protocol !== 'https:' || (target.hostname !== CDN_IMAGE_HOST && !isSoundCloudImage)) {
     throw new ApiError(403, 'FORBIDDEN_HOST', 'Обложки с этого хоста не проксируются.');
   }
 
   const size = Math.min(Math.max(Number(url.searchParams.get('size')) || 300, 40), 1200);
   const targetUrl = new URL(target.toString());
-  if (targetUrl.searchParams.has('size')) targetUrl.searchParams.set('size', String(size));
+  if (targetUrl.searchParams.has('size')) {
+    targetUrl.searchParams.set('size', String(size));
+  } else if (isSoundCloudImage) {
+    // SoundCloud хранит размер прямо в имени файла: -large / -t500x500.
+    const path = targetUrl.pathname;
+    if (size >= 300) targetUrl.pathname = path.replace(/-(large|t300x300|crop)\./, '-t500x500.');
+    else targetUrl.pathname = path.replace(/-(large|t500x500|crop)\./, '-t300x300.');
+  }
 
   const cache = caches.default;
   const cacheKey = new Request(targetUrl.toString(), { method: 'GET' });
@@ -297,7 +305,7 @@ async function handleImage(request, url) {
   const upstream = await fetch(targetUrl.toString(), {
     headers: {
       'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-      'Referer': 'https://zvuk.com/',
+      'Referer': isSoundCloudImage ? 'https://soundcloud.com/' : 'https://zvuk.com/',
     },
     cf: { cacheEverything: true, cacheTtl: 604800 },
   });
