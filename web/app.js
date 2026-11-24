@@ -3952,6 +3952,13 @@ function route() {
   try {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   } catch { /* ignore */ }
+  // Смена вкладки должна закрывать клавиатуру: иначе iOS оставляет её открытой
+  // и поднимает нижнюю панель вкладок на всех следующих экранах.
+  const activeEl = document.activeElement;
+  if (activeEl && typeof activeEl.blur === 'function'
+      && activeEl.matches && activeEl.matches('input, textarea, select, [contenteditable="true"]')) {
+    activeEl.blur();
+  }
   window.scrollTo(0, 0);
 
   document.body.classList.toggle('auth-route', path === '/login' || path === '/register');
