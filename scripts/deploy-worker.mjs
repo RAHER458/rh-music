@@ -89,7 +89,7 @@ const metadata = {
     { type: 'd1', name: 'DB', id: D1_DATABASE_ID },
   ],
   // Секрет ZVUK_TOKEN не перезаписывается при обновлении кода.
-  keep_bindings: ['secret_text'],
+  keep_bindings: ['secret_text', 'plain_text'],
   observability: { enabled: true },
 };
 
