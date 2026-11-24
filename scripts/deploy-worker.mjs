@@ -6,6 +6,8 @@
  *   CLOUDFLARE_API_TOKEN   — токен Cloudflare (Workers Scripts:Edit, Account Settings:Read)
  *   CLOUDFLARE_ACCOUNT_ID  — id аккаунта
  *   ZVUK_TOKEN             — токен Zvuk (нужен только при первой установке секрета)
+ *   PASSWORD_PEPPER        — HMAC-перец для паролей (задаётся один раз через
+ *                            Cloudflare Secrets/API; при обновлении кода не стирается)
  *
  * Секрет не логируется и не пишется на диск.
  *

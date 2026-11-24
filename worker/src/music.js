@@ -28,7 +28,7 @@ export async function handleLibraryIds(request, env) {
 }
 
 export async function handleLibraryAdd(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const track = sanitizeTrack(body.track);
@@ -38,7 +38,7 @@ export async function handleLibraryAdd(request, env) {
 }
 
 export async function handleLibraryRemove(request, env, trackId) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   if (!ID_RE.test(trackId)) throw new ApiError(400, 'BAD_TRACK_ID', 'Некорректный идентификатор.');
   const { removed } = await store.removeLibraryTrack(env, user.id, trackId);
@@ -79,7 +79,7 @@ export async function handlePlaylistGet(request, env, id) {
 }
 
 export async function handlePlaylistCreate(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const id = await store.createPlaylist(env, user.id, {
@@ -90,7 +90,7 @@ export async function handlePlaylistCreate(request, env) {
 }
 
 export async function handlePlaylistUpdate(request, env, id) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const updated = await store.updatePlaylist(env, user.id, id, {
@@ -102,7 +102,7 @@ export async function handlePlaylistUpdate(request, env, id) {
 }
 
 export async function handlePlaylistDelete(request, env, id) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const removed = await store.deletePlaylist(env, user.id, id);
   if (!removed) throw new ApiError(404, 'PLAYLIST_NOT_FOUND', 'Плейлист не найден.');
@@ -110,7 +110,7 @@ export async function handlePlaylistDelete(request, env, id) {
 }
 
 export async function handlePlaylistAddTrack(request, env, id) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const track = sanitizeTrack(body.track);
@@ -119,7 +119,7 @@ export async function handlePlaylistAddTrack(request, env, id) {
 }
 
 export async function handlePlaylistRemoveTrack(request, env, id, trackId) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   if (!ID_RE.test(trackId)) throw new ApiError(400, 'BAD_TRACK_ID', 'Некорректный идентификатор.');
   const { removed } = await store.removePlaylistTrack(env, user.id, id, trackId);
@@ -127,7 +127,7 @@ export async function handlePlaylistRemoveTrack(request, env, id, trackId) {
 }
 
 export async function handlePlaylistReorder(request, env, id) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const ids = Array.isArray(body.trackIds) ? body.trackIds.map(String).filter((x) => ID_RE.test(x)) : null;
@@ -139,7 +139,7 @@ export async function handlePlaylistReorder(request, env, id) {
 /* ───────────────────────────── история ───────────────────────────── */
 
 export async function handleHistoryStart(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const track = sanitizeTrack(body.track);
@@ -148,7 +148,7 @@ export async function handleHistoryStart(request, env) {
 }
 
 export async function handleHistoryUpdate(request, env, id, method) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const listened = Math.min(Math.max(Number(body.listenedSeconds) || 0, 0), 24 * 3600);

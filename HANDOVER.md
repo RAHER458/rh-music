@@ -18,6 +18,7 @@ RH—MUSIC — музыкальный веб-сервис с собственн�
 - Репозиторий: https://github.com/RAHER458/rh-music
 - Ветка production: `main`
 - Cloudflare account id: `cbc0aa4d086170fb101f477ebedd4d29`
+- Безопасность: см. [SECURITY.md](SECURITY.md)
 - Для агента: начни с этого файла, затем README.md.
 
 Главные принципы продукта:
@@ -135,8 +136,8 @@ node scripts/deploy-pages.mjs
 - `worker/wrangler.toml` — справочный, деплой идёт через API-скрипт
 - D1 binding: `DB`
 - Cron: `0 4 * * *`
-- публичные переменные: `SERVICE_NAME`, `SITE_URL`, `GOOGLE_CLIENT_ID`
-- секрет: `ZVUK_TOKEN`
+- публичные переменные: `SERVICE_NAME`, `SITE_URL`, `GOOGLE_CLIENT_ID`, `ALLOWED_ORIGINS` (опционально)
+- секреты: `ZVUK_TOKEN`, `PASSWORD_PEPPER` (HMAC-перец для паролей)
 
 Деплой Worker:
 
@@ -166,7 +167,7 @@ CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... D1_DATABASE_ID=164c51cd-2899-
 
 ### Чего нельзя делать с Cloudflare
 
-- коммитить `ZVUK_TOKEN` и любые токены;
+- коммитить `ZVUK_TOKEN`, `PASSWORD_PEPPER` и любые токены;
 - печатать секреты в логах/ответах;
 - удалять Pages Function `/api` proxy;
 - менять production branch без необходимости;
@@ -237,6 +238,22 @@ git status --short
 иначе браузер отдаст старый JS/CSS из кеша.
 
 ---
+
+## 6.1. Безопасность (кратко)
+
+- пароли: PBKDF2-SHA256 100 000 (максимум Workers) + HMAC-SHA256 `PASSWORD_PEPPER`;
+- сессия: cookie `__Host-rh_session` (HttpOnly, Secure, SameSite=Lax, Priority=High),
+  в D1 — только SHA-256 хеш токена;
+- мутации: `X-RH-Request: 1`, проверка Origin/Sec-Fetch-Site, только HTTPS;
+- лимиты: вход 12/15 мин, регистрация 6/30 мин, все записи 60/мин на изолят и
+  300/5 мин на IP в D1;
+- CORS: только `SITE_URL`/`ALLOWED_ORIGINS`, без wildcard;
+- заголовки: HSTS, CSP, X-Frame-Options DENY, nosniff, Referrer-Policy,
+  Permissions-Policy, COOP/CORP — и в Worker, и в `web/_worker.js`;
+- 5xx не раскрывают внутренние детали; `/api/health` отдаёт минимум;
+- админки, загрузок файлов, оплаты и npm-зависимостей в проекте нет.
+
+Подробный отчёт и результаты «взлома»: [SECURITY.md](SECURITY.md).
 
 ## 7. Правила работы с аудио (самое важное)
 

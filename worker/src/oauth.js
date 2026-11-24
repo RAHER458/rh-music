@@ -284,7 +284,7 @@ async function createState(env, { provider, mode, linkUserId }) {
 
 /** Одноразовый nonce для Google Identity Services (и для входа, и для привязки). */
 export async function handleGoogleNonce(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const config = providerConfig(env);
   providerOrThrow(config, 'google');
 
@@ -303,7 +303,7 @@ export async function handleGoogleNonce(request, env) {
 
 /** Вход или привязка по Google ID Token, полученному на клиенте. */
 export async function handleGoogleLogin(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const config = providerConfig(env);
   const provider = providerOrThrow(config, 'google');
 
@@ -393,7 +393,7 @@ export async function handleIdentities(request, env) {
  * провайдер или пароль. Повторная аутентификация обязательна.
  */
 export async function handleUnlink(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const provider = String(body.provider || '');

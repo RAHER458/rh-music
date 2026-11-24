@@ -129,6 +129,11 @@ export async function touchSession(env, sessionId) {
   await run(env, 'UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2', [nowIso(), sessionId]);
 }
 
+export async function deleteOtherSessions(env, userId, keepTokenHash) {
+  await run(env, 'DELETE FROM session_methods WHERE user_id = ?1 AND token_hash <> ?2', [userId, keepTokenHash]);
+  await run(env, 'DELETE FROM sessions WHERE user_id = ?1 AND token_hash <> ?2', [userId, keepTokenHash]);
+}
+
 export async function deleteSession(env, tokenHash) {
   await run(env, 'DELETE FROM session_methods WHERE token_hash = ?1', [tokenHash]);
   await run(env, 'DELETE FROM sessions WHERE token_hash = ?1', [tokenHash]);

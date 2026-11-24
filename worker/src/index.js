@@ -7,7 +7,11 @@
  * Токен каталога живёт только в секрете окружения ZVUK_TOKEN и никогда не попадает в ответы.
  */
 
-import { ApiError, json, fail, corsHeaders, sanitizeTrack, readJson, json as jsonResponse } from './http.js';
+import {
+  ApiError, json, fail, corsHeaders, securityHeaders, clientIp, isHttps,
+  sanitizeTrack, readJson, json as jsonResponse,
+} from './http.js';
+import * as store from './store.js';
 import {
   gql, Q, pageOf, normalizeTrack, normalizeArtist, normalizeRelease,
   MAX_LIMIT, DEFAULT_LIMIT, CDN_IMAGE_HOST,
@@ -270,6 +274,34 @@ async function handleDiagStream(env, id, url) {
   });
 }
 
+/* ───────────────────────────── защита от перебора ───────────────────────────── */
+
+const writeBurst = new Map();
+const WRITE_BURST = 60;          // запросов в минуту на IP в одном изоляте
+const WRITE_PERSISTENT = 300;    // запросов за 5 минут на IP в D1
+
+async function enforceWriteLimit(env, request) {
+  const ip = clientIp(request);
+  const now = Date.now();
+  const burst = writeBurst.get(ip);
+  if (burst && now < burst.reset) {
+    if (burst.count >= WRITE_BURST) {
+      throw new ApiError(429, 'RATE_LIMITED', 'Слишком много запросов. Попробуйте позже.');
+    }
+    burst.count += 1;
+  } else {
+    writeBurst.set(ip, { count: 1, reset: now + 60000 });
+  }
+  if (writeBurst.size > 5000) writeBurst.clear();
+
+  const attempts = await store.countAttempts(env, ip, 'write', 5).catch(() => 0);
+  if (attempts >= WRITE_PERSISTENT) {
+    throw new ApiError(429, 'RATE_LIMITED', 'Слишком много запросов. Попробуйте позже.');
+  }
+  await store.logAttempt(env, ip, 'write').catch(() => {});
+  if (Math.random() < 0.02) store.pruneAttempts(env).catch(() => {});
+}
+
 /* ───────────────────────────── роутер ───────────────────────────── */
 
 const MEDIA_GET = /^\/api\/(search|track|stream|artist|album|img|diag|lyrics)/;
@@ -280,7 +312,17 @@ async function route(request, env) {
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const method = request.method;
 
-  if (method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request) });
+  if (method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: { ...corsHeaders(request, env), ...securityHeaders() } });
+  }
+
+  if (!isHttps(request)) {
+    throw new ApiError(403, 'HTTPS_REQUIRED', 'Соединение должно быть защищённым (HTTPS).');
+  }
+
+  if (!SAFE_METHODS.has(method) && path.startsWith('/api/')) {
+    await enforceWriteLimit(env, request);
+  }
 
   if (!SAFE_METHODS.has(method) && MEDIA_GET.test(path)) {
     throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Для этого маршрута доступны только GET и HEAD.');
@@ -299,33 +341,24 @@ async function route(request, env) {
   }
 
     if (path === '/api/health') {
-    let upstream = null;
+    const health = { ok: true, service: 'rh-music-api', version: '2.4.0', time: new Date().toISOString() };
     if (url.searchParams.get('probe') === '1') {
       const started = Date.now();
       try {
         const data = await gql(env, Q.searchTracks, 'searchTracks', { query: 'music', limit: 1, cursor: null });
         const items = (data.search && data.search.tracks && data.search.tracks.items) || [];
-        upstream = { ok: items.length > 0, elapsedMs: Date.now() - started };
-      } catch (err) {
-        upstream = { ok: false, error: err.message, code: err.code || null };
+        health.upstream = { ok: items.length > 0, elapsedMs: Date.now() - started };
+      } catch {
+        health.upstream = { ok: false, elapsedMs: Date.now() - started };
+      }
+      try {
+        await env.DB.prepare('SELECT 1 AS ok').first();
+        health.database = { ok: true };
+      } catch {
+        health.database = { ok: false };
       }
     }
-    let database = null;
-    try {
-      const row = await env.DB.prepare('SELECT COUNT(*) AS users FROM users').first();
-      database = { ok: true, users: (row && row.users) || 0 };
-    } catch (err) {
-      database = { ok: false, error: String(err && err.message) };
-    }
-    return json({
-      ok: true,
-      service: 'rh-music-api',
-      version: '2.4.0',
-      tokenConfigured: !!env.ZVUK_TOKEN,
-      database,
-      upstream,
-      time: new Date().toISOString(),
-    });
+    return json(health);
   }
 
   /* --- аккаунты --- */
@@ -422,23 +455,44 @@ export default {
   },
 
   async fetch(request, env) {
-    const cors = corsHeaders(request);
-    try {
-      const response = await route(request, env);
+    const url = new URL(request.url);
+    const security = securityHeaders();
+
+    if (url.protocol === 'http:') {
+      url.protocol = 'https:';
+      return new Response(null, {
+        status: 301,
+        headers: { Location: url.toString(), ...security },
+      });
+    }
+
+    const cors = corsHeaders(request, env);
+    const decorate = (response) => {
+      for (const [key, value] of Object.entries(security)) {
+        if (!response.headers.has(key)) response.headers.set(key, value);
+      }
       for (const [key, value] of Object.entries(cors)) {
-        if (!response.headers.has(key) && key !== 'Access-Control-Allow-Origin') response.headers.set(key, value);
-        else if (key === 'Access-Control-Allow-Origin' && !response.headers.has(key)) response.headers.set(key, value);
+        if (!response.headers.has(key)) response.headers.set(key, value);
       }
       return response;
+    };
+
+    try {
+      return decorate(await route(request, env));
     } catch (err) {
-      const apiErr = err instanceof ApiError
+      const isApi = err instanceof ApiError;
+      if (!isApi) console.error('[rh-music]', err && err.stack ? err.stack : err);
+      const apiErr = isApi
         ? err
-        : new ApiError(500, 'INTERNAL', 'Внутренняя ошибка сервера.', String((err && err.message) || err));
-      const response = fail(apiErr.status, apiErr.code, apiErr.message, apiErr.detail);
-      for (const [key, value] of Object.entries(cors)) response.headers.set(key, value);
-      return response;
+        : new ApiError(500, 'INTERNAL', 'Внутренняя ошибка сервера.');
+      const response = fail(
+        apiErr.status,
+        apiErr.code,
+        apiErr.message,
+        apiErr.status >= 500 ? null : apiErr.detail,
+      );
+      return decorate(response);
     }
   },
 };
-
 export { jsonResponse };

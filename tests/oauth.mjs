@@ -164,8 +164,8 @@ function request(path, { method = 'POST', body, cookie } = {}) {
 
 function cookieOf(response) {
   const raw = response.headers.get('Set-Cookie') || '';
-  const match = /rh_session=([^;]+)/.exec(raw);
-  return match ? 'rh_session=' + match[1] : null;
+  const match = /((?:__Host-)?rh_session)=([^;]+)/.exec(raw);
+  return match ? match[1] + '=' + match[2] : null;
 }
 
 const rows = (sql, ...params) => {
@@ -411,7 +411,7 @@ let emailCookie = null;
   }), env);
   const json = await response.json();
   check('удаление с подтверждением работает', response.status === 200 && json.deleted === true);
-  check('cookie сессии очищается', /rh_session=;/.test(response.headers.get('Set-Cookie') || ''));
+  check('cookie сессии очищается', /(?:__Host-)?rh_session=;/.test(response.headers.get('Set-Cookie') || ''));
 
   const checks = {
     users: await one('SELECT COUNT(*) AS n FROM users WHERE id = ?1', emailUserId),

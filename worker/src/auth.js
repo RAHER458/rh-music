@@ -12,12 +12,11 @@
 import {
   ApiError, json, readJson, requireCsrf, hashPassword, randomHex, sha256Hex,
   sessionCookie, clearCookie, parseCookies, validateRegistration, timingSafeEqual,
-  normalizeEmail,
+  normalizeEmail, clientIp, SESSION_COOKIE,
 } from './http.js';
 import * as store from './store.js';
 
 const PASSWORD_ITERATIONS = 100000;
-const SESSION_COOKIE = 'rh_session';
 const SESSION_DAYS = 30;
 const SESSION_TOUCH_MINUTES = 10;
 
@@ -25,12 +24,6 @@ const LIMITS = {
   register: { max: 6, windowMinutes: 30 },
   login: { max: 12, windowMinutes: 15 },
 };
-
-function clientIp(request) {
-  return request.headers.get('CF-Connecting-IP')
-    || (request.headers.get('X-Forwarded-For') || '').split(',')[0].trim()
-    || 'unknown';
-}
 
 async function enforceRateLimit(env, request, action) {
   const rule = LIMITS[action];
@@ -122,7 +115,7 @@ async function createSessionResponse(env, request, user, extra = {}, method = 'p
 /* ───────────────────────────── регистрация ───────────────────────────── */
 
 export async function handleRegister(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   await enforceRateLimit(env, request, 'register');
 
   const body = await readJson(request);
@@ -145,7 +138,7 @@ export async function handleRegister(request, env) {
   if (existingName) throw new ApiError(409, 'USERNAME_TAKEN', 'Такое имя пользователя уже занято.');
 
   const salt = randomHex(16);
-  const hash = await hashPassword(password, salt, PASSWORD_ITERATIONS);
+  const hash = await hashPassword(password, salt, PASSWORD_ITERATIONS, env.PASSWORD_PEPPER || '');
   const id = await store.insertUser(env, { username, email, hash, salt, iterations: PASSWORD_ITERATIONS });
   await noteAttempt(env, request, 'register');
 
@@ -156,7 +149,7 @@ export async function handleRegister(request, env) {
 /* ───────────────────────────── вход ───────────────────────────── */
 
 export async function handleLogin(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   await enforceRateLimit(env, request, 'login');
 
   const body = await readJson(request);
@@ -170,24 +163,40 @@ export async function handleLogin(request, env) {
   if (!row) {
     await noteAttempt(env, request, 'login');
     // Выравниваем время ответа, чтобы нельзя было определить существование аккаунта.
-    await hashPassword(password, '00'.repeat(16), PASSWORD_ITERATIONS);
+    await hashPassword(password, '00'.repeat(16), PASSWORD_ITERATIONS, env.PASSWORD_PEPPER || '');
     throw genericError;
   }
 
-  const hash = await hashPassword(password, row.password_salt, row.iterations || PASSWORD_ITERATIONS);
+  const storedIterations = row.iterations || PASSWORD_ITERATIONS;
+  const pepper = env.PASSWORD_PEPPER || '';
+  const hash = await hashPassword(password, row.password_salt, storedIterations, pepper);
   if (!timingSafeEqual(hash, row.password_hash)) {
-    await noteAttempt(env, request, 'login');
-    throw genericError;
+    // Совместимость с хешами, созданными без peppper: пускаем один раз и апгрейдим.
+    const legacy = pepper
+      ? await hashPassword(password, row.password_salt, storedIterations, '')
+      : '';
+    if (!pepper || !timingSafeEqual(legacy, row.password_hash)) {
+      await noteAttempt(env, request, 'login');
+      throw genericError;
+    }
   }
 
   await noteAttempt(env, request, 'login');
+  // Плавный апгрейд: добавляем pepper к старым хешам.
+  if (pepper && timingSafeEqual(hash, row.password_hash) === false) {
+    try {
+      const upgradedSalt = randomHex(16);
+      const upgraded = await hashPassword(password, upgradedSalt, PASSWORD_ITERATIONS, pepper);
+      await store.updatePassword(env, row.id, { hash: upgraded, salt: upgradedSalt, iterations: PASSWORD_ITERATIONS });
+    } catch { /* апгрейд не критичен для входа */ }
+  }
   return createSessionResponse(env, request, row);
 }
 
 /* ───────────────────────────── выход ───────────────────────────── */
 
 export async function handleLogout(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const cookies = parseCookies(request);
   const token = cookies[SESSION_COOKIE];
   if (token) {
@@ -233,7 +242,7 @@ export async function handleMe(request, env) {
 }
 
 export async function handleUpdateProfile(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
 
@@ -257,27 +266,33 @@ export async function handleUpdateProfile(request, env) {
 }
 
 export async function handleChangePassword(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
 
   const current = String(body.currentPassword || '');
   const next = String(body.newPassword || '');
-  if (next.length < 8 || !/[A-Za-zА-Яа-я]/.test(next) || !/[0-9]/.test(next)) {
-    throw new ApiError(400, 'VALIDATION', 'Новый пароль: минимум 8 символов, буквы и цифры.');
+  if (next.length < 10 || !/[A-Za-zА-Яа-я]/.test(next) || !/[0-9]/.test(next)) {
+    throw new ApiError(400, 'VALIDATION', 'Новый пароль: минимум 10 символов, буквы и цифры.');
   }
 
   const row = await store.findUserById(env, user.id);
   const full = await store.findUserByLogin(env, row.email);
-  const hash = await hashPassword(current, full.password_salt, full.iterations || PASSWORD_ITERATIONS);
+  const pepper = env.PASSWORD_PEPPER || '';
+  const hash = await hashPassword(current, full.password_salt, full.iterations || PASSWORD_ITERATIONS, pepper);
   if (!timingSafeEqual(hash, full.password_hash)) {
-    throw new ApiError(401, 'BAD_CREDENTIALS', 'Текущий пароль указан неверно.');
+    const legacy = pepper ? await hashPassword(current, full.password_salt, full.iterations || PASSWORD_ITERATIONS, '') : '';
+    if (!pepper || !timingSafeEqual(legacy, full.password_hash)) {
+      throw new ApiError(401, 'BAD_CREDENTIALS', 'Текущий пароль указан неверно.');
+    }
   }
 
   const salt = randomHex(16);
-  const newHash = await hashPassword(next, salt, PASSWORD_ITERATIONS);
+  const newHash = await hashPassword(next, salt, PASSWORD_ITERATIONS, env.PASSWORD_PEPPER || '');
   await store.updatePassword(env, user.id, { hash: newHash, salt, iterations: PASSWORD_ITERATIONS });
-  return json({ ok: true });
+  // Смена пароля завершает все остальные сессии пользователя.
+  await store.deleteOtherSessions(env, user.id, user.tokenHash).catch(() => {});
+  return json({ ok: true, relogin: true });
 }
 
 /**
@@ -293,8 +308,10 @@ export async function requireReauth(env, user, body) {
     if (!password) throw new ApiError(403, 'REAUTH_REQUIRED', 'Введите текущий пароль для подтверждения.');
     const row = await store.findUserById(env, user.id);
     const full = await store.findUserByLogin(env, row.email);
-    const hash = await hashPassword(password, full.password_salt, full.iterations || PASSWORD_ITERATIONS);
-    if (!timingSafeEqual(hash, full.password_hash)) {
+    const pepper = env.PASSWORD_PEPPER || '';
+    const hash = await hashPassword(password, full.password_salt, full.iterations || PASSWORD_ITERATIONS, pepper);
+    const legacy = pepper ? await hashPassword(password, full.password_salt, full.iterations || PASSWORD_ITERATIONS, '') : '';
+    if (!timingSafeEqual(hash, full.password_hash) && !(pepper && timingSafeEqual(legacy, full.password_hash))) {
       throw new ApiError(401, 'BAD_CREDENTIALS', 'Пароль указан неверно.');
     }
     // Подтверждение одноразовое: создаём событие и тут же помечаем использованным.
@@ -311,7 +328,7 @@ export async function requireReauth(env, user, body) {
 }
 
 export async function handleReauth(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const method = await requireReauth(env, user, body);
@@ -323,7 +340,7 @@ export async function handleReauth(request, env) {
  * проверки личности — одного лишь user_id из frontend недостаточно.
  */
 export async function handleDeleteAccount(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
 
@@ -339,7 +356,7 @@ export async function handleDeleteAccount(request, env) {
 }
 
 export async function handlePreferences(request, env) {
-  requireCsrf(request);
+  requireCsrf(request, env);
   const user = await requireUser(request, env);
   const body = await readJson(request);
   const repeat = ['off', 'all', 'one'].includes(body.repeat) ? body.repeat : 'off';

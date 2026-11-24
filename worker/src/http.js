@@ -28,19 +28,27 @@ export function fail(status, code, message, detail) {
 
 /* ───────────────────────────── CORS ───────────────────────────── */
 
-const ORIGIN_PATTERNS = [
-  /^https:\/\/rh-music\.pages\.dev$/i,
-  /^https:\/\/[a-z0-9-]+\.rh-music\.pages\.dev$/i,
-  /^https:\/\/rh-music-api\.[a-z0-9-]+\.workers\.dev$/i,
-  /^http:\/\/localhost(:\d{2,5})?$/i,
-  /^http:\/\/127\.0\.0\.1(:\d{2,5})?$/i,
-];
-
-export function originAllowed(origin) {
-  return !!origin && ORIGIN_PATTERNS.some((re) => re.test(origin));
+function allowedOrigins(env) {
+  const list = [];
+  const site = env && env.SITE_URL ? String(env.SITE_URL).trim().replace(/\/+$/, '') : '';
+  if (site) list.push(site);
+  if (env && env.ALLOWED_ORIGINS) {
+    for (const item of String(env.ALLOWED_ORIGINS).split(',')) {
+      const value = item.trim().replace(/\/+$/, '');
+      if (value) list.push(value);
+    }
+  }
+  return list;
 }
 
-export function corsHeaders(request) {
+export function originAllowed(origin, env) {
+  if (!origin) return false;
+  let normalized = origin;
+  try { normalized = new URL(origin).origin; } catch { return false; }
+  return allowedOrigins(env).includes(normalized);
+}
+
+export function corsHeaders(request, env) {
   const origin = request.headers.get('Origin') || '';
   const headers = {
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PATCH, DELETE, OPTIONS',
@@ -50,8 +58,27 @@ export function corsHeaders(request) {
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
-  if (originAllowed(origin)) headers['Access-Control-Allow-Origin'] = origin;
+  if (originAllowed(origin, env)) headers['Access-Control-Allow-Origin'] = new URL(origin).origin;
   return headers;
+}
+
+/** Заголовки безопасности для всех ответов Worker (API и служебных). */
+export function securityHeaders() {
+  return {
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+    'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+  };
+}
+
+export function clientIp(request) {
+  const cf = request.headers.get('CF-Connecting-IP');
+  if (cf) return cf;
+  return 'unknown';
 }
 
 /* ───────────────────────────── cookies ───────────────────────────── */
@@ -69,20 +96,23 @@ export function parseCookies(request) {
   return out;
 }
 
+export const SESSION_COOKIE = '__Host-rh_session';
+
 export function sessionCookie(token, maxAgeSeconds) {
   const attrs = [
-    `rh_session=${encodeURIComponent(token)}`,
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
     'Secure',
     'SameSite=Lax',
+    'Priority=High',
     `Max-Age=${maxAgeSeconds}`,
   ];
   return attrs.join('; ');
 }
 
 export function clearCookie() {
-  return 'rh_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
 /* ───────────────────────────── криптография ───────────────────────────── */
@@ -104,7 +134,21 @@ export async function sha256Hex(text) {
   return bytesToHex(new Uint8Array(digest));
 }
 
-export async function hashPassword(password, saltHex, iterations) {
+function hexToBytes(hex) {
+  const clean = String(hex || '').replace(/[^0-9a-f]/gi, '');
+  if (clean.length % 2 !== 0 || !clean) return new Uint8Array(0);
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i += 1) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+/**
+ * PBKDF2-SHA256. Cloudflare Workers WebCrypto не поддерживает bcrypt/argon2,
+ * и жёстко ограничивает PBKDF2 100 000 итераций — это максимум и используется.
+ * Дополнительно хеш можно «поперчить» HMAC-SHA256 секретом PASSWORD_PEPPER:
+ * без него украденная база не даёт проверять пароли офлайн.
+ */
+export async function hashPassword(password, saltHex, iterations, pepperHex = '') {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(password.normalize('NFKC')),
@@ -112,13 +156,23 @@ export async function hashPassword(password, saltHex, iterations) {
     false,
     ['deriveBits'],
   );
-  const salt = new Uint8Array(saltHex.match(/.{2}/g).map((h) => parseInt(h, 16)));
+  const salt = hexToBytes(saltHex);
   const bits = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
     key,
     256,
   );
-  return bytesToHex(new Uint8Array(bits));
+  const derived = bytesToHex(new Uint8Array(bits));
+  if (!pepperHex) return derived;
+  const pepperKey = await crypto.subtle.importKey(
+    'raw',
+    hexToBytes(pepperHex),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', pepperKey, new TextEncoder().encode(derived));
+  return bytesToHex(new Uint8Array(signature));
 }
 
 export function timingSafeEqual(a, b) {
@@ -185,7 +239,7 @@ export function validateRegistration({ username, email, password, confirm }) {
     errors.push('Имя пользователя: 3–24 символа, латиница, цифры, «_», «.», «-».');
   }
   if (!EMAIL_RE.test(mail) || mail.length > 190) errors.push('Укажите корректный email.');
-  if (pass.length < 8) errors.push('Пароль должен содержать минимум 8 символов.');
+  if (pass.length < 10) errors.push('Пароль должен содержать минимум 10 символов.');
   if (pass.length > 200) errors.push('Пароль слишком длинный.');
   if (pass !== conf) errors.push('Пароли не совпадают.');
   if (!/[A-Za-zА-Яа-я]/.test(pass) || !/[0-9]/.test(pass)) {
@@ -234,17 +288,41 @@ export function sanitizeTrack(input) {
   };
 }
 
-export function requireSameOrigin(request) {
+export function requireSameOrigin(request, env) {
+  const fetchSite = request.headers.get('Sec-Fetch-Site');
+  if (fetchSite === 'cross-site') {
+    throw new ApiError(403, 'BAD_ORIGIN', 'Запрос с недопустимого источника отклонён.');
+  }
   const origin = request.headers.get('Origin');
-  if (!origin) return; // запросы вне браузера (curl) допускаем, если есть cookie
-  if (!originAllowed(origin)) {
+  if (!origin) return; // внебраузерные клиенты без Origin, cookie всё ещё SameSite=Lax
+  if (!originAllowed(origin, env)) {
     throw new ApiError(403, 'BAD_ORIGIN', 'Запрос с недопустимого источника отклонён.');
   }
 }
 
-export function requireCsrf(request) {
-  requireSameOrigin(request);
+export function requireCsrf(request, env) {
+  requireSameOrigin(request, env);
   if (request.headers.get('X-RH-Request') !== '1') {
     throw new ApiError(403, 'CSRF', 'Отсутствует защитный заголовок запроса.');
+  }
+  if (!isHttps(request) && !isLocalhost(request)) {
+    throw new ApiError(403, 'HTTPS_REQUIRED', 'Изменяющие запросы принимаются только по HTTPS.');
+  }
+}
+
+export function isLocalhost(request) {
+  try {
+    const host = new URL(request.url).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
+export function isHttps(request) {
+  try {
+    return new URL(request.url).protocol === 'https:';
+  } catch {
+    return false;
   }
 }

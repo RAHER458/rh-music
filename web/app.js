@@ -6,7 +6,7 @@
 'use strict';
 
 window.RH_BUILD = 'neural-2026-11-22-1';
-console.info('[RH-MUSIC] build', window.RH_BUILD);
+const RH_DEBUG = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 
 const API = ''; // тот же домен, что и сайт (прокси Pages → Worker)
 
@@ -1505,8 +1505,8 @@ function authFormTemplate({ mode }) {
         </div>
         <div class="field">
           <label for="af-password">Пароль</label>
-          <input id="af-password" name="password" type="password" autocomplete="${isRegister ? 'new-password' : 'current-password'}" placeholder="••••••••">
-          ${isRegister ? '<span class="hint">Минимум 8 символов, буквы и цифры</span>' : ''}
+          <input id="af-password" name="password" type="password" autocomplete="${isRegister ? 'new-password' : 'current-password'}" placeholder="••••••••" ${isRegister ? 'minlength="10"' : ''}>
+          ${isRegister ? '<span class="hint">Минимум 10 символов, буквы и цифры</span>' : ''}
         </div>
         ${isRegister ? `
         <div class="field">
@@ -2613,7 +2613,7 @@ function initAiAutoMix() {
         audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
       }
     },
-    log: (message) => console.debug('[AutoMix RH AI]', message),
+    log: (message) => { if (RH_DEBUG) console.debug('[AutoMix RH AI]', message); },
   });
   refreshAiAutoMixUI();
   if (!window.__rhAiTimelineTimer) {
@@ -2733,7 +2733,7 @@ function initAiMixBeta() {
         audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
       }
     },
-    log: (message) => console.debug('[AI Mix Beta]', message),
+    log: (message) => { if (RH_DEBUG) console.debug('[AI Mix Beta]', message); },
   });
   refreshAiMixBetaUI();
   if (!window.__rhBetaVizTimer) {
@@ -2788,7 +2788,7 @@ function initAutoMix2() {
         audio.play().then(() => { S.playing = true; updateTransport(); }).catch(() => updateTransport());
       }
     },
-    log: (message) => console.debug('[AutoMix2]', message),
+    log: (message) => { if (RH_DEBUG) console.debug('[AutoMix2]', message); },
   });
   refreshAutoMix2UI();
 }
@@ -4112,7 +4112,7 @@ document.addEventListener('click', async (event) => {
       <h2 class="sheet-title">Смена пароля</h2>
       <form id="pwForm">
         <div class="field"><label for="pw-cur">Текущий пароль</label><input id="pw-cur" type="password" autocomplete="current-password"></div>
-        <div class="field"><label for="pw-new">Новый пароль</label><input id="pw-new" type="password" autocomplete="new-password"><span class="hint">Минимум 8 символов, буквы и цифры</span></div>
+        <div class="field"><label for="pw-new">Новый пароль</label><input id="pw-new" type="password" autocomplete="new-password" minlength="10"><span class="hint">Минимум 10 символов, буквы и цифры</span></div>
         <button class="btn btn-primary btn-block" type="submit">Сменить пароль</button>
       </form>`);
     $('pwForm').addEventListener('submit', async (event) => {
