@@ -1,8 +1,7 @@
 /* RH—MUSIC «Текст» — основной режим Now Playing.
-   Три строки: предыдущая (сверху, с блюром), текущая (в центре, поётся)
-   и следующая (снизу, с блюром). При смене строки текущая плавно уходит
-   вверх и размывается, следующая поднимается в центр, а снизу появляется
-   новая строка. Использует существующий RH_LYRICS; второй плеер не создаётся. */
+   Три строки: предыдущая (сверху, приглушённая), текущая (в центре, поётся)
+   и следующая (снизу, приглушённая). Смена строки — мягкий подъём с лёгким
+   блюром и прозрачностью. Использует существующий RH_LYRICS; второго плеера нет. */
 (() => {
   'use strict';
 
@@ -15,9 +14,12 @@
   let lastKey = '';
   let payload = null;
   let textEl = null;
-  let prevEl = null;
-  let currEl = null;
-  let nextEl = null;
+  let slotPrev = null;
+  let slotCurr = null;
+  let slotNext = null;
+  let linePrev = null;
+  let lineCurr = null;
+  let lineNext = null;
   let wordNodes = [];
   let raf = 0;
   let noticeEl = null;
@@ -25,9 +27,6 @@
   let pendingEnable = false;
   let pendingTimer = 0;
   let lastIndex = null;
-  let lastMain = '';
-  let lastNext = '';
-  let lastPrev = '';
 
   function isSynced(data) {
     return !!data && data.status === 'ready' && (data.syncLevel === 'line' || data.syncLevel === 'word');
@@ -80,40 +79,40 @@
       const lines = String(data.plain || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
       return { prev: lines[0] || '', main: lines[1] || lines[0] || 'Текст без синхронизации', next: lines[2] || '' };
     }
-    return {
-      prev: data.prevText || '',
-      main: data.text || '...',
-      next: data.nextText || '',
-    };
+    return { prev: data.prevText || '', main: data.text || '...', next: data.nextText || '' };
   }
 
   function ensureText() {
     if (textEl) return;
     textEl = document.createElement('div');
     textEl.className = 'np-lyrics-beta-text';
+
+    const makeSlot = (name) => {
+      const slot = document.createElement('span');
+      slot.className = `np-lb-slot np-lb-slot-${name}`;
+      const line = document.createElement('span');
+      line.className = 'np-lb-line';
+      slot.appendChild(line);
+      textEl.appendChild(slot);
+      return { slot, line };
+    };
+
+    const prev = makeSlot('prev');
+    const curr = makeSlot('current');
+    const next = makeSlot('next');
+    slotPrev = prev.slot; linePrev = prev.line;
+    slotCurr = curr.slot; lineCurr = curr.line;
+    slotNext = next.slot; lineNext = next.line;
     art.appendChild(textEl);
   }
 
-  function makeLine(className, text) {
-    const el = document.createElement('span');
-    el.className = `np-lb-line ${className}`;
-    el.textContent = text || '';
-    textEl.appendChild(el);
-    return el;
-  }
-
-  function setPlain(el, text) {
-    if (!el) return;
-    el.textContent = text || '';
-  }
-
-  function setWords(el, data) {
+  function setWords(el, data, fallback = '') {
     wordNodes = [];
     if (!el) return;
     el.textContent = '';
     const words = data && Array.isArray(data.words) ? data.words : null;
     if (!words || words.length < 2) {
-      el.textContent = data && data.text ? data.text : '';
+      el.textContent = data && data.text ? data.text : fallback;
       return;
     }
     words.forEach((word) => {
@@ -126,93 +125,32 @@
     });
   }
 
-  function clearLines() {
-    if (!textEl) return;
-    for (const el of textEl.querySelectorAll('.np-lb-line')) el.remove();
-    prevEl = null;
-    currEl = null;
-    nextEl = null;
-    wordNodes = [];
-  }
-
-  function rebuild(data) {
-    ensureText();
-    clearLines();
-    const { prev, main, next } = format(data);
-    prevEl = makeLine('is-prev', prev);
-    currEl = makeLine('is-current', main);
-    nextEl = makeLine('is-next', next);
-    setWords(currEl, data);
-    lastIndex = data && Number.isFinite(Number(data.index)) ? Number(data.index) : null;
-    lastMain = main;
-    lastNext = next;
-    lastPrev = prev;
-  }
-
-  function animateRole(el, className) {
-    if (!el) return;
-    el.classList.remove('is-prev', 'is-current', 'is-next', 'is-entering-up', 'is-entering-down', 'is-leaving-up', 'is-leaving-down');
-    void el.offsetWidth;
-    el.classList.add(className);
-  }
-
-  function dropLater(el, ms = 420) {
-    if (!el) return;
-    window.setTimeout(() => el.remove(), ms);
-  }
-
-  function advance(payloadData, direction) {
-    ensureText();
-    const { prev, main, next } = format(payloadData);
-    if (direction > 0) {
-      // Текущая уходит наверх в блюр, следующая поднимается в центр.
-      if (prevEl) {
-        animateRole(prevEl, 'is-leaving-up');
-        dropLater(prevEl);
-      }
-      const oldCurr = currEl;
-      const oldNext = nextEl;
-      prevEl = oldCurr;
-      currEl = oldNext;
-      nextEl = null;
-      if (prevEl) {
-        prevEl.className = 'np-lb-line is-prev';
-        setPlain(prevEl, lastMain);
-      }
-      if (currEl) {
-        currEl.className = 'np-lb-line is-current';
-        setWords(currEl, payloadData);
-      }
-      nextEl = makeLine('is-next is-entering-down', next);
-      void nextEl.offsetWidth;
-      nextEl.classList.remove('is-entering-down');
-    } else {
-      // Обратный переход: текущая уходит вниз, предыдущая поднимается в центр.
-      if (nextEl) {
-        animateRole(nextEl, 'is-leaving-down');
-        dropLater(nextEl);
-      }
-      const oldCurr = currEl;
-      const oldPrev = prevEl;
-      nextEl = oldCurr;
-      currEl = oldPrev;
-      prevEl = null;
-      if (nextEl) {
-        nextEl.className = 'np-lb-line is-next';
-        setPlain(nextEl, lastMain);
-      }
-      if (currEl) {
-        currEl.className = 'np-lb-line is-current';
-        setWords(currEl, payloadData);
-      }
-      prevEl = makeLine('is-prev is-entering-up', prev);
-      void prevEl.offsetWidth;
-      prevEl.classList.remove('is-entering-up');
+  function shift() {
+    if (reduceMotion && reduceMotion.matches) return;
+    for (const slot of [slotPrev, slotCurr, slotNext]) {
+      if (!slot) continue;
+      slot.classList.remove('is-shift');
+      void slot.offsetWidth;
+      slot.classList.add('is-shift');
     }
-    lastIndex = Number(payloadData.index);
-    lastMain = main;
-    lastNext = next;
-    lastPrev = prev;
+  }
+
+  function render(data) {
+    if (!active) return;
+    ensureText();
+    const { prev, main, next } = format(data);
+    const key = `${data && data.index}:${prev}:${main}:${next}:${data && data.words ? data.words.length : 0}`;
+    if (key === lastKey) return;
+    const sameLine = data && Number.isFinite(Number(data.index)) && Number(data.index) === lastIndex
+      && (data.text || '') === (payload && payload.text);
+    lastKey = key;
+    payload = data || null;
+    lastIndex = data && Number.isFinite(Number(data.index)) ? Number(data.index) : null;
+
+    linePrev.textContent = prev;
+    lineNext.textContent = next;
+    setWords(lineCurr, data, main);
+    if (!sameLine) shift();
     updateWords();
     startLoop();
   }
@@ -256,34 +194,6 @@
     raf = 0;
   }
 
-  function render(data) {
-    if (!active) return;
-    ensureText();
-    const { prev, main, next } = format(data);
-    const key = `${data && data.index}:${prev}:${main}:${next}:${data && data.words ? data.words.length : 0}`;
-    if (key === lastKey) return;
-    lastKey = key;
-    payload = data || null;
-
-    const index = data && Number.isFinite(Number(data.index)) ? Number(data.index) : null;
-    if (!currEl || index == null || lastIndex == null) { rebuild(data); startLoop(); return; }
-    if (index === lastIndex) {
-      // Слова могли догрузиться для той же строки.
-      setWords(currEl, data);
-      if (next !== lastNext && nextEl) setPlain(nextEl, next);
-      if (prev !== lastPrev && prevEl) setPlain(prevEl, prev);
-      lastNext = next;
-      lastPrev = prev;
-      updateWords();
-      startLoop();
-      return;
-    }
-    const direction = index - lastIndex;
-    if (Math.abs(direction) === 1) { advance(data, direction); return; }
-    rebuild(data);
-    startLoop();
-  }
-
   function setActive(value) {
     active = !!value;
     art.classList.toggle('is-lyrics-beta', active);
@@ -299,9 +209,9 @@
     } else {
       stopLoop();
       wordNodes = [];
-      clearLines();
-      lastKey = '';
-      lastIndex = null;
+      if (lineCurr) lineCurr.textContent = '';
+      if (linePrev) linePrev.textContent = '';
+      if (lineNext) lineNext.textContent = '';
     }
   }
 
