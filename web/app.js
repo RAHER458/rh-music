@@ -4764,3 +4764,23 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
   await loadProviders();
   route();
 })();
+/* Мобильная тактильная подсветка: :active в iOS срабатывает не на всех
+   контейнерах, поэтому явно помечаем нажатый элемент на pointerdown. */
+(() => {
+  let timer = 0;
+  const clear = () => {
+    document.querySelectorAll('.is-pressed').forEach((el) => el.classList.remove('is-pressed'));
+  };
+  document.addEventListener('pointerdown', (event) => {
+    if (!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) return;
+    const el = event.target.closest && event.target.closest('a, button, .track, .card, .side-item, .tab, .chip, .sheet-item');
+    if (!el || el.disabled) return;
+    clear();
+    el.classList.add('is-pressed');
+    clearTimeout(timer);
+    timer = setTimeout(clear, 260);
+  }, { passive: true });
+  document.addEventListener('pointerup', () => { clearTimeout(timer); timer = setTimeout(clear, 80); }, { passive: true });
+  document.addEventListener('pointercancel', clear, { passive: true });
+  window.addEventListener('scroll', clear, { passive: true });
+})();

@@ -328,8 +328,14 @@ input[type="range"] { accent-color: var(--blue); }
   border-radius: 28px;
   box-shadow: 0 30px 90px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.1), 0 0 0 10px rgba(255,255,255,.025);
   isolation: isolate;
-  -webkit-mask-image: -webkit-radial-gradient(white, black);
-  clip-path: inset(0 round 28px);
+}
+.np-art-beat {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  transform-origin: center center;
+  will-change: transform;
 }
 .np-art::after {
   content: '';
@@ -499,7 +505,6 @@ input[type="range"] { accent-color: var(--blue); }
 
 /* ── Мелочи ──────────────────────────────────────────────────────── */
 .cover-fallback { background: linear-gradient(140deg, #1d2740, #101522); color: #697694; }
-.drag-handle { background: rgba(255,255,255,.16); }
 .footer-note, .section-sub { color: var(--muted-2); }
 .player-like.is-on, .row-btn.is-on { color: var(--violet); }
 .queue-panel-actions .btn { border-radius: 10px; }
@@ -514,7 +519,7 @@ input[type="range"] { accent-color: var(--blue); }
   .home-hero { border-radius: 22px; }
   .home-hero .hero-art { border-radius: 16px; }
   .np-inner { padding-left: 18px; padding-right: 18px; }
-  .np-art { width: min(78vw, 42dvh); border-radius: 24px; clip-path: inset(0 round 24px); }
+  .np-art { width: min(78vw, 42dvh); border-radius: 24px; }
   .np-controls { gap: 20px; }
   .player { left: 7px; right: 7px; border-radius: 17px; }
   .tabbar { height: calc(var(--tabbar-h) + var(--safe-bottom)); }
@@ -529,4 +534,75 @@ input[type="range"] { accent-color: var(--blue); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+
+/* ── Mobile: тактильная читаемость и отказ от тяжёлого стекла ─────── */
+@media (max-width: 1023px), (pointer: coarse) {
+  html[data-ui="mobile"] body { -webkit-tap-highlight-color: rgba(124, 140, 255, .2); }
+
+  html[data-ui="mobile"] .topbar { background: #080b13; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-ui="mobile"] .player { background: #0b101b; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-ui="mobile"] .tabbar { background: #070a12; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-ui="mobile"] .now-playing { background: radial-gradient(120% 78% at 50% -8%, rgba(124,140,255,.2), transparent 62%), #05060a; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-ui="mobile"] .drawer,
+  html[data-ui="mobile"] .sheet-panel,
+  html[data-ui="mobile"] .lyrics-sheet-inner,
+  html[data-ui="mobile"] .queue-panel { background: #0b101b; backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+  html[data-ui="mobile"] .track:active,
+  html[data-ui="mobile"] .card:active,
+  html[data-ui="mobile"] .side-item:active,
+  html[data-ui="mobile"] .tab:active,
+  html[data-ui="mobile"] .chip:active,
+  html[data-ui="mobile"] .btn:active,
+  html[data-ui="mobile"] .icon-btn:active,
+  html[data-ui="mobile"] .ctrl:active,
+  html[data-ui="mobile"] .sheet-item:active,
+  html[data-ui="mobile"] .search-tabs .chip:active {
+    background-color: rgba(124, 140, 255, .2) !important;
+    border-color: rgba(124, 140, 255, .38) !important;
+  }
+  html[data-ui="mobile"] .track:active .track-title,
+  html[data-ui="mobile"] .track:active .track-sub,
+  html[data-ui="mobile"] .card:active .card-title,
+  html[data-ui="mobile"] .card:active .card-sub,
+  html[data-ui="mobile"] .side-item:active,
+  html[data-ui="mobile"] .tab:active,
+  html[data-ui="mobile"] .chip:active,
+  html[data-ui="mobile"] .btn:active,
+  html[data-ui="mobile"] .sheet-item:active,
+  html[data-ui="mobile"] .search-tabs .chip:active { color: #fff !important; }
+  html[data-ui="mobile"] .track:active { transform: scale(.995); }
+  html[data-ui="mobile"] .card:active { transform: scale(.985); }
+}
+
+/* Мобильная подсветка нажатия: текст и контейнеры заметно реагируют. */
+@media (max-width: 1023px), (pointer: coarse) {
+  html[data-ui="mobile"] body::before { display: none; }
+  html[data-ui="mobile"] .np-art::after { display: none; }
+  html[data-ui="mobile"] .track.is-pressed,
+  html[data-ui="mobile"] .card.is-pressed,
+  html[data-ui="mobile"] .side-item.is-pressed,
+  html[data-ui="mobile"] .tab.is-pressed,
+  html[data-ui="mobile"] .chip.is-pressed,
+  html[data-ui="mobile"] .sheet-item.is-pressed,
+  html[data-ui="mobile"] a.is-pressed,
+  html[data-ui="mobile"] button.is-pressed {
+    background-color: rgba(124, 140, 255, .24) !important;
+    border-color: rgba(124, 140, 255, .45) !important;
+    color: #fff !important;
+  }
+  html[data-ui="mobile"] .track.is-pressed .track-title,
+  html[data-ui="mobile"] .track.is-pressed .track-sub,
+  html[data-ui="mobile"] .card.is-pressed .card-title,
+  html[data-ui="mobile"] .card.is-pressed .card-sub,
+  html[data-ui="mobile"] .side-item.is-pressed span,
+  html[data-ui="mobile"] .tab.is-pressed span,
+  html[data-ui="mobile"] .chip.is-pressed,
+  html[data-ui="mobile"] .sheet-item.is-pressed {
+    color: #fff !important;
+    text-shadow: 0 0 14px rgba(124, 140, 255, .55);
+  }
+  html[data-ui="mobile"] .track.is-pressed { transform: scale(.992); }
+  html[data-ui="mobile"] .card.is-pressed { transform: scale(.982); }
 }
