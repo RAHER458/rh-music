@@ -4756,7 +4756,20 @@ if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(pla
 
 /* ───────────────────────────── старт ───────────────────────────── */
 
+function normalizeLaunchRoute() {
+  // На iOS PWA при запуске восстанавливается последний URL, например
+  // #/artist/<id>. Пользователь ждёт Главную, а не случайную страницу артиста.
+  const standalone = window.navigator.standalone === true
+    || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (!standalone) return;
+  const hash = location.hash || '';
+  if (!hash || hash === '#/' || hash === '#/home') return;
+  try { history.replaceState(null, '', '#/home'); } catch { location.hash = '#/home'; }
+  window.scrollTo(0, 0);
+}
+
 (async function boot() {
+  normalizeLaunchRoute();
   setUser(null);
   syncLayoutHeight();
   updateTransport();
