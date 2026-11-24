@@ -163,6 +163,7 @@
     const index = state.active;
     const line = data && Array.isArray(data.lines) && index >= 0 ? data.lines[index] : null;
     const next = data && Array.isArray(data.lines) ? data.lines[index + 1] : null;
+    const prev = data && Array.isArray(data.lines) && index > 0 ? data.lines[index - 1] : null;
     const words = line && Array.isArray(line.words) && line.words.length
       ? line.words.map((word) => ({ text: word.text, t: Number(word.t) || 0, end: Number(word.end) || Number(word.t) || 0 }))
       : null;
@@ -171,6 +172,7 @@
       syncLevel: data ? data.syncLevel : null,
       index,
       text: line ? line.text : '',
+      prevText: prev ? prev.text : '',
       nextText: next ? next.text : '',
       words,
       lineStart: line ? Number(line.t) || 0 : 0,
