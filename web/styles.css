@@ -2491,8 +2491,9 @@ html[data-ui="desktop"] .lyrics-pane.is-cinematic .lyrics-line.is-active { font-
   min-height: 0;
   overflow: visible;
 }
-.np-lb-slot-prev { align-items: flex-end; }
-.np-lb-slot-next { align-items: flex-start; }
+.np-lb-slot-prev { align-items: flex-end; z-index: 1; }
+.np-lb-slot-next { align-items: flex-start; z-index: 1; }
+.np-lb-slot-current { z-index: 2; }
 .np-lb-line {
   display: block;
   max-width: 100%;
