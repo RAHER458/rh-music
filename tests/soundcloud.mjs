@@ -9,6 +9,7 @@ const http = read('worker/src/http.js');
 const sc = read('worker/src/soundcloud.js');
 const app = read('web/app.js');
 const headers = read('web/_headers');
+const pagesWorker = read('web/_worker.js');
 const index = read('web/index.html');
 let passed = 0; const failures = [];
 const check = (name, ok) => { if (ok) passed++; else { failures.push(name); console.error('  ✗', name); } };
@@ -23,7 +24,8 @@ check('HLS отдаётся как m3u8 того же origin', /application\/vnd
 check('для SoundCloud подключается hls.js на не-Safari', /Hls\.isSupported/.test(app) && /vendor\/hls\.min\.js/.test(index) && existsSync(join(here, '../web/vendor/hls.min.js')));
 check('AutoMix блокируется для SoundCloud', /isSoundCloudTrack\(S\.current\)/.test(app) && /el\.disabled = blocked/.test(app) && /if \(isSoundCloudTrack\(S\.current\)\) return;/.test(app));
 check('Smart Mix и текст не работают с SoundCloud', app.includes("smartMixAdoptFailure('unsupported_source'") && app.includes('isSoundCloudTrack(track) ? null : track'));
-check('в CSP разрешены обложки и HLS-домены SoundCloud', /\*\.sndcdn\.com/.test(headers) && /\*\.soundcloud\.cloud/.test(headers) && /media-src[^;]*soundcloud\.cloud/.test(headers));
+check('в CSP разрешены обложки и HLS-домены SoundCloud', /\*\.sndcdn\.com/.test(headers) && /\*\.soundcloud\.cloud/.test(headers));
+check('CSP Pages Function разрешает SoundCloud', /sndcdn/.test(pagesWorker) && /soundcloud\.cloud/.test(pagesWorker));
 const row = app.slice(app.indexOf('function trackRow'), app.indexOf('function trackList'));
 check('в карточке трека нет упоминания источника', !/soundcloud|zvuk/i.test(row));
 check('Zvuk-треки получили source=zvuk для общей модели', /source: 'zvuk'/.test(read('worker/src/zvuk.js')));

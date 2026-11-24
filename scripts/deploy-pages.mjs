@@ -127,11 +127,14 @@ for (const full of await walk(webDir)) {
     .update(contents.toString('base64') + ext)
     .digest('hex')
     .slice(0, 32);
+  const type = rel === '_headers' || rel === '_redirects'
+    ? 'text/plain; charset=utf-8'
+    : (MIME['.' + ext] || 'application/octet-stream');
   files.push({
     path: '/' + rel,
     hash: isEntry ? '_worker.js' : hash,
     contents,
-    type: MIME['.' + ext] || 'application/octet-stream',
+    type,
     isEntry,
   });
 }
