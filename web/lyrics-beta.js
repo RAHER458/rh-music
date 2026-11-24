@@ -51,6 +51,7 @@
     const loading = !!data && data.status === 'loading';
     const blocked = !synced && !loading;
     button.classList.toggle('is-disabled', blocked);
+    button.classList.toggle('is-unavailable', blocked);
     button.classList.toggle('is-on', active);
     button.disabled = blocked;
     button.setAttribute('aria-disabled', blocked ? 'true' : 'false');

@@ -2579,6 +2579,7 @@ function refreshAiAutoMixUI() {
   const info = window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState() : null;
   const phase = info ? info.phase : 'OFF';
   const active = !!(info && info.active);
+  const blocked = isSoundCloudTrack(S.current);
   const label = phase === 'OFF' ? 'AutoMix RH AI' : phase === 'READY' ? 'AutoMix RH AI · Ready' : phase === 'MIXING' ? 'AutoMix RH AI · Mixing' : 'AutoMix RH AI · ' + phase;
   if (active && window.RH_SMARTMIX) {
     try {
@@ -2588,17 +2589,22 @@ function refreshAiAutoMixUI() {
     aiSavedSmartMix = false;
     try { window.RH_SMARTMIX.setSettings({ enabled: true }); } catch (_) {}
   }
+  if (blocked && active) {
+    try { window.RH_AI_AUTOMIX.disable(); } catch (_) {}
+  }
   document.querySelectorAll('[data-action="ai-automix-toggle"]').forEach((el) => {
     el.classList.toggle('is-on', active);
-    el.classList.remove('is-disabled');
-    el.disabled = false;
-    el.setAttribute('aria-disabled', 'false');
+    el.classList.toggle('is-disabled', blocked);
+    el.classList.toggle('is-unavailable', blocked);
+    el.disabled = blocked;
+    el.setAttribute('aria-disabled', blocked ? 'true' : 'false');
     el.setAttribute('aria-pressed', active ? 'true' : 'false');
     el.dataset.phase = phase;
-    el.removeAttribute('title');
+    if (blocked) el.title = 'Недоступно для этой композиции';
+    else el.removeAttribute('title');
     if (el.id === 'npAiAutomix') {
-      el.setAttribute('aria-label', label || 'AutoMix RH AI');
-      el.dataset.label = label || '';
+      el.setAttribute('aria-label', blocked ? 'Недоступно для этой композиции' : (label || 'AutoMix RH AI'));
+      el.dataset.label = blocked ? '' : (label || '');
     }
   });
   if (phase === 'DEGRADED' && aiLastPhase !== 'DEGRADED' && info && info.error) {
@@ -2643,6 +2649,10 @@ function refreshAiAutoMixUI() {
 
 function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
   if (!track) return;
+  if (isSoundCloudTrack(track)) {
+    if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.disable();
+    return;
+  }
   aiDiag('adopt', { adopted: String(track.id), strategy: strategy || null });
   const index = S.queue.findIndex((item) => String(item.id) === String(track.id));
   if (index >= 0) S.index = index;
@@ -2698,10 +2708,12 @@ function initAiAutoMix() {
       const ai = window.RH_AI_AUTOMIX;
       const owned = !!(ai && typeof ai.ownsPlayback === 'function' && ai.ownsPlayback());
       const deck = owned ? ai.getState().deckA : null;
+      const aiQueue = Array.isArray(S.queue) ? S.queue.filter((item) => !isSoundCloudTrack(item)) : [];
+      const aiIndex = S.current && !isSoundCloudTrack(S.current) ? aiQueue.findIndex((item) => String(item.id) === String(S.current.id)) : -1;
       return {
-        current: S.current,
-        index: S.index,
-        queue: Array.isArray(S.queue) ? S.queue : [],
+        current: isSoundCloudTrack(S.current) ? null : S.current,
+        index: aiIndex,
+        queue: aiQueue,
         paused: deck ? !!deck.paused : audio.paused,
         currentTime: deck ? deck.time : (audio.currentTime || 0),
         duration: deck ? deck.duration : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0)),
@@ -2722,6 +2734,7 @@ function initAiAutoMix() {
       for (const sectionData of (data && data.sections) || []) {
         for (const item of (sectionData && sectionData.items) || []) {
           if (!item || !item.id || !item.title || !item.artist) continue;
+          if (isSoundCloudTrack(item)) continue;
           if (seen.has(String(item.id))) continue;
           seen.add(String(item.id));
           out.push(item);
@@ -3488,7 +3501,8 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   }
   startPlaybackSession(track, source);
   savePlayerState(0);
-  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) window.RH_AI_AUTOMIX.onTrackStarted(track);
+  if (window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive() && !isSoundCloudTrack(track)) window.RH_AI_AUTOMIX.onTrackStarted(track);
+  if (isSoundCloudTrack(track) && window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.isActive()) window.RH_AI_AUTOMIX.disable();
   refreshAiAutoMixUI();
 }
 
@@ -3984,6 +3998,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
   if (action === 'ai-automix-toggle') {
+    if (isSoundCloudTrack(S.current)) return;
     if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
     refreshAiAutoMixUI();
     return;

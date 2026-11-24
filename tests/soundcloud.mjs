@@ -24,8 +24,9 @@ check('snipped и encrypted транскодинги отбрасываются'
 check('HLS отдаётся как m3u8 того же origin', /application\/vnd\.apple\.mpegurl/.test(sc) && /streamUrl\(track\)/.test(app) && /api\/sc\/play\//.test(app));
 check('для SoundCloud подключается hls.js на не-Safari', /Hls\.isSupported/.test(app) && /vendor\/hls\.min\.js/.test(index) && existsSync(join(here, '../web/vendor/hls.min.js')));
 check('пульсация обложки умеет HLS через fMP4', /loadHlsAudio/.test(read('web/beat-cover.js')) && /EXT-X-MAP/.test(read('web/beat-cover.js')) && /decodeAudioData/.test(read('web/beat-cover.js')) && /dataset\.beatSrc/.test(app));
-check('AutoMix декодирует SoundCloud HLS', /fetchHlsAudioBytes/.test(app) && /fetchAudioBytes/.test(app) && /fetchAudioBytes/.test(autoMixController) && /decodeAudioData/.test(autoMixController));
-check('AutoMix не блокирует SoundCloud и сохраняет Zvuk', !/isSoundCloudTrack\(S\.current\)/.test(app) && !/isSoundCloudTrack\(item\)\) continue/.test(app) && /if \(isSoundCloudTrack\(track\)\) audio\.dataset\.beatSrc/.test(app));
+check('AutoMix заблокирован для SoundCloud, HLS-декодер сохранён для будущего', /isSoundCloudTrack\(S\.current\)/.test(app) && /el\.disabled = blocked/.test(app) && /fetchHlsAudioBytes/.test(app) && /fetchAudioBytes/.test(autoMixController));
+check('AutoMix не получает SoundCloud, Zvuk не затронут', /isSoundCloudTrack\(item\)\) continue/.test(app) && /if \(isSoundCloudTrack\(track\)\) audio\.dataset\.beatSrc/.test(app));
+check('на недоступных кнопках Текст и AutoMix красный крестик', /is-unavailable/.test(read('web/lyrics-beta.js')) && /is-unavailable/.test(app) && /\.automix-btn\.is-unavailable::after/.test(read('web/styles.css')) && /content: '✕'/.test(read('web/styles.css')));
 check('Smart Mix не работает с SoundCloud, а текст загружается через LRCLIB', app.includes("smartMixAdoptFailure('unsupported_source'") && /syncLyricsTrack[\s\S]{0,80}setTrack\(track \|\| null\)/.test(app) && /getSoundCloudTrack/.test(read('worker/src/lyrics.js')));
 check('в CSP разрешены обложки и HLS-домены SoundCloud', /\*\.sndcdn\.com/.test(headers) && /\*\.soundcloud\.cloud/.test(headers));
 check('CSP Pages Function разрешает SoundCloud', /sndcdn/.test(pagesWorker) && /soundcloud\.cloud/.test(pagesWorker));
