@@ -29,6 +29,10 @@ const low = assessPlan({ strategy: 'ambient-fade', score: 0.1, window: { uncerta
 check('confidence: очень низкая оценка — fallback', !low.safe);
 const bpmGap = assessPlan({ strategy: 'bass-swap', score: 0.7, rateIn: 1, rateOut: 1, window: { uncertainty: 'medium' }, warnings: [] }, { bpmA: 120, bpmB: 128 });
 check('confidence: BPM gap без pitch-lock — fallback', !bpmGap.safe && bpmGap.bpmGap > 0.028);
+const loopWarning = assessPlan({ strategy: 'loop-assisted', score: 0.7, rateIn: 1, rateOut: 1, window: { uncertainty: 'medium' }, warnings: ['Loop-assisted требует надёжного beatgrid; при отсутствии будет безопасный fallback'] }, { bpmA: 124.5, bpmB: 124.6 });
+check('confidence: предупреждение loop-assisted не считается отсутствием beatgrid', loopWarning.safe);
+const highGrid = assessPlan({ strategy: 'beat-blend', score: 0.62, rateIn: 1.002, rateOut: 1, window: { uncertainty: 'high', evidence: ['beatgrid', 'section'] }, warnings: [] }, { bpmA: 124.5, bpmB: 124.6 });
+check('confidence: height uncertainty с реальным beatgrid не уводит в fade', highGrid.safe && highGrid.gridUsed);
 
 const clamped = clampPlanRates({ rateIn: 1.12, rateOut: 0.88 });
 check('rate: ограничение 2% (нет pitch-lock)', Math.abs(clamped.plan.rateIn - 1.02) < 1e-9 && Math.abs(clamped.plan.rateOut - 0.98) < 1e-9 && clamped.clamped);

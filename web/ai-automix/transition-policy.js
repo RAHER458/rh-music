@@ -41,9 +41,16 @@ export function assessPlan(plan, analysis = {}) {
     ? Math.abs(Math.log2(bpmB / bpmA))
     : 0;
   const beatLike = /blend|beat|bass-swap|percussion|harmonic|loop-assisted|tempo-ramp|breakdown|build-up/.test(strategy);
-  const noGrid = warnings.some((text) => /beatgrid|Beatgrid|beatmatch/i.test(String(text)));
+  // Важно: предупреждение «Loop-assisted требует надёжного beatgrid» означает
+  // лишь возможный fallback стратегии, а не отсутствие сетки. Проверяем именно
+  // факт отсутствия beatgrid, иначе хорошие beat-переходы зря уходят в fade.
+  const evidence = Array.isArray(plan.window && plan.window.evidence) ? plan.window.evidence : [];
+  const gridUsed = evidence.includes('beatgrid');
+  const noGrid = !gridUsed && warnings.some((text) => /Нет надёжного beatgrid|no reliable beatgrid/i.test(String(text)));
   const reasons = [];
-  if (uncertainty === 'high' && beatLike) reasons.push('высокая неопределённость структурного окна');
+  if (uncertainty === 'high' && beatLike && !gridUsed) {
+    reasons.push('высокая неопределённость структурного окна');
+  }
   if (noGrid && beatLike) reasons.push('нет надёжного beatgrid для beat-перехода');
   if (score > 0 && score < 0.3) reasons.push(`низкая оценка плана ${score.toFixed(2)}`);
   if (rateDelta > MAX_RATE_DELTA + 1e-6) reasons.push(`слишком большой tempo shift ${(rateDelta * 100).toFixed(1)}%`);
@@ -55,6 +62,7 @@ export function assessPlan(plan, analysis = {}) {
     rateDelta,
     bpmGap,
     beatLike,
+    gridUsed,
     reasons,
     warnings: warnings.slice(0, 6),
   };

@@ -132,7 +132,7 @@
       setPhase('LOADING', 0);
       state.lib = await withTimeout(import('./automix-engine.js?v=6'), 15_000, 'engine module');
       try {
-        state.policy = await import(new URL('transition-policy.js?v=1', MODULE_BASE).href);
+        state.policy = await import(new URL('transition-policy.js?v=2', MODULE_BASE).href);
       } catch {
         state.policy = null; // политика не критична: движок продолжает работать
       }
