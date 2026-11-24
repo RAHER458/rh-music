@@ -177,17 +177,9 @@ body::before {
   padding: 10px;
   background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.022));
   border: 1px solid rgba(255,255,255,.065);
-  box-shadow: 0 10px 30px rgba(0,0,0,.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.055), 0 10px 30px rgba(0,0,0,.16);
   transition: transform .24s cubic-bezier(.2,.7,.2,1), border-color .24s, box-shadow .24s, background .24s;
 }
-.card::after {
-  content: '';
-  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,.1), transparent 42%);
-  opacity: .35;
-}
-.card > * { position: relative; z-index: 1; }
-.card::after { z-index: 0; }
 .card:hover {
   transform: translateY(-4px);
   border-color: rgba(124,140,255,.32);
@@ -286,7 +278,10 @@ input[type="range"] { accent-color: var(--blue); }
 .hero-kicker { color: #9eb0ff; letter-spacing: .16em; }
 .hero-title { font-weight: 800; }
 .hero-sub { color: var(--muted); }
-.home-hero .hero-art { border-radius: 18px; box-shadow: 0 16px 40px rgba(0,0,0,.45); }
+.hero-art { border-radius: 18px; box-shadow: 0 16px 40px rgba(0,0,0,.45); }
+.hero-art img { position: relative; z-index: 1; }
+.hero-art .cover-fallback { z-index: 0; }
+.home-hero .hero-art { border-radius: 18px; }
 
 /* ── Плеер (мобильный) ───────────────────────────────────────────── */
 .player {
@@ -332,6 +327,9 @@ input[type="range"] { accent-color: var(--blue); }
 .np-art {
   border-radius: 28px;
   box-shadow: 0 30px 90px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.1), 0 0 0 10px rgba(255,255,255,.025);
+  isolation: isolate;
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  clip-path: inset(0 round 28px);
 }
 .np-art::after {
   content: '';
@@ -353,6 +351,13 @@ input[type="range"] { accent-color: var(--blue); }
 .np-times { color: #7f89a5; }
 
 /* ── Очередь / drawer / sheet ────────────────────────────────────── */
+/* Не рисуем второй полупрозрачный слой поверх страницы: панели уже
+   имеют собственный фон и тень, а scrim остаётся только кликабельной зоной. */
+.scrim {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 .queue-panel {
   background:
     radial-gradient(120% 40% at 50% 0%, rgba(124,140,255,.12), transparent 60%),
@@ -509,7 +514,7 @@ input[type="range"] { accent-color: var(--blue); }
   .home-hero { border-radius: 22px; }
   .home-hero .hero-art { border-radius: 16px; }
   .np-inner { padding-left: 18px; padding-right: 18px; }
-  .np-art { width: min(78vw, 42dvh); border-radius: 24px; }
+  .np-art { width: min(78vw, 42dvh); border-radius: 24px; clip-path: inset(0 round 24px); }
   .np-controls { gap: 20px; }
   .player { left: 7px; right: 7px; border-radius: 17px; }
   .tabbar { height: calc(var(--tabbar-h) + var(--safe-bottom)); }
