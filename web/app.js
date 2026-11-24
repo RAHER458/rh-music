@@ -2601,6 +2601,9 @@ function refreshAiAutoMixUI() {
       el.dataset.label = label || '';
     }
   });
+  if (phase === 'DEGRADED' && aiLastPhase !== 'DEGRADED' && info && info.error) {
+    toast('AutoMix: ' + info.error, 'error');
+  }
   const mix = info && info.mix ? info.mix : null;
   const justFinished = aiLastPhase === 'MIXING' && phase === 'ACTIVE' && active;
   const mixProgress = mix ? Math.max(0, Math.min(1, Number(mix.progress) || 0)) : 0;
