@@ -564,6 +564,18 @@
       cancelTransition('invalidate');
       return;
     }
+    // Перемотка внутри трека не должна сдвигать уже рассчитанный переход:
+    // если план относится к текущему треку и его точка ещё впереди, оставляем
+    // его как есть, чтобы маркер перехода не «плавал» по шкале.
+    const hostState = state.host && typeof state.host.getState === 'function' ? state.host.getState() : null;
+    const pending = state.pending;
+    const activeId = state.activeTrack ? String(state.activeTrack.id) : '';
+    if (pending && pending.plan && hostState && Number.isFinite(Number(hostState.currentTime))
+        && Number(hostState.currentTime) < Number(pending.plan.startAt) - 1.5
+        && hostState.current && activeId && String(hostState.current.id) === activeId) {
+      emit();
+      return;
+    }
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.planEpoch += 1;
     state.pending = null;

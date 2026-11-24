@@ -184,6 +184,16 @@ ai2._state.currentEntry = { track: { id: 'x' } };
 ai2._state.preparing = true;
 check('preparing is exposed without faking phase', ai2.getState().preparing === true);
 
+/* ── Seek не должен сдвигать уже рассчитанный переход ── */
+ai2.init({ getState: () => ({ current: { id: 'x' }, index: 0, queue: [], currentTime: 50, duration: 180, paused: false }) });
+ai2._state.activeTrack = { id: 'x', title: 'X' };
+ai2._state.pending = { track: { id: 'y', title: 'Y' }, plan: { startAt: 100, inStart: 10, durationSec: 12, strategy: 'beat-blend' }, entry: {}, analysis: {}, fallback: false };
+ai2.invalidatePlan();
+check('seek не сдвигает будущий план перехода', !!ai2._state.pending && ai2._state.pending.plan.startAt === 100, JSON.stringify(ai2._state.pending && ai2._state.pending.plan));
+ai2._state.pending.plan.startAt = 40;
+ai2.invalidatePlan();
+check('seek после точки перехода сбрасывает план', ai2._state.pending === null);
+
 
 check('DEGRADED автоматически выключает AutoMix', /phase === 'DEGRADED' && previous !== 'DEGRADED'/.test(controllerSrc) && /if \(state\.phase === 'DEGRADED'\) disable\(\)/.test(controllerSrc));
 
