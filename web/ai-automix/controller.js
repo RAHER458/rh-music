@@ -130,7 +130,7 @@
     if (state.engine) return;
     if (!state.lib) {
       setPhase('LOADING', 0);
-      state.lib = await withTimeout(import('./automix-engine.js?v=5'), 15_000, 'engine module');
+      state.lib = await withTimeout(import('./automix-engine.js?v=6'), 15_000, 'engine module');
       try {
         state.policy = await import(new URL('transition-policy.js?v=1', MODULE_BASE).href);
       } catch {
