@@ -22,8 +22,10 @@
     if (np && np.parentElement) list.push(np.parentElement);
     const mini = document.getElementById('miniNowCover');
     if (mini) list.push(mini);
+    const beat = document.getElementById('npArtBeat');
     const art = document.getElementById('npArt');
-    if (art) list.push(art);
+    if (beat) list.push(beat);
+    else if (art) list.push(art);
     return list;
   }
 
