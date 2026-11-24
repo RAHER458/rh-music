@@ -432,6 +432,29 @@ async function loadHome(force = false) {
   return data;
 }
 
+function trackCard(track, index, listName) {
+  const sub = [track.artist, track.album].filter(Boolean).join(' · ');
+  return `<article class="card track-card" data-action="play" data-list="${esc(listName)}" data-index="${index}" data-track-id="${esc(track.id)}">
+    <span class="card-art">
+      ${track.cover ? `<img src="${esc(pic(track.cover, 300))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+      <span class="cover-fallback">♪</span>
+      <span class="card-play" aria-hidden="true">${ICONS.play}</span>
+    </span>
+    <span class="card-title">${esc(track.title)}</span>
+    ${sub ? `<span class="card-sub">${esc(sub)}</span>` : ''}
+  </article>`;
+}
+
+function trackCards(items, listName) {
+  const tracks = (Array.isArray(items) ? items : []).slice(0, 10);
+  S.lists[listName] = tracks;
+  return `<div class="carousel">${tracks.map((track, index) => trackCard(track, index, listName)).join('')}</div>`;
+}
+
+function compactCarousel(items, renderItem) {
+  return `<div class="carousel">${(Array.isArray(items) ? items : []).slice(0, 10).map(renderItem).join('')}</div>`;
+}
+
 async function renderShowcase() {
   S.route = 'home';
   setNav('home');
@@ -439,10 +462,8 @@ async function renderShowcase() {
 
   if (!S.home) {
     page.innerHTML = `
-      <div class="hero-skeleton">
-        <div class="sk sk-hero"></div>
-      </div>
-      ${skeletonCards(6)}`;
+      <div class="hero-skeleton"><div class="sk sk-hero"></div></div>
+      ${skeletonCards(4)}`;
   }
 
   let data;
@@ -455,16 +476,16 @@ async function renderShowcase() {
     return;
   }
 
-  const sections = data.sections || [];
+  const sections = (data.sections || []).filter((block) => block && block.type !== 'banner');
   const hero = data.hero || null;
   const heroBlock = hero ? `
-    <div class="hero">
+    <div class="hero home-hero">
       <div class="hero-art">
         ${hero.cover ? `<img src="${esc(pic(hero.cover, 600))}" alt="" decoding="async" onerror="this.remove()">` : ''}
         <span class="cover-fallback big">RH</span>
       </div>
       <div class="hero-info">
-        <span class="hero-kicker">Популярное</span>
+        <span class="hero-kicker">Подборка дня</span>
         <h1 class="hero-title">${esc(hero.title)}</h1>
         ${hero.description ? `<p class="hero-sub">${esc(hero.description)}</p>` : ''}
         <div class="hero-actions">
@@ -473,34 +494,57 @@ async function renderShowcase() {
       </div>
     </div>` : '';
 
-  const blocks = sections.filter((block) => block.type !== 'banner').map((block) => {
+  // Витрина — это короткий обзор, а не каталог. Показываем только
+  // четыре смысловые подборки, остальные данные не раздувают страницу.
+  const wanted = [
+    { key: 'content-1124972', type: 'tracks', title: 'Сейчас в тренде' },
+    { key: 'top-new-playlists', type: 'playlists', title: 'Плейлисты' },
+    { key: 'new-releases', type: 'albums', title: 'Новые релизы' },
+    { key: 'content-1062105', type: 'tracks', title: 'Топ 100' },
+  ];
+  const chosen = [];
+  const usedKeys = new Set();
+  for (const want of wanted) {
+    let block = sections.find((item) => item.key === want.key && item.type === want.type);
+    if (!block) block = sections.find((item) => item.type === want.type && !usedKeys.has(item.key));
+    if (!block || usedKeys.has(block.key)) continue;
+    usedKeys.add(block.key);
+    chosen.push({ ...block, displayTitle: want.title });
+  }
+  if (chosen.length < 3) {
+    for (const block of sections) {
+      if (chosen.length >= 4) break;
+      if (usedKeys.has(block.key) || block.type === 'artists') continue;
+      usedKeys.add(block.key);
+      chosen.push(block);
+    }
+  }
+
+  const blocks = chosen.map((block, index) => {
+    const listKey = 'home_' + block.key;
     if (block.type === 'playlists') {
-      return section(block.title, carousel(block.items, playlistCard), { sub: block.subtitle || '', key: block.key });
+      return section(block.displayTitle || block.title, compactCarousel(block.items, playlistCard), { sub: index === 0 ? 'Подборки для настроения' : '', key: block.key });
     }
     if (block.type === 'albums') {
-      return section(block.title, carousel(block.items, albumCard), { sub: block.subtitle || '', key: block.key });
+      return section(block.displayTitle || block.title, compactCarousel(block.items, albumCard), { sub: index === 0 ? 'Свежие пластинки' : '', key: block.key });
     }
     if (block.type === 'artists') {
-      return section(block.title, carousel(block.items, artistCard), { sub: block.subtitle || '', key: block.key });
+      if ((block.items || []).length < 2) return '';
+      return section(block.displayTitle || block.title, compactCarousel(block.items, artistCard), { key: block.key });
     }
-    S.lists['home_' + block.key] = block.items;
-    return section(block.title, trackList(block.items, 'home_' + block.key), { sub: block.subtitle || '', key: block.key });
-  });
-
-  const genres = (data.genres || []).map((genre) =>
-    `<button class="chip" type="button" data-action="genre" data-query="${esc(genre.title)}">${esc(genre.title)}</button>`).join('');
+    return section(block.displayTitle || block.title, trackCards(block.items, listKey), { key: block.key });
+  }).filter(Boolean);
 
   page.innerHTML = `
-    <div class="page-head">
+    <div class="page-head home-head">
       <div>
-        <h1 class="page-title">${S.user ? 'Привет, ' + esc(S.user.displayName || S.user.username) : 'Витрина RH—MUSIC'}</h1>
-        <p class="page-sub">Популярные подборки, новинки и хиты</p>
+        <h1 class="page-title">${S.user ? 'Привет, ' + esc(S.user.displayName || S.user.username) : 'Главная'}</h1>
+        <p class="page-sub">Подборка дня, новинки и плейлисты — без длинных списков.</p>
       </div>
+      <button class="btn btn-ghost home-search" type="button" data-action="focus-search">${ICONS.search || ''} Найти музыку</button>
     </div>
     ${heroBlock}
-    ${genres ? `<div class="chip-row">${genres}</div>` : ''}
     ${blocks.join('')}
-    <p class="section-sub">${sections.length ? 'Содержимое обновляется автоматически.' : 'Контент временно недоступен.'}</p>
   `;
 }
 
@@ -521,7 +565,7 @@ async function renderRecommendations() {
     return;
   }
 
-  page.innerHTML = skeletonTracks(5);
+  page.innerHTML = `<div class="page-head"><div><div class="sk sk-line" style="width:220px;height:24px"></div></div></div>${skeletonCards(4)}`;
   let data;
   try {
     data = await loadRecommendations(true);
@@ -531,41 +575,39 @@ async function renderRecommendations() {
   }
 
   const sections = (data && data.sections) || [];
-
   if (!sections.length) {
     page.innerHTML = `
-      <div class="page-head">
-        <div><h1 class="page-title">Рекомендации</h1>
-        <p class="page-sub">Пока недостаточно данных для персональных рекомендаций</p></div>
-      </div>
-      <div class="notice">
-        <span>${ICONS.note}</span>
-        <span>Послушайте музыку, добавляйте любимые треки в «Мою музыку» и создавайте плейлисты — подборки появятся постепенно. Мы не подставляем случайные треки под видом персональных.</span>
-      </div>
-      <div style="height:16px"></div>
-      ${emptyState('Ничего не прослушано', 'Включите любой трек — и раздел начнёт наполняться: «Продолжить прослушивание», «Для вас», «На основе любимых исполнителей» и «Возможно, вам понравится».',
-        'search', '', '<a class="btn btn-primary" href="#/search" data-link>Найти музыку</a>')}
+      <div class="page-head"><div><h1 class="page-title">Рекомендации</h1><p class="page-sub">Пока недостаточно данных</p></div></div>
+      <div class="notice"><span>${ICONS.note}</span><span>Послушайте несколько треков и добавьте любимые в «Мою музыку» — подборки появятся постепенно.</span></div>
+      ${emptyState('Ничего не прослушано', 'Включите любой трек — раздел начнёт наполняться.', 'search', '', '<a class="btn btn-primary" href="#/search" data-link>Найти музыку</a>')}
     `;
     return;
   }
 
-  const blocks = sections.map((sectionData) => {
-    const body = sectionData.type === 'albums'
-      ? carousel(sectionData.items, albumCard)
-      : trackList(sectionData.items, 'rec_' + sectionData.key);
-    S.lists['rec_' + sectionData.key] = sectionData.items;
-    return section(sectionData.title, body, { sub: sectionData.subtitle || '', key: sectionData.key });
+  // Рекомендации — три короткие полки, а не бесконечная лента.
+  const chosen = sections.slice(0, 3);
+  const blocks = chosen.map((sectionData, index) => {
+    const listKey = 'rec_' + sectionData.key;
+    const items = (sectionData.items || []).slice(0, 10);
+    if (sectionData.type === 'albums') {
+      return section(sectionData.title, compactCarousel(items, albumCard), { sub: index === 0 ? 'Собрано по вашим прослушиваниям' : '', key: sectionData.key });
+    }
+    return section(sectionData.title, trackCards(items, listKey), { sub: index === 0 ? 'Следующие треки для вас' : '', key: sectionData.key });
   });
 
+  const stats = data.plays
+    ? `<span class="rec-stat">${Number(data.tracks) || 0} треков</span><span class="rec-stat">${Number(data.plays) || 0} прослушиваний</span>`
+    : '<span class="rec-stat">Начните слушать — подборки обновятся</span>';
+
   page.innerHTML = `
-    <div class="page-head">
+    <div class="page-head rec-head">
       <div>
         <h1 class="page-title">Рекомендации</h1>
-        <p class="page-sub">${data.plays ? `Прослушано треков: ${data.tracks} · всего воспроизведений: ${data.plays}` : 'Начните слушать — подборки обновятся'}</p>
+        <p class="page-sub">Короткая персональная подборка</p>
       </div>
+      <div class="rec-stats">${stats}</div>
     </div>
     ${blocks.join('')}
-    <p class="section-sub">Подборки сформированы по вашей истории прослушивания, библиотеке и плейлистам. Чужая история в них не попадает.</p>
   `;
 }
 
@@ -3997,6 +4039,11 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'queue-toggle') { toggleQueue(); return; }
   if (action === 'queue-close') { openQueuePanel(false); return; }
+  if (action === 'focus-search') {
+    if (isDesktop()) { const input = $('q'); if (input) { input.focus(); input.select(); } }
+    else location.hash = '#/search';
+    return;
+  }
   if (action === 'ai-automix-toggle') {
     if (isSoundCloudTrack(S.current)) return;
     if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
