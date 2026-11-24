@@ -142,15 +142,67 @@
     return { values, hopSeconds };
   }
 
+  function isHlsSource(src) {
+    return /\/api\/sc\/play\//i.test(src) || /\.m3u8(?:\?|$)/i.test(src);
+  }
+
+  async function fetchBytes(url) {
+    const response = await fetch(url, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('hls_http_' + response.status);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  /** HLS fMP4: init + все сегменты склеиваются в обычный MP4 для decodeAudioData. */
+  async function loadHlsAudio(src, depth = 0) {
+    if (depth > 2) return null;
+    const response = await fetch(src, { credentials: 'same-origin' });
+    if (!response.ok) return null;
+    const text = await response.text();
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) return null;
+
+    // Master playlist: берём первый вариант и разворачиваем его.
+    if (lines.some((line) => line.startsWith('#EXT-X-STREAM-INF'))) {
+      const variant = lines.find((line) => !line.startsWith('#'));
+      return variant ? loadHlsAudio(new URL(variant, src).href, depth + 1) : null;
+    }
+
+    const mapLine = lines.find((line) => line.startsWith('#EXT-X-MAP:'));
+    const mapMatch = mapLine && mapLine.match(/URI="([^"]+)"/);
+    const init = mapMatch ? new URL(mapMatch[1], src).href : null;
+    const segments = lines
+      .filter((line) => !line.startsWith('#'))
+      .map((line) => new URL(line, src).href);
+    if (!segments.length || segments.length > 240) return null;
+
+    const parts = [];
+    if (init) parts.push(await fetchBytes(init));
+    // Сегментов немного (обычно 10–30); параллельная загрузка ускоряет старт.
+    const loaded = await Promise.all(segments.map((url) => fetchBytes(url)));
+    parts.push(...loaded);
+    const total = parts.reduce((sum, part) => sum + part.length, 0);
+    if (total > 24 * 1024 * 1024) return null;
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) { merged.set(part, offset); offset += part.length; }
+    return merged.buffer;
+  }
+
   async function loadPulseMap(src) {
     if (!src) return null;
     if (pulseCache.has(src)) return pulseCache.get(src);
     if (loadingSrc === src) return null;
     loadingSrc = src;
     try {
-      const response = await fetch(src, { credentials: 'same-origin' });
-      if (!response.ok) return null;
-      const buffer = await response.arrayBuffer();
+      let buffer;
+      if (isHlsSource(src)) {
+        buffer = await loadHlsAudio(src);
+      } else {
+        const response = await fetch(src, { credentials: 'same-origin' });
+        if (!response.ok) return null;
+        buffer = await response.arrayBuffer();
+      }
+      if (!buffer) return null;
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return null;
       const tmp = new Ctx();
@@ -167,7 +219,7 @@
   }
 
   function currentSrc() {
-    return audio.currentSrc || audio.getAttribute('src') || '';
+    return audio.dataset.beatSrc || audio.currentSrc || audio.getAttribute('src') || '';
   }
 
   /* ── animation ───────────────────────────────────────────────── */
@@ -203,10 +255,12 @@
     if (liveSupported) return;
     const src = currentSrc();
     if (!src || src === loadedSrc) return;
-    loadedSrc = src;
     pulseMap = null;
     const map = await loadPulseMap(src);
-    if (map && currentSrc() === src) pulseMap = map;
+    if (map && currentSrc() === src) {
+      loadedSrc = src;
+      pulseMap = map;
+    }
   }
 
   function start() {

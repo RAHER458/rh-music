@@ -2001,6 +2001,10 @@ function nativeHlsPlayback() {
 function applyAudioSource(track, { autoplay = false, onError = null } = {}) {
   destroyActiveHls();
   if (!track) return;
+  try {
+    if (isSoundCloudTrack(track)) audio.dataset.beatSrc = streamUrl(track);
+    else delete audio.dataset.beatSrc;
+  } catch { /* ignore */ }
   const useHlsJs = isSoundCloudTrack(track) && !nativeHlsPlayback() && window.Hls && window.Hls.isSupported();
   if (useHlsJs) {
     activeHls = new window.Hls({ enableWorker: true, lowLatencyMode: false });
