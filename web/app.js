@@ -2045,7 +2045,11 @@ async function fetchHlsAudioBytes(url, depth = 0) {
   if (depth > 2) throw new Error('hls_playlist_depth');
   const response = await fetch(url, { credentials: 'same-origin' });
   if (!response.ok) throw new Error('hls_http_' + response.status);
+  const contentType = String(response.headers.get('content-type') || '');
+  // Некоторые треки SoundCloud отдают progressive MP3 через тот же /api/sc/play.
+  if (contentType && !/mpegurl|m3u8/i.test(contentType)) return response.arrayBuffer();
   const text = await response.text();
+  if (!/^#EXTM3U/m.test(text.trim())) return new TextEncoder().encode(text).buffer;
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (!lines.length) throw new Error('hls_empty');
   if (lines.some((line) => line.startsWith('#EXT-X-STREAM-INF'))) {

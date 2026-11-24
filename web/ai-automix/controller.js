@@ -36,6 +36,7 @@
     deckB: null,
     activeTrack: null,
     activeIndex: -1,
+    failedPlanIds: new Set(),
     pending: null,
     activePlan: null,
     currentEntry: null,
@@ -103,7 +104,7 @@
   }
 
   async function decode(track) {
-    return withTimeout(decodeUncached(track), 30_000, 'audio preparation');
+    return withTimeout(decodeUncached(track), 45_000, 'audio preparation');
   }
 
   async function decodeUncached(track) {
@@ -292,6 +293,7 @@
     state.currentEntry = null;
     state.planEpoch += 1;
     state.activeTrack = track;
+    state.failedPlanIds.clear();
     state.paused = false;
     state.fallbackActive = false;
     state.activeIndex = state.host.getState().index;
@@ -328,6 +330,7 @@
       const index = (activeIndex + offset) % queue.length;
       const track = queue[index];
       if (!track || !track.id) continue;
+      if (state.failedPlanIds.has(String(track.id))) continue;
       if (state.activeTrack && String(track.id) === String(state.activeTrack.id)) continue;
       out.push({ track, index });
       if (out.length >= 3) break;
@@ -418,8 +421,17 @@
       scheduleWatch();
     } catch (error) {
       if (state.phase === 'OFF') return;
+      const failedId = candidate && candidate.track ? String(candidate.track.id) : '';
+      if (failedId) state.failedPlanIds.add(failedId);
+      const hasAnother = queueCandidates().some((item) => !state.failedPlanIds.has(String(item.track.id)));
+      log('Подготовка трека не удалась: ' + (error && error.message ? error.message : String(error)));
+      if (hasAnother) {
+        // Один недоступный трек не должен выключать весь AutoMix.
+        setPhase('ACTIVE');
+        setTimeout(() => { if (state.phase !== 'OFF') void planNext(); }, 60);
+        return;
+      }
       setPhase('DEGRADED');
-      log('Подготовка следующего трека не удалась; текущий трек продолжает играть: ' + (error && error.message ? error.message : String(error)));
     } finally {
       state.busy = false;
       state.preparing = false;
@@ -544,6 +556,7 @@
       state.deckB = outDeck;
       state.activeTrack = pending.track;
       state.currentEntry = pending.entry;
+      state.failedPlanIds.clear();
       trimCache([String(pending.track.id)]);
       const hostState = state.host.getState();
       state.playedIds.add(String(pending.track.id));

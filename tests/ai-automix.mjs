@@ -43,7 +43,7 @@ check('playIndex releases AI engine before manual start', app.includes('releaseT
 check('AI enable does not pause standard audio', !controller.includes("getAudio().pause(); } catch (_) {} }\n    state.error"));
 check('AI background analysis does not play Deck A', !/onTrackStarted[\s\S]{0,1200}deckA\.play/.test(controller));
 check('only one next candidate is prepared', controller.includes('const candidate = candidates[0]'));
-check('preparation has timeout', controller.includes('audio preparation') && controller.includes('30_000'));
+check('preparation has timeout', controller.includes('audio preparation') && controller.includes('45_000'));
 check('transition has timeout', controller.includes('waitForTransition') && controller.includes("'transition timeout'"));
 check('AI takes over from host position', controller.includes('host.currentTime') && controller.includes('takeOverAndMix'));
 check('AI can release playback to standard player', controller.includes('releaseToStandard') && app.includes('ownsPlayback()'));
