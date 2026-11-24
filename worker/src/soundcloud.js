@@ -88,7 +88,7 @@ export function normalizeSoundCloudTrack(track) {
     streamKind: hasProgressive ? 'progressive' : 'hls',
     title: track.title || 'Без названия',
     artist: artistOf(track),
-    artistId: track.user && track.user.id ? String(track.user.id) : null,
+    artistId: null,
     album: (track.publisher_metadata && track.publisher_metadata.album_title) || '',
     albumId: null,
     duration: Number(track.full_duration || track.duration || 0) / 1000,

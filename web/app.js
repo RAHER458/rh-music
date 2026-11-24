@@ -1959,7 +1959,7 @@ function setQueue(tracks, index) {
 }
 
 function isSoundCloudTrack(track) {
-  return !!(track && track.source === 'soundcloud');
+  return !!(track && (track.source === 'soundcloud' || /^sc:/i.test(String(track.id || ''))));
 }
 
 function soundCloudMediaId(track) {

@@ -262,7 +262,7 @@ export async function readJson(request, limit = 20000) {
 
 /* ───────────────────────────── метаданные трека ───────────────────────────── */
 
-const ID_RE = /^[0-9]{1,20}$/;
+const ID_RE = /^(?:[0-9]{1,20}|sc:[0-9]{1,20})$/i;
 
 export function sanitizeTrack(input) {
   if (!input || typeof input !== 'object') throw new ApiError(400, 'BAD_TRACK', 'Не передан трек.');
@@ -283,7 +283,7 @@ export function sanitizeTrack(input) {
     artistId: ID_RE.test(String(input.artistId || '')) ? String(input.artistId) : null,
     album: str(input.album, 300),
     albumId: ID_RE.test(String(input.albumId || '')) ? String(input.albumId) : null,
-    cover: /^https:\/\/cdn-image\.zvuk\.com\//.test(String(input.cover || '')) ? str(input.cover, 500) : null,
+    cover: /^(https:\/\/cdn-image\.zvuk\.com\/|https:\/\/[a-z0-9-]+\.sndcdn\.com\/)/i.test(String(input.cover || '')) ? str(input.cover, 500) : null,
     duration: num(input.duration),
   };
 }

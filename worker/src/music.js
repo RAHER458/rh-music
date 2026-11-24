@@ -7,7 +7,7 @@ import { ApiError, json, readJson, requireCsrf, sanitizeTrack } from './http.js'
 import { requireUser } from './auth.js';
 import * as store from './store.js';
 
-const ID_RE = /^[0-9]{1,20}$/;
+const ID_RE = /^(?:[0-9]{1,20}|sc:[0-9]{1,20})$/i;
 
 /* ───────────────────────────── библиотека ───────────────────────────── */
 

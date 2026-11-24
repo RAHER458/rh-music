@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(join(here, '..', p), 'utf8');
 const worker = read('worker/src/index.js');
+const http = read('worker/src/http.js');
 const sc = read('worker/src/soundcloud.js');
 const app = read('web/app.js');
 const headers = read('web/_headers');
@@ -26,6 +27,8 @@ check('в CSP разрешены обложки и HLS-домены SoundCloud',
 const row = app.slice(app.indexOf('function trackRow'), app.indexOf('function trackList'));
 check('в карточке трека нет упоминания источника', !/soundcloud|zvuk/i.test(row));
 check('Zvuk-треки получили source=zvuk для общей модели', /source: 'zvuk'/.test(read('worker/src/zvuk.js')));
+check('библиотека принимает sc: id и обложки sndcdn', /sc:\[0-9\]/.test(http) && /sndcdn/.test(http));
+check('фронтенд распознаёт SoundCloud по префиксу id', /\^sc:/i.test(app));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
