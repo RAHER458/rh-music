@@ -32,7 +32,7 @@ import {
 } from './music.js';
 import { handleRecommendations } from './recommend.js';
 import { handleWave } from './wave.js';
-import { handleHome, handleCatalogPlaylist } from './home.js';
+import { handleHome, handleCatalogPlaylist, syncHome } from './home.js';
 import { handlePopular, syncPopular } from './popular.js';
 import { handleLyrics } from './lyrics.js';
 import { handleLyricsWords } from './words.js';
@@ -551,6 +551,7 @@ async function route(request, env) {
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(syncPopular(env).catch(() => {}));
+    ctx.waitUntil(syncHome(env).catch(() => {}));
   },
 
   async fetch(request, env) {

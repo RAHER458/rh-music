@@ -498,6 +498,8 @@ async function renderShowcase() {
 
   const sections = (data.sections || []).filter((block) => block && block.type !== 'banner');
   const hero = data.hero || null;
+  let popular = null;
+  try { popular = await api('/api/popular'); } catch { popular = null; }
   const heroBlock = hero ? `
     <div class="hero home-hero">
       <div class="hero-art">
@@ -556,6 +558,18 @@ async function renderShowcase() {
     return section(block.displayTitle || block.title, trackCards(block.items, listKey), { key: block.key });
   }).filter(Boolean);
 
+  const popularBlock = (() => {
+    const sectionData = (popular && popular.sections || []).find((block) => block && block.items && block.items.length);
+    if (!sectionData) return '';
+    const items = sectionData.items.slice(0, 10);
+    let html = '';
+    if (sectionData.type === 'playlists') html = compactCarousel(items, playlistCard);
+    else if (sectionData.type === 'albums') html = compactCarousel(items, albumCard);
+    else if (sectionData.type === 'artists') html = compactCarousel(items, artistCard);
+    else html = trackCards(items, 'home_popular');
+    return section('Популярное на Zvuk', html, { sub: sectionData.title || 'Обновляется ежедневно' });
+  })();
+
   page.innerHTML = `
     <div class="page-head home-head">
       <div>
@@ -565,6 +579,7 @@ async function renderShowcase() {
       <button class="btn btn-ghost home-search" type="button" data-action="focus-search">${ICONS.search || ''} Найти музыку</button>
     </div>
     <div id="waveSlot"></div>
+    ${popularBlock}
     ${heroBlock}
     ${blocks.join('')}
   `;

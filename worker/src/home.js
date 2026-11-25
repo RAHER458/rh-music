@@ -256,6 +256,12 @@ export async function getHome(env) {
   return inflight;
 }
 
+export async function syncHome(env) {
+  const data = await buildHome(env);
+  await store.writeHomeSnapshot(env, 'home:v1', data).catch(() => {});
+  return data;
+}
+
 export async function handleHome(request, env) {
   try {
     const data = await getHome(env);

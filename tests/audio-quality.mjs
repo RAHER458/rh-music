@@ -12,6 +12,6 @@ check('парсер качества игнорирует high и возвращ
 check('из каталога берётся только stream.mid', /const url = stream\.mid/.test(worker) && !/stream\.high|stream\.flac/.test(worker));
 check('при отсутствии MID поток не подменяется high', /Каталог не выдал MID-поток/.test(worker));
 const sc = readFileSync(join(here, '../worker/src/soundcloud.js'), 'utf8');
-check('SoundCloud отдаёт только progressive 128, HLS 160 отклоняется', /SC_128_ONLY/.test(sc) && /protocol === 'progressive'/.test(sc) && /return 9;/.test(sc));
+check('SoundCloud возвращён к HLS-фолбэку', /SC_128_ONLY/.test(sc) === false && /protocol === 'hls'/.test(sc));
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
