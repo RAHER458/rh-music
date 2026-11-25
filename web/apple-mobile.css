@@ -213,3 +213,16 @@
     html[data-ui="mobile"] .np-song.is-scrolling { -webkit-line-clamp: 2; white-space: normal; }
   }
 }
+
+/* Кольцо AutoMix должно быть строго концентрично увеличенной кнопке Play. */
+@media (max-width: 1023px) {
+  html[data-ui="mobile"] .np-play-wrap {
+    width: 68px;
+    height: 68px;
+    flex-basis: 68px;
+  }
+  html[data-ui="mobile"] .np-play-wrap > .np-play-ring {
+    width: 80px !important;
+    height: 80px !important;
+  }
+}
