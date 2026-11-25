@@ -187,6 +187,9 @@ function setUser(user) {
     S.libraryIds = new Set();
     S.playlists = [];
   }
+  if (window.RH_SETTINGS && typeof window.RH_SETTINGS.syncUser === 'function') {
+    window.RH_SETTINGS.syncUser(user);
+  }
 }
 
 async function refreshMe() {

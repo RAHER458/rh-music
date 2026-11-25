@@ -4,15 +4,9 @@
 (() => {
   'use strict';
 
-  const KEY = 'rh_settings_v1';
+  const KEY_PREFIX = 'rh_settings_v1';
   const VERSION = '2026.11-settings-lab';
-  const STORE = (() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      const parsed = raw ? JSON.parse(raw) : null;
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch { return {}; }
-  })();
+  let storageKey = null;
 
   const DEFAULTS = {
     resumePlayback: true,
@@ -32,10 +26,29 @@
     personalization: true,
   };
 
-  const state = { ...DEFAULTS, ...STORE };
+  const state = { ...DEFAULTS };
+
+  function readAccountStore() {
+    if (!storageKey) return {};
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch { return {}; }
+  }
 
   function persist() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* ignore */ }
+    // Гость не сохраняет настройки: после перезагрузки — заводские значения.
+    // Аккаунт получает отдельный ключ по user.id.
+    if (!storageKey) return;
+    try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* ignore */ }
+  }
+
+  function syncUser(user) {
+    storageKey = user && user.id ? `${KEY_PREFIX}:u${user.id}` : null;
+    Object.assign(state, DEFAULTS, storageKey ? readAccountStore() : {});
+    apply();
+    refresh();
   }
 
   function get(key) { return state[key]; }
@@ -308,9 +321,10 @@
       return;
     }
     if (action === 'clear-all') {
-      ['rh_searches_v1', 'rh_player_v1', 'rh_layout_v1', 'rh_volume_v1', KEY].forEach((key) => {
+      ['rh_searches_v1', 'rh_player_v1', 'rh_layout_v1', 'rh_volume_v1'].forEach((key) => {
         try { localStorage.removeItem(key); } catch { /* ignore */ }
       });
+      if (storageKey) { try { localStorage.removeItem(storageKey); } catch { /* ignore */ } }
       Object.assign(state, DEFAULTS);
       persist(); apply();
       toast('Локальные данные очищены');
@@ -403,6 +417,7 @@
     apply,
     render,
     refresh,
+    syncUser,
     state,
   };
 
