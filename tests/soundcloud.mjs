@@ -35,6 +35,8 @@ check('в карточке трека нет упоминания источни
 check('Zvuk-треки получили source=zvuk для общей модели', /source: 'zvuk'/.test(read('worker/src/zvuk.js')));
 check('библиотека принимает sc: id и обложки sndcdn', /sc:\[0-9\]/.test(http) && /sndcdn/.test(http));
 check('фронтенд распознаёт SoundCloud по префиксу id', /\^sc:/i.test(app));
+check('сервер собирает fMP4-fallback для Safari', /soundCloudAudioResponse/.test(sc) && /handleSoundCloudAudio/.test(worker));
+check('фронтенд переключается на blob при ошибке HLS', /playSoundCloudFallback/.test(app) && /api\/sc\/audio/.test(app) && /audio\/mp4/.test(app));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

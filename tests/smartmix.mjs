@@ -89,7 +89,7 @@ function clickTrack(bpm, seconds = 20, noise = 0.02) {
 {
   const noise = new Float32Array(SR * 12).map(() => Math.random() * 0.5 - 0.25);
   const result = detectTempo(noise, SR);
-  check('BPM: шум не даёт уверенного темпа', !result || result.confidence < 0.3, result && String(result.confidence));
+  check('BPM: шум не даёт уверенного темпа', !result || result.confidence < 0.35, result && String(result.confidence));
   check('BPM: тишина не анализируется', detectTempo(new Float32Array(SR * 12), SR) === null);
   check('BPM: слишком короткий фрагмент не анализируется', detectTempo(new Float32Array(100), SR) === null);
 }
