@@ -11,12 +11,13 @@ const check = (name, ok) => { if (ok) passed++; else { failures.push(name); cons
 console.log('RH—MUSIC · settings center tests\n');
 check('шестерёнка есть в верхней панели', /id="settingsBtn"/.test(html));
 check('settings.js и settings.css подключены', /settings\.js/.test(html) && /settings\.css/.test(html));
-check('десять категорий настроек', (settings.match(/id: '(general|appearance|sound|player|ai|storage|notifications|privacy|account|about)'/g) || []).length === 10);
+check('девять категорий настроек без звука', (settings.match(/id: '(general|appearance|player|ai|storage|notifications|privacy|account|about)'/g) || []).length === 9 && !/id: 'sound'/.test(settings));
 check('настройки сохраняются в localStorage', /rh_settings_v1/.test(settings) && /persist\(\)/.test(settings));
 check('применяются тема, акцент, карточки и эффекты', /dataset\.theme/.test(settings) && /dataset\.accent/.test(settings) && /dataset\.cardSize/.test(settings) && /dataset\.reduceMotion/.test(settings));
-check('подключены равные реальные API: EQ, AutoMix, Smart Mix', /RH_EQUALIZER/.test(settings) && /RH_AI_AUTOMIX/.test(settings) && /RH_SMARTMIX/.test(settings));
-check('работает таймер сна, свайпы и вибрация', /applySleepTimer/.test(settings) && /bindSwipe/.test(settings) && /navigator\.vibrate/.test(settings));
+check('подключены реальные API: AutoMix и Smart Mix', /RH_AI_AUTOMIX/.test(settings) && /RH_SMARTMIX/.test(settings));
+check('работают свайпы, без таймера сна и вибрации', /bindSwipe/.test(settings) && !/applySleepTimer/.test(settings) && !/sleepTimer/.test(settings) && !/vibrate/.test(settings));
 check('гейты app: история, персонализация, Media Session, запуск', /saveHistory/.test(app) && /personalization/.test(app) && /mediaSession/.test(app) && /openHomeOnLaunch/.test(app));
+check('RH AI переименован, нет Push, Ограничений и Production-подписи', /title: 'RH AI'/.test(settings) && !/Push-уведомления/.test(settings) && !/Ограничения/.test(settings) && !/Production API и данные аккаунта/.test(settings));
 check('стиль группированных настроек и switch', /\.st-card/.test(css) && /\.st-switch/.test(css) && /\.st-nav-row/.test(css));
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

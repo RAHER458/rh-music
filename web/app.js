@@ -3290,12 +3290,54 @@ function npReducedMotion() {
   return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
+let npTitleMeasureToken = 0;
+
+function marqueeTextWidth(el, title) {
+  try {
+    const cs = getComputedStyle(el);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    return Math.ceil(ctx.measureText(title).width) + 34;
+  } catch {
+    return el.offsetWidth;
+  }
+}
+
+function applyMarquee(el, title, kind) {
+  if (!el) return;
+  const runClass = kind + '-run';
+  const lineClass = kind + '-line';
+  el.classList.remove('is-scrolling');
+  el.innerHTML = `<span class="${runClass}"><span class="${lineClass}">${esc(title)}</span></span>`;
+  const measure = () => {
+    const run = el.querySelector('.' + runClass);
+    const line = el.querySelector('.' + lineClass);
+    if (!run || !line || el.clientWidth <= 0) return;
+    const width = marqueeTextWidth(line, title);
+    if (width <= el.clientWidth + 1 || npReducedMotion()) return;
+    run.innerHTML = `<span class="${lineClass}">${esc(title)}</span><span class="${lineClass}" aria-hidden="true">${esc(title)}</span>`;
+    run.style.animationDuration = Math.max(8, Math.min(24, width / 34)).toFixed(1) + 's';
+    el.classList.add('is-scrolling');
+  };
+  requestAnimationFrame(measure);
+  setTimeout(measure, 120);
+}
+
+function applyNpTitle(track) {
+  applyMarquee($('npTitle'), track ? (track.title || 'Без названия') : 'Ничего не играет', 'np-title');
+}
+
+function applyNpSong(track) {
+  applyMarquee($('npSong'), track ? (track.title || 'Без названия') : 'Ничего не играет', 'np-song');
+}
+
 function applyNpText(track) {
-  $('npTitle').textContent = track ? track.title : 'Ничего не играет';
+  applyNpTitle(track);
   $('npArtist').innerHTML = track && track.artistId
     ? `<a href="#/artist/${esc(track.artistId)}" data-link>${esc(track.artist || 'Неизвестный исполнитель')}</a>`
     : esc(track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек');
-  $('npSong').textContent = track ? track.title : 'Ничего не играет';
+  applyNpSong(track);
   $('npSinger').textContent = track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек';
 }
 
@@ -3936,6 +3978,10 @@ function openNowPlaying(open = true) {
   S.npOpen = open;
   nowPlaying.classList.toggle('is-open', open);
   nowPlaying.setAttribute('aria-hidden', open ? 'false' : 'true');
+  if (open && S.current) {
+    // Ширина заголовка появляется только после раскрытия оверлея.
+    requestAnimationFrame(() => { applyNpTitle(S.current); applyNpSong(S.current); });
+  }
   if (open) { scrim.hidden = false; requestAnimationFrame(() => scrim.classList.add('is-open')); }
   else if (!S.drawerOpen && !S.sheetOpen) hideScrim();
   document.body.classList.toggle('is-locked', open || S.drawerOpen || S.sheetOpen);
@@ -4781,7 +4827,13 @@ function syncLayoutHeight() {
 }
 
 window.addEventListener('hashchange', route);
-window.addEventListener('resize', syncLayoutHeight);
+window.addEventListener('resize', () => {
+  syncLayoutHeight();
+  if (S.current) { applyNpTitle(S.current); applyNpSong(S.current); }
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && S.current) { applyNpTitle(S.current); applyNpSong(S.current); }
+});
 
 if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(player);
 
