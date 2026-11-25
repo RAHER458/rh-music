@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="styles.css?v=release32">
 <link rel="stylesheet" href="redesign.css?v=release42">
 <link rel="stylesheet" href="apple-mobile.css?v=apple1">
+<link rel="stylesheet" href="settings.css?v=settings1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%236C8CFF'/><text x='32' y='43' font-family='system-ui' font-size='26' font-weight='800' fill='white' text-anchor='middle'>RH</text></svg>">
 </head>
 <body>
@@ -159,6 +160,10 @@
 
       <button class="icon-btn subtle queue-toggle" id="queueToggle" type="button" data-ui-only="desktop" data-action="queue-toggle" aria-label="Очередь воспроизведения" aria-pressed="false">
         <svg viewBox="0 0 24 24"><path d="M4 6a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm13.5-7.6a1 1 0 0 1 1.5.9v6.2a2.6 2.6 0 1 1-2-2.5V9.6l.5.8Z"/></svg>
+      </button>
+
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="Настройки">
+        <svg viewBox="0 0 24 24"><path d="M12 3.2a1 1 0 0 1 .95.68l.7 2.1a7 7 0 0 1 1.9.8l2.1-.7a1 1 0 0 1 1.16.47l1 1.7a1 1 0 0 1-.25 1.28l-1.7 1.35a7 7 0 0 1 0 2.1l1.7 1.35a1 1 0 0 1 .25 1.28l-1 1.7a1 1 0 0 1-1.16.47l-2.1-.7a7 7 0 0 1-1.9.8l-.7 2.1a1 1 0 0 1-.95.68h-2a1 1 0 0 1-.95-.68l-.7-2.1a7 7 0 0 1-1.9-.8l-2.1.7a1 1 0 0 1-1.16-.47l-1-1.7a1 1 0 0 1 .25-1.28l1.7-1.35a7 7 0 0 1 0-2.1L5.4 8.7a1 1 0 0 1-.25-1.28l1-1.7A1 1 0 0 1 7.3 5.25l2.1.7a7 7 0 0 1 1.9-.8l.7-2.1A1 1 0 0 1 12 3.2Zm0 5.3a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>
       </button>
 
       <button class="icon-btn account-btn" id="accountBtn" type="button" aria-label="Аккаунт">
@@ -444,6 +449,7 @@
 <script src="smartmix.js?v=release32"></script>
 <script src="equalizer.js?v=release32"></script>
 <script src="ai-automix/controller.js?v=release32"></script>
+<script src="settings.js?v=settings1"></script>
 <script src="app.js?v=release39"></script>
 <script src="beat-cover.js?v=release32"></script>
 </body>

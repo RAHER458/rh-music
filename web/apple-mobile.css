@@ -59,8 +59,8 @@
     scroll-padding-left: 16px;
   }
   html[data-ui="mobile"] .carousel .card {
-    flex: 0 0 158px;
-    width: 158px;
+    flex: 0 0 var(--apple-card-w, 158px);
+    width: var(--apple-card-w, 158px);
     padding: 0;
     border: 0;
     background: transparent;

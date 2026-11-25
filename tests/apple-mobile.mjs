@@ -12,7 +12,7 @@ check('слой подключён после redesign.css', /redesign\.css[^>]*
 check('слой только для мобильного интерфейса', /@media \(max-width: 1023px\)/.test(css) && /html\[data-ui="mobile"\]/.test(css));
 check('крупные заголовки и секции', /--apple-title/.test(css) && /font-size: var\(--apple-section\)/.test(css));
 check('featured-карточка главной во всю ширину', /\.home-hero \{[\s\S]{0,400}flex-direction: column/.test(css));
-check('горизонтальные полки с крупными карточками', /\.carousel \.card \{\s*flex: 0 0 158px/.test(css));
+check('горизонтальные полки с крупными карточками', /\.carousel \.card \{\s*flex: 0 0 var\(--apple-card-w, 158px\)/.test(css));
 check('MiniPlayer над нижней навигацией', /\.player \{[\s\S]{0,300}bottom: calc\(var\(--tabbar-h\)/.test(css) && /\.tabbar \{[\s\S]{0,300}height: calc\(52px/.test(css));
 check('Now Playing с крупной обложкой и круглой Play', /\.np-art \{[\s\S]{0,300}border-radius: 10px/.test(css) && /\.ctrl\.play\.xl \{\s*width: 68px/.test(css));
 check('страницы артиста/альбома центрированы', /\.detail \{[\s\S]{0,400}text-align: center/.test(css));

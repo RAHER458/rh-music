@@ -394,6 +394,7 @@ function setNav(name) {
 
 async function loadRecommendations(force = false) {
   if (!S.user) { S.recommendations = null; return null; }
+  if (window.RH_SETTINGS && !window.RH_SETTINGS.get('personalization')) { S.recommendations = null; return null; }
   if (!force && S.recommendations && Date.now() - S.recommendationsAt < 60000) return S.recommendations;
   const data = await api('/api/recommendations');
   S.recommendations = data;
@@ -3329,6 +3330,7 @@ function setNpPalette(art, image) {
       r += rr; g += gg; b += bb; n++;
     }
     if (!n) return;
+    if (window.RH_SETTINGS && !window.RH_SETTINGS.get('dynamicCover')) return;
     r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
     // Keep the cinematic palette inside RH-MUSIC's cool range.
     const boost = (v) => Math.max(64, Math.min(235, Math.round(v * 1.35)));
@@ -3434,7 +3436,7 @@ function updateNowPlayingMeta(track) {
   updateNpLike();
   renderCompactTrack(track);
 
-  if ('mediaSession' in navigator && track) {
+  if ('mediaSession' in navigator && track && (!window.RH_SETTINGS || window.RH_SETTINGS.get('mediaSession'))) {
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: track.title || '',
@@ -3687,6 +3689,7 @@ const savePreferences = debounce(() => {
 function startPlaybackSession(track, source) {
   S.playback = { historyId: null, trackId: String(track.id), pending: 0, lastTick: audio.currentTime, completed: false, source };
   if (!S.user) return;
+  if (window.RH_SETTINGS && !window.RH_SETTINGS.get('saveHistory')) { S.playback.historyId = null; return; }
   api('/api/history', { method: 'POST', body: { track, source } })
     .then((data) => { if (S.playback.trackId === String(track.id)) S.playback.historyId = data.id; })
     .catch(() => {});
@@ -4002,6 +4005,9 @@ function route() {
   if (path === '/history' || path === '/recent') return renderRecent('history');
   if (path === '/login') return renderLogin();
   if (path === '/register') return renderRegister();
+  if (path === '/settings' || path.startsWith('/settings/')) {
+    if (window.RH_SETTINGS) return window.RH_SETTINGS.render(path);
+  }
   if (path === '/settings') return renderAccount({ settings: true });
   if (path === '/account') return renderAccount();
   if ((m = path.match(/^\/artist\/(\d+)$/))) return renderArtist(m[1]);
@@ -4696,7 +4702,8 @@ audio.addEventListener('timeupdate', () => {
 
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTime(smartMixState());
 
-  if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && duration > 0) {
+  if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && duration > 0
+      && (!window.RH_SETTINGS || window.RH_SETTINGS.get('mediaSession'))) {
     try {
       navigator.mediaSession.setPositionState({ duration, position: Math.min(current, duration), playbackRate: 1 });
     } catch { /* ignore */ }
@@ -4789,6 +4796,7 @@ function normalizeLaunchRoute() {
   // На iOS PWA при запуске восстанавливается последний URL, например
   // #/artist/<id>. Пользователь ждёт Главную, а не случайную страницу артиста.
   if (!isStandaloneApp()) return;
+  if (window.RH_SETTINGS && !window.RH_SETTINGS.get('openHomeOnLaunch')) return;
   const hash = location.hash || '';
   if (!hash || hash === '#/' || hash === '#/home') return;
   try { history.replaceState(null, '', '#/home'); } catch { location.hash = '#/home'; }
@@ -4822,7 +4830,8 @@ document.addEventListener('visibilitychange', () => {
   restoreVolume();
   const layout = readJson('rh_layout_v1', null);
   if (layout && layout.sidebarCollapsed) document.body.classList.add('sidebar-collapsed');
-  restorePlayerState();
+  if (!window.RH_SETTINGS || window.RH_SETTINGS.get('resumePlayback')) restorePlayerState();
+  else clearPlayerState();
   initSmartMix();
   if (window.RH_EQUALIZER) { window.RH_EQUALIZER.init(); refreshEqualizerUI(); }
   initAiAutoMix();
