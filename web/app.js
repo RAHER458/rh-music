@@ -3632,9 +3632,10 @@ async function playSoundCloudFallback(track) {
     activeScBlobUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mp4' }));
     audio.src = activeScBlobUrl;
     audio.load();
-    await audio.play();
+    // На iOS после асинхронной загрузки play() может требовать ещё один тап.
+    try { await audio.play(); } catch { /* пользователь нажмёт Play */ }
     S.loading = false;
-    S.playing = true;
+    S.playing = !audio.paused;
     updateTransport();
     return true;
   } catch (error) {
