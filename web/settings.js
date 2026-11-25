@@ -23,12 +23,8 @@
     coverGlow: true,
     reduceMotion: false,
     cardSize: 'standard',
-    equalizer: false,
-    equalizerPreset: 'flat',
     swipeCover: true,
     swipeMini: true,
-    sleepTimer: 0,
-    vibrate: false,
     automix: false,
     smartmix: true,
     mediaSession: true,
@@ -75,7 +71,6 @@
     back: '<svg viewBox="0 0 24 24"><path d="M14.7 4.3a1 1 0 0 1 0 1.4L8.4 12l6.3 6.3a1 1 0 1 1-1.4 1.4l-7-7a1 1 0 0 1 0-1.4l7-7a1 1 0 0 1 1.4 0Z"/></svg>',
     general: '<svg viewBox="0 0 24 24"><path d="M12 3.2a1 1 0 0 1 .95.68l.7 2.1a7 7 0 0 1 1.9.8l2.1-.7a1 1 0 0 1 1.16.47l1 1.7a1 1 0 0 1-.25 1.28l-1.7 1.35a7 7 0 0 1 0 2.1l1.7 1.35a1 1 0 0 1 .25 1.28l-1 1.7a1 1 0 0 1-1.16.47l-2.1-.7a7 7 0 0 1-1.9.8l-.7 2.1a1 1 0 0 1-.95.68h-2a1 1 0 0 1-.95-.68l-.7-2.1a7 7 0 0 1-1.9-.8l-2.1.7a1 1 0 0 1-1.16-.47l-1-1.7a1 1 0 0 1 .25-1.28l1.7-1.35a7 7 0 0 1 0-2.1L5.4 8.7a1 1 0 0 1-.25-1.28l1-1.7A1 1 0 0 1 7.3 5.25l2.1.7a7 7 0 0 1 1.9-.8l.7-2.1A1 1 0 0 1 12 3.2Zm0 5.3a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>',
     appearance: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 2.5 2.5 0 0 0 0-5 1.5 1.5 0 0 1 0-3h2.2A4.8 4.8 0 0 0 19 8.2 5.2 5.2 0 0 0 13.8 3H12Zm-4.2 6a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm4.4-1.4a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"/></svg>',
-    sound: '<svg viewBox="0 0 24 24"><path d="M4 9v6h3.2l4.3 3.6a1 1 0 0 0 1.6-.77V6.17a1 1 0 0 0-1.6-.77L7.2 9H4Zm12.8-1.4a1 1 0 0 1 1.4.1 7 7 0 0 1 0 8.6 1 1 0 1 1-1.5-1.3 5 5 0 0 0 0-6 1 1 0 0 1 .1-1.4Z"/></svg>',
     player: '<svg viewBox="0 0 24 24"><path d="M8 5.2c0-1 1.1-1.6 2-1.1l9.4 6.3a1.3 1.3 0 0 1 0 2.2L10 19c-.9.5-2-.1-2-1.1V5.2Z"/></svg>',
     ai: '<svg viewBox="0 0 24 24"><path d="M12 2.6a1 1 0 0 1 .95.68l1.9 5.6 5.6 1.9a1 1 0 0 1 0 1.9l-5.6 1.9-1.9 5.6a1 1 0 0 1-1.9 0l-1.9-5.6-5.6-1.9a1 1 0 0 1 0-1.9l5.6-1.9 1.9-5.6A1 1 0 0 1 12 2.6Z"/></svg>',
     storage: '<svg viewBox="0 0 24 24"><path d="M4 6h16v12H4V6Zm2 2v8h12V8H6Zm1.5 1.5h9v2h-9v-2Z"/></svg>',
@@ -88,9 +83,8 @@
   const SECTIONS = [
     { id: 'general', title: 'Общие', icon: ICON.general, sub: 'Запуск, восстановление, язык' },
     { id: 'appearance', title: 'Внешний вид', icon: ICON.appearance, sub: 'Тема, акцент, карточки' },
-    { id: 'sound', title: 'Звук и воспроизведение', icon: ICON.sound, sub: 'Эквалайзер и громкость' },
     { id: 'player', title: 'Плеер', icon: ICON.player, sub: 'Жесты, таймер, вибрация' },
-    { id: 'ai', title: 'Neural AI', icon: ICON.ai, sub: 'AutoMix и Smart Mix' },
+    { id: 'ai', title: 'RH AI', icon: ICON.ai, sub: 'AutoMix и Smart Mix' },
     { id: 'storage', title: 'Хранилище и кеш', icon: ICON.storage, sub: 'Данные приложения' },
     { id: 'notifications', title: 'Уведомления', icon: ICON.bell, sub: 'Экран блокировки и медиа' },
     { id: 'privacy', title: 'Конфиденциальность', icon: ICON.privacy, sub: 'История и персонализация' },
@@ -145,32 +139,10 @@
     ]);
   }
 
-  function soundScreen() {
-    const eq = window.RH_EQUALIZER;
-    const supported = eq && eq.isSupported && eq.isSupported();
-    const enabled = eq && eq.isEnabled ? eq.isEnabled() : false;
-    const preset = eq && eq.getState ? eq.getState().preset : 'flat';
-    const presets = (eq && eq.presets) || ['flat'];
-    return group('Эквалайзер', [
-      row({ title: 'Включить', sub: supported ? '10-полосный эквалайзер' : 'Не поддерживается устройством', control: supported ? toggle('equalizer') : valueText('Нет'), disabled: !supported }),
-      row({ title: 'Пресет', control: `<select class="st-select" data-st-eq-preset>${presets.map((name) => `<option value="${esc(name)}"${preset === name ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select>`, disabled: !supported }),
-    ]) + group('Не поддерживается', [
-      row({ title: 'Плавный кроссфейд', sub: 'Текущий движок миксует через AutoMix/Smart Mix, а не кроссфейдом', control: valueText('—'), disabled: true }),
-      row({ title: 'Качество потока', sub: 'Каталог всегда отдаёт MID-качество', control: valueText('MID'), disabled: true }),
-    ]);
-  }
-
   function playerScreen() {
-    const audio = document.getElementById('audio');
     return group('Управление', [
       row({ title: 'Свайп по обложке', sub: 'Влево/вправо — предыдущий/следующий трек', control: toggle('swipeCover') }),
       row({ title: 'Свайп по мини-плееру', sub: 'Влево/вправо — предыдущий/следующий трек', control: toggle('swipeMini') }),
-      row({ title: 'Вибрация', sub: supportedVibrate() ? 'Короткий отклик при смене трека' : 'Не поддерживается устройством', control: supportedVibrate() ? toggle('vibrate') : valueText('Нет'), disabled: !supportedVibrate() }),
-    ]) + group('Таймер сна', [
-      row({ title: 'Остановить через', control: choice('sleepTimer', [[0, 'Выкл'], [15, '15 мин'], [30, '30 мин'], [60, '60 мин'], [90, '90 мин']]) }),
-      row({ title: 'Статус', sub: sleepTimerLabel(), control: valueText(sleepTimerLabel()), disabled: true }),
-    ]) + group('Состояние', [
-      row({ title: 'Сейчас', sub: audio && audio.src ? (audio.paused ? 'Пауза' : 'Играет') : 'Трек не выбран', control: valueText(audio && audio.src ? (audio.paused ? 'Пауза' : 'Играет') : '—'), disabled: true }),
     ]);
   }
 
@@ -179,14 +151,12 @@
     const aiState = ai && ai.getState ? ai.getState() : { phase: 'OFF', active: false };
     const smart = window.RH_SMARTMIX;
     const smartEnabled = smart && smart.getSettings ? !!smart.getSettings().enabled : false;
-    return group('Neural AI AutoMix', [
+    return group('RH AI AutoMix', [
       row({ title: 'AutoMix RH AI', sub: aiState.active ? ('Статус: ' + aiState.phase) : 'Автоматические переходы', control: toggleSetting('automix', aiState.active) }),
       row({ title: 'Статус', control: valueText(aiState.phase || 'OFF'), disabled: true }),
     ]) + group('RH Smart Mix', [
       row({ title: 'Smart Mix', sub: 'Плавные переходы по биту', control: toggleSetting('smartmix', smartEnabled) }),
       row({ title: 'Длина перехода', sub: 'Доступно в текущем движке Smart Mix', control: valueText(smart && smart.getSettings ? (smart.getSettings().bars + ' такта') : '8 такта'), disabled: true }),
-    ]) + group('Ограничения', [
-      row({ title: 'AutoMix для SoundCloud', sub: 'Пока отключён: HLS-анализ в разработке', control: valueText('—'), disabled: true }),
     ]);
   }
 
@@ -205,8 +175,6 @@
     const media = 'mediaSession' in navigator;
     return group('Экран блокировки', [
       row({ title: 'Медиа-уведомление', sub: media ? 'Название, обложка и управление' : 'Не поддерживается браузером', control: media ? toggle('mediaSession') : valueText('Нет'), disabled: !media }),
-    ]) + group('Push', [
-      row({ title: 'Push-уведомления', sub: 'В текущей сборке не подключены', control: valueText('—'), disabled: true }),
     ]);
   }
 
@@ -234,20 +202,12 @@
   function aboutScreen() {
     return group('RH—MUSIC', [
       row({ title: 'Версия интерфейса', control: valueText(VERSION), disabled: true }),
-      row({ title: 'Режим', control: valueText('Mobile / Apple Music lab'), disabled: true }),
       row({ title: 'Production', sub: 'https://rh-music.pages.dev', control: valueText('Открыть'), action: 'open-production' }),
-    ]) + group('Данные', [
-      row({ title: 'Музыкальный каталог', sub: 'Zvuk + SoundCloud', control: valueText('Активен'), disabled: true }),
-      row({ title: 'Neural AI', sub: 'AutoMix и Smart Mix', control: valueText('Встроены'), disabled: true }),
     ]);
   }
 
   function group(title, rows) {
     return `<section class="st-group"><h2 class="st-group-title">${esc(title)}</h2><div class="st-card">${rows.join('')}</div></section>`;
-  }
-
-  function supportedVibrate() {
-    return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
   }
 
   function storageLabel() {
@@ -259,27 +219,6 @@
       }
       return (bytes / 1024).toFixed(1) + ' КБ localStorage';
     } catch { return '—'; }
-  }
-
-  let sleepTimerId = 0;
-  let sleepUntil = 0;
-  function sleepTimerLabel() {
-    if (!sleepTimerId || !sleepUntil) return 'Выключен';
-    const left = Math.max(0, Math.round((sleepUntil - Date.now()) / 60000));
-    return 'Остановится через ' + left + ' мин';
-  }
-  function applySleepTimer() {
-    if (sleepTimerId) { clearTimeout(sleepTimerId); sleepTimerId = 0; sleepUntil = 0; }
-    const minutes = Number(state.sleepTimer) || 0;
-    if (!minutes) return;
-    sleepUntil = Date.now() + minutes * 60000;
-    sleepTimerId = setTimeout(() => {
-      sleepTimerId = 0;
-      sleepUntil = 0;
-      const audio = document.getElementById('audio');
-      if (audio) audio.pause();
-      toast('Таймер сна: воспроизведение остановлено');
-    }, minutes * 60000);
   }
 
   function toast(message) {
@@ -308,7 +247,6 @@
     const builders = {
       general: generalScreen,
       appearance: appearanceScreen,
-      sound: soundScreen,
       player: playerScreen,
       ai: aiScreen,
       storage: storageScreen,
@@ -325,7 +263,6 @@
         <div><h1 class="st-title">${esc(section.title)}</h1><p class="st-sub">${esc(section.sub)}</p></div>
       </div>
       ${builders[id]()}
-      <p class="st-foot">Production API и данные аккаунта не изменяются.</p>
     </div>`;
   }
 
@@ -391,15 +328,6 @@
   }
 
   function handleToggle(key) {
-    if (key === 'equalizer') {
-      if (window.RH_EQUALIZER) {
-        const next = !window.RH_EQUALIZER.isEnabled();
-        if (next) window.RH_EQUALIZER.enable(); else window.RH_EQUALIZER.disable();
-        set(key, next);
-      }
-      refresh();
-      return;
-    }
     if (key === 'automix') {
       if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
       set(key, window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState().active : false);
@@ -414,7 +342,6 @@
       refresh();
       return;
     }
-    if (key === 'vibrate' && !supportedVibrate()) return;
     set(key, !get(key));
     refresh();
   }
@@ -430,18 +357,8 @@
     if (choiceBtn) {
       const key = choiceBtn.dataset.stChoice;
       let value = choiceBtn.dataset.stValue;
-      if (key === 'sleepTimer') value = Number(value);
       set(key, value);
-      if (key === 'sleepTimer') applySleepTimer();
       refresh();
-    }
-  });
-
-  document.addEventListener('change', (event) => {
-    const select = event.target.closest('[data-st-eq-preset]');
-    if (select && window.RH_EQUALIZER) {
-      window.RH_EQUALIZER.setPreset(select.value);
-      set('equalizerPreset', select.value);
     }
   });
 
@@ -474,16 +391,6 @@
   const prevBtn = () => { const b = document.getElementById('prev'); if (b) b.click(); };
   bindSwipe(npArt, 'swipeCover', nextBtn, prevBtn);
   bindSwipe(playerBar, 'swipeMini', nextBtn, prevBtn);
-
-  // Вибрация при смене трека, если включена и поддерживается.
-  if (supportedVibrate()) {
-    const title = document.getElementById('npTitle');
-    if (title && 'MutationObserver' in window) {
-      new MutationObserver(() => {
-        if (get('vibrate')) { try { navigator.vibrate(10); } catch { /* ignore */ } }
-      }).observe(title, { childList: true, subtree: true, characterData: true });
-    }
-  }
 
   window.RH_SETTINGS = {
     VERSION,
