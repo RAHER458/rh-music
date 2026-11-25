@@ -17,5 +17,6 @@ check('MiniPlayer над нижней навигацией', /\.player \{[\s\S]{
 check('Now Playing с крупной обложкой и круглой Play', /\.np-art \{[\s\S]{0,300}border-radius: 10px/.test(css) && /\.ctrl\.play\.xl \{\s*width: 68px/.test(css));
 check('страницы артиста/альбома центрированы', /\.detail \{[\s\S]{0,400}text-align: center/.test(css));
 check('главная использует недавнее и персональные полки', /home-recent/.test(app) && /home-personal-/.test(app));
+check('длинное название бежит в мини-плеере и Now Playing', /applyMarquee/.test(app) && /np-title-marquee/.test(css) && /marqueeTextWidth/.test(app) && /prefers-reduced-motion: reduce[\s\S]{0,200}np-title-marquee/.test(css));
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);
