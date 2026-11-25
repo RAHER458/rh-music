@@ -26,7 +26,7 @@
     swipeCover: true,
     swipeMini: true,
     automix: false,
-    smartmix: true,
+    smartmix: false,
     mediaSession: true,
     saveHistory: true,
     personalization: true,
@@ -336,8 +336,12 @@
     }
     if (key === 'smartmix') {
       if (window.RH_SMARTMIX && window.RH_SMARTMIX.setSettings) {
-        window.RH_SMARTMIX.setSettings({ enabled: !(window.RH_SMARTMIX.getSettings().enabled) });
-        set(key, !!window.RH_SMARTMIX.getSettings().enabled);
+        const next = !window.RH_SMARTMIX.getSettings().enabled;
+        // Предзагрузка обязательна: без неё переход ждёт поток и начинает
+        // следующий трек с начала, вместо музыкального handoff.
+        window.RH_SMARTMIX.setSettings({ enabled: next, preload: true });
+        set(key, next);
+        if (next && window.RH_SMARTMIX.warm) window.RH_SMARTMIX.warm().catch(() => {});
       }
       refresh();
       return;

@@ -4885,6 +4885,10 @@ document.addEventListener('visibilitychange', () => {
   if (!window.RH_SETTINGS || window.RH_SETTINGS.get('resumePlayback')) restorePlayerState();
   else clearPlayerState();
   initSmartMix();
+  // Восстанавливаем Smart Mix из Settings Center и сразу включаем предзагрузку.
+  if (window.RH_SETTINGS && window.RH_SETTINGS.get('smartmix') && window.RH_SMARTMIX) {
+    try { window.RH_SMARTMIX.setSettings({ enabled: true, preload: true }); } catch { /* ignore */ }
+  }
   if (window.RH_EQUALIZER) { window.RH_EQUALIZER.init(); refreshEqualizerUI(); }
   initAiAutoMix();
   if (window.RH_SMARTMIX) window.RH_SMARTMIX.onTrack();
