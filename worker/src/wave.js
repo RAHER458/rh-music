@@ -8,7 +8,8 @@
  */
 
 import { json } from './http.js';
-import { searchTracksFor } from './zvuk.js';
+import { searchTracksFor, gql, normalizeTrack } from './zvuk.js';
+import { PLAYLIST_QUERY } from './home.js';
 import { readHomeSnapshot } from './store.js';
 import { searchSoundCloud } from './soundcloud.js';
 
@@ -73,8 +74,10 @@ function scoreTrack(track, { genres, language, popularity, mood }) {
   if (Number.isFinite(energy) && energy <= 0.34 && /acoustic|ambient|calm|piano|lo-?fi|спокой/i.test(text)) score += 8;
   if (Number.isFinite(fun) && fun <= 0.34 && /sad|груст|melanch|slow/i.test(text)) score += 6;
   if (Number.isFinite(fun) && fun >= 0.66 && /happy|весел|dance|pop/i.test(text)) score += 6;
-  if (popularity === 2) score += 4;
-  if (popularity === 0) score += 2;
+  const rank = Number(track._popularityRank) || 0;
+  if (popularity === 2) score += Math.max(0, 12 - rank * 0.25);
+  else if (popularity === 0) score += Math.min(12, rank * 0.25);
+  else score += 4;
   return score;
 }
 
@@ -114,6 +117,69 @@ function dedupe(items, exclude) {
   return out;
 }
 
+const WAVE_PLAYLISTS = `
+query wavePlaylists($query: String, $limit: Int = 5) {
+  search(query: $query) {
+    playlists(limit: $limit) { items { id title } }
+  }
+}`;
+
+const GENERIC_TITLE = /^(хип[- ]?хоп|рок|поп|метал|фолк|инди|эмбиент|классика|саундтреки|инструментал|electronic|rock|pop|hip[- ]?hop)(\s+музыка)?$/i;
+
+async function genrePlaylistTracks(env, genre) {
+  const label = GENRE_QUERIES[genre].label.toLowerCase();
+  const snapshot = await readHomeSnapshot(env, 'popular:v1').catch(() => null);
+  const editorial = [];
+  for (const section of (snapshot && snapshot.payload && snapshot.payload.sections) || []) {
+    if (section.type !== 'playlists') continue;
+    for (const item of section.items || []) {
+      const title = String(item.title || '').toLowerCase();
+      if (title.includes(label) && !editorial.includes(String(item.id))) editorial.push(String(item.id));
+    }
+  }
+  let ids = editorial.slice(0, 5);
+  if (!ids.length) {
+    const found = await gql(env, WAVE_PLAYLISTS, 'wavePlaylists', { query: GENRE_QUERIES[genre].query, limit: 6 });
+    ids = ((found.search && found.search.playlists && found.search.playlists.items) || [])
+      .map((item) => String(item.id)).filter(Boolean).slice(0, 4);
+  }
+  if (!ids.length) return [];
+  const data = await gql(env, PLAYLIST_QUERY, 'catalogPlaylist', { id: ids, limit: 100 });
+  const out = [];
+  let rank = 0;
+  for (const playlist of data.playlists || []) {
+    for (const raw of playlist.tracks || []) {
+      const track = normalizeTrack(raw, 300);
+      if (!track) continue;
+      track._genre = genre;
+      track._playlist = playlist.title;
+      track._popularityRank = rank++;
+      out.push(track);
+    }
+  }
+  return out;
+}
+
+async function moodPlaylistTracks(env, words) {
+  if (!words.length) return [];
+  const found = await gql(env, WAVE_PLAYLISTS, 'wavePlaylists', { query: words[0] + ' музыка', limit: 4 });
+  const ids = ((found.search && found.search.playlists && found.search.playlists.items) || [])
+    .map((item) => String(item.id)).filter(Boolean).slice(0, 3);
+  if (!ids.length) return [];
+  const data = await gql(env, PLAYLIST_QUERY, 'catalogPlaylist', { id: ids, limit: 80 });
+  const out = [];
+  let rank = 0;
+  for (const playlist of data.playlists || []) {
+    for (const raw of playlist.tracks || []) {
+      const track = normalizeTrack(raw, 300);
+      if (!track) continue;
+      track._popularityRank = rank++;
+      out.push(track);
+    }
+  }
+  return out;
+}
+
 export async function handleWave(request, env) {
   const body = await request.json().catch(() => ({}));
   const genres = Array.isArray(body.genres) ? body.genres.filter((g) => GENRE_QUERIES[g]).slice(0, 4) : [];
@@ -131,13 +197,18 @@ export async function handleWave(request, env) {
   const collected = [];
 
   try {
-    const pages = await Promise.all(queries.map(async (query) => {
-      // Сдвиг страницы поиска не раскрывается API; используем первые выдачи
-      // и ротацию жанров, чтобы следующие батчи не повторяли тот же порядок.
-      const items = await searchTracksFor(env, query, Math.min(30, limit + 20));
-      return items.map((item) => ({ ...item, _query: query }));
-    }));
-    for (const items of pages) collected.push(...items);
+    // Основной источник — реальные треки жанровых плейлистов Zvuk, а не
+    // буквальные поисковые совпадения вроде песни с названием «ХИП-ХОП».
+    const playlistPages = await Promise.all(selected.map((genre) => genrePlaylistTracks(env, genre).catch((error) => { debug.push({ genre, error: String(error && error.message || error) }); return []; })));
+    for (const items of playlistPages) collected.push(...items);
+    // Дополнительный источник — поиск по жанру; нужен, если плейлисты пусты.
+    if (collected.length < limit) {
+      const pages = await Promise.all(queries.map(async (query) => {
+        const items = await searchTracksFor(env, query, Math.min(30, limit + 20));
+        return items.map((item) => ({ ...item, _query: query }));
+      }));
+      for (const items of pages) collected.push(...items);
+    }
   } catch (error) {
     // Каталог Zvuk может быть временно недоступен (401/таймаут). Волна не
     // должна падать: сначала пробуем живой SoundCloud по тем же запросам,
@@ -156,13 +227,26 @@ export async function handleWave(request, env) {
   }
 
   const ranked = dedupe(collected, exclude)
+    .filter((track) => !GENERIC_TITLE.test(String(track.title || '').trim()))
     .filter((track) => matchesLanguage(track, language))
     .filter((track) => !excludeArtists.some((artist) => String(track.artist || '').toLowerCase().includes(artist)))
     .map((track) => ({ track, score: scoreTrack(track, { genres, language, popularity, mood }) }))
     .sort((a, b) => b.score - a.score)
+    .filter(({ track }, index, all) => {
+      // Не более двух треков одного исполнителя и одного названия в батче.
+      const artist = String(track.artist || '').toLowerCase();
+      const title = String(track.title || '').trim().toLowerCase();
+      const before = all.slice(0, index);
+      const sameArtist = before.filter((row) => String(row.track.artist || '').toLowerCase() === artist).length;
+      const sameTitle = before.filter((row) => String(row.track.title || '').trim().toLowerCase() === title).length;
+      return sameArtist < 2 && sameTitle === 0;
+    })
     .map(({ track }) => {
       const clean = { ...track };
       delete clean._query;
+      delete clean._genre;
+      delete clean._playlist;
+      delete clean._popularityRank;
       delete clean.sectionKey;
       delete clean.sectionTitle;
       return clean;

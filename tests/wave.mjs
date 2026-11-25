@@ -17,6 +17,9 @@ check('настройки волны: настроение, популярнос
 check('поток подгружается без повторов', /exclude/.test(wave) && /append\(/.test(wave) && /fetch\('\/api\/wave'/.test(wave));
 check('настройки сохраняются', /rh_wave_v1/.test(wave) && /localStorage/.test(wave));
 check('бэкенд /api/wave подключён', /handleWave/.test(worker) && /handleWave/.test(backend));
+check('волна берёт треки из жанровых плейлистов, а не только поиска', /genrePlaylistTracks/.test(backend) && /PLAYLIST_QUERY/.test(backend));
+check('есть защита от одинаковых названий и засилья одного артиста', /GENERIC_TITLE/.test(backend) && /sameArtist < 2/.test(backend) && /sameTitle === 0/.test(backend));
+check('настроение влияет на подбор плейлистов', /moodPlaylistTracks/.test(backend));
 check('реальные источники и fallback', /searchTracksFor/.test(backend) && /searchSoundCloud/.test(backend) && /readHomeSnapshot/.test(backend));
 check('адаптивная вёрстка без горизонтального переполнения', /@media \(max-width: 420px\)/.test(css) && /@media \(min-width: 1024px\)/.test(css));
 check('assets подключены', /wave\.css/.test(html) && /wave\.js/.test(html));
