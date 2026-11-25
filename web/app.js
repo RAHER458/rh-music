@@ -467,8 +467,24 @@ async function renderShowcase() {
   }
 
   let data;
+  const extras = [];
   try {
-    data = await loadHome(true);
+    const [home, history, personal] = await Promise.all([
+      loadHome(true),
+      (async () => {
+        if (!S.user) return [];
+        try { const page = await api('/api/history?limit=12'); return page.items || []; } catch { return []; }
+      })(),
+      (async () => {
+        if (!S.user) return null;
+        try { const page = await loadRecommendations(); return (page && page.sections || []).find((item) => item && item.items && item.items.length); } catch { return null; }
+      })(),
+    ]);
+    data = home;
+    if (history.length) extras.push({ key: 'home-recent', type: 'tracks', displayTitle: 'Недавно прослушано', items: history.slice(0, 12) });
+    if (personal && personal.items && personal.items.length) {
+      extras.push({ ...personal, key: 'home-personal-' + (personal.key || 'mix'), displayTitle: personal.title || 'Для вас' });
+    }
   } catch (error) {
     page.innerHTML = emptyState('Витрина недоступна', error.message, 'alert',
       'Общий контент каталога временно не отвечает — попробуйте обновить страницу.',
@@ -502,9 +518,10 @@ async function renderShowcase() {
     { key: 'new-releases', type: 'albums', title: 'Новые релизы' },
     { key: 'content-1062105', type: 'tracks', title: 'Топ 100' },
   ];
-  const chosen = [];
-  const usedKeys = new Set();
+  const chosen = extras.slice(0, 2);
+  const usedKeys = new Set(chosen.map((item) => item.key));
   for (const want of wanted) {
+    if (chosen.length >= 5) break;
     let block = sections.find((item) => item.key === want.key && item.type === want.type);
     if (!block) block = sections.find((item) => item.type === want.type && !usedKeys.has(item.key));
     if (!block || usedKeys.has(block.key)) continue;
@@ -513,7 +530,7 @@ async function renderShowcase() {
   }
   if (chosen.length < 3) {
     for (const block of sections) {
-      if (chosen.length >= 4) break;
+      if (chosen.length >= 5) break;
       if (usedKeys.has(block.key) || block.type === 'artists') continue;
       usedKeys.add(block.key);
       chosen.push(block);

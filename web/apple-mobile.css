@@ -1,0 +1,176 @@
+/* ==========================================================================
+   RH—MUSIC · Apple Music-inspired mobile layer
+   Только телефон. Включается после глобального redesign.css.
+   ========================================================================== */
+
+@media (max-width: 1023px) {
+  html[data-ui="mobile"] {
+    --apple-title: clamp(30px, 8.6vw, 36px);
+    --apple-section: 22px;
+    --apple-radius: 12px;
+    --apple-bar: rgba(12, 15, 24, .94);
+  }
+
+  /* ── Крупная типографика, как «Listen Now» ─────────────────────── */
+  html[data-ui="mobile"] .page { padding: 10px 16px calc(var(--player-h) + var(--tabbar-h) + var(--safe-bottom) + 26px); }
+  html[data-ui="mobile"] .page-title { font-size: var(--apple-title); font-weight: 800; letter-spacing: -.045em; }
+  html[data-ui="mobile"] .page-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  html[data-ui="mobile"] .home-head .page-title,
+  html[data-ui="mobile"] .rec-head .page-title { font-size: var(--apple-title); }
+  html[data-ui="mobile"] .home-search { display: none; }
+  html[data-ui="mobile"] .section { margin-bottom: 28px; }
+  html[data-ui="mobile"] .section-head { align-items: baseline; margin-bottom: 8px; }
+  html[data-ui="mobile"] .section-title { font-size: var(--apple-section); font-weight: 800; letter-spacing: -.03em; }
+  html[data-ui="mobile"] .section-sub { font-size: 12.5px; }
+  html[data-ui="mobile"] .section-count { font-size: 12px; }
+
+  /* ── Главная: крупная featured-карточка и широкие полки ────────── */
+  html[data-ui="mobile"] .home-hero {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    gap: 0;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.07);
+    background: linear-gradient(180deg, rgba(255,255,255,.065), rgba(255,255,255,.02));
+    overflow: hidden;
+    box-shadow: 0 14px 34px rgba(0,0,0,.32);
+  }
+  html[data-ui="mobile"] .home-hero .hero-art {
+    width: 100%;
+    max-height: none;
+    aspect-ratio: 1.55 / 1;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  html[data-ui="mobile"] .home-hero .hero-art img { transform: scale(1.001); }
+  html[data-ui="mobile"] .home-hero .hero-info { padding: 12px 14px 15px; gap: 3px; }
+  html[data-ui="mobile"] .home-hero .hero-kicker { font-size: 10px; letter-spacing: .14em; }
+  html[data-ui="mobile"] .home-hero .hero-title { font-size: 21px; font-weight: 800; -webkit-line-clamp: 1; }
+  html[data-ui="mobile"] .home-hero .hero-sub { font-size: 12px; -webkit-line-clamp: 2; }
+  html[data-ui="mobile"] .home-hero .hero-actions { margin-top: 7px; }
+  html[data-ui="mobile"] .home-hero .btn { padding: 9px 15px; font-size: 13px; border-radius: 999px; }
+
+  html[data-ui="mobile"] .carousel {
+    gap: 10px;
+    margin: 0 -16px;
+    padding: 0 16px 12px;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: 16px;
+  }
+  html[data-ui="mobile"] .carousel .card {
+    flex: 0 0 158px;
+    width: 158px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    scroll-snap-align: start;
+  }
+  html[data-ui="mobile"] .carousel .card:hover { transform: none; background: transparent; border-color: transparent; box-shadow: none; }
+  html[data-ui="mobile"] .carousel .card-art {
+    border-radius: var(--apple-radius);
+    box-shadow: 0 10px 24px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.06);
+  }
+  html[data-ui="mobile"] .carousel .card-title { font-size: 13.5px; font-weight: 650; margin-top: 7px; letter-spacing: -.01em; }
+  html[data-ui="mobile"] .carousel .card-sub { font-size: 12px; margin-top: 1px; }
+  html[data-ui="mobile"] .track-card .card-art { border-radius: var(--apple-radius); }
+  html[data-ui="mobile"] .track-card { padding: 0; }
+
+  /* ── MiniPlayer: тонкая полоса прогресса, плотная строка ────────── */
+  html[data-ui="mobile"] .player {
+    left: 0; right: 0;
+    bottom: calc(var(--tabbar-h) + var(--safe-bottom));
+    padding: 0 12px 6px;
+    border: 0;
+    border-top: 1px solid rgba(255,255,255,.1);
+    border-radius: 0;
+    background: var(--apple-bar);
+    box-shadow: 0 -12px 30px rgba(0,0,0,.35);
+    transform: none;
+  }
+  html[data-ui="mobile"] .player-progress { margin: 0 -12px; }
+  html[data-ui="mobile"] .player-progress .seek { height: 12px; margin: 0; }
+  html[data-ui="mobile"] .player .seek::-webkit-slider-runnable-track { height: 2px; }
+  html[data-ui="mobile"] .player .seek::-webkit-slider-thumb { width: 10px; height: 10px; margin-top: -4px; }
+  html[data-ui="mobile"] .player-row { gap: 10px; padding: 6px 0 2px; }
+  html[data-ui="mobile"] .np-cover { width: 46px; height: 46px; border-radius: 8px; }
+  html[data-ui="mobile"] .np-title { font-size: 13.5px; font-weight: 620; }
+  html[data-ui="mobile"] .np-artist { font-size: 11.5px; }
+  html[data-ui="mobile"] .play-mobile { width: 42px; height: 42px; }
+  html[data-ui="mobile"] .player-hide { width: 32px; height: 32px; color: var(--muted-2); }
+
+  /* ── Нижняя навигация в духе Apple Music ───────────────────────── */
+  html[data-ui="mobile"] .tabbar {
+    grid-template-columns: repeat(5, 1fr);
+    height: calc(52px + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    background: var(--apple-bar);
+    border-top: 1px solid rgba(255,255,255,.1);
+  }
+  html[data-ui="mobile"] .tab { gap: 2px; font-size: 9.5px; font-weight: 600; color: #7e879f; }
+  html[data-ui="mobile"] .tab svg { width: 23px; height: 23px; }
+  html[data-ui="mobile"] .tab.is-active { color: var(--blue); }
+  html[data-ui="mobile"] .tab.is-active span { color: var(--blue); font-weight: 700; }
+
+  /* ── Now Playing ────────────────────────────────────────────────── */
+  html[data-ui="mobile"] .now-playing { background: #05060a; }
+  html[data-ui="mobile"] .np-inner { width: 100%; gap: 12px; padding-left: 22px; padding-right: 22px; }
+  html[data-ui="mobile"] .np-art {
+    width: min(78vw, 44dvh);
+    border-radius: 10px;
+    box-shadow: 0 26px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.08);
+  }
+  html[data-ui="mobile"] .np-song { font-size: 21px; font-weight: 750; letter-spacing: -.025em; }
+  html[data-ui="mobile"] .np-singer { font-size: 15px; color: #a7afc8; margin-top: 3px; }
+  html[data-ui="mobile"] .np-progress { margin-top: 6px; }
+  html[data-ui="mobile"] .np-controls { gap: 28px; margin-top: 2px; }
+  html[data-ui="mobile"] .np-controls .ctrl svg { width: 27px; height: 27px; }
+  html[data-ui="mobile"] .ctrl.play.xl { width: 68px; height: 68px; }
+  html[data-ui="mobile"] .np-extras { gap: 7px; margin-top: 2px; }
+  html[data-ui="mobile"] .np-extra { width: 42px; height: 42px; }
+
+  /* ── Поиск ──────────────────────────────────────────────────────── */
+  html[data-ui="mobile"] .search-field {
+    border-radius: 11px;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.06);
+    padding: 5px 6px 5px 36px;
+  }
+  html[data-ui="mobile"] .search-tabs { gap: 6px; background: transparent; padding: 8px 0 4px; }
+  html[data-ui="mobile"] .search-tabs .chip { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.06); }
+  html[data-ui="mobile"] .search-tabs .chip.is-active { background: var(--blue); color: #fff; border-color: transparent; }
+
+  /* ── Альбом / исполнитель / плейлист ────────────────────────────── */
+  html[data-ui="mobile"] .detail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 14px;
+    padding: 10px 4px 18px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  html[data-ui="mobile"] .detail-art { width: min(62vw, 270px); max-width: none; border-radius: 12px; box-shadow: 0 18px 46px rgba(0,0,0,.45); }
+  html[data-ui="mobile"] .detail-art.round { border-radius: 50%; }
+  html[data-ui="mobile"] .detail-title { font-size: 27px; font-weight: 800; letter-spacing: -.035em; margin: 2px 0 3px; }
+  html[data-ui="mobile"] .detail-kicker { font-size: 10px; letter-spacing: .14em; }
+  html[data-ui="mobile"] .detail-sub { justify-content: center; font-size: 13px; }
+  html[data-ui="mobile"] .detail-desc { text-align: center; font-size: 12.5px; }
+  html[data-ui="mobile"] .detail-actions { justify-content: center; width: 100%; }
+  html[data-ui="mobile"] .detail-actions .btn { border-radius: 999px; padding: 10px 18px; }
+
+  /* ── Очередь / шторки ───────────────────────────────────────────── */
+  html[data-ui="mobile"] .drawer,
+  html[data-ui="mobile"] .lyrics-sheet-inner {
+    border-radius: 14px 14px 0 0;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  html[data-ui="mobile"] .queue-panel-row { border-radius: 9px; padding: 7px 6px; }
+  html[data-ui="mobile"] .sheet-item { border-radius: 10px; }
+  html[data-ui="mobile"] .drag-handle::before { width: 42px; height: 4px; background: rgba(255,255,255,.22); }
+}
