@@ -83,7 +83,7 @@
   const SECTIONS = [
     { id: 'general', title: 'Общие', icon: ICON.general, sub: 'Запуск, восстановление, язык' },
     { id: 'appearance', title: 'Внешний вид', icon: ICON.appearance, sub: 'Тема, акцент, карточки' },
-    { id: 'player', title: 'Плеер', icon: ICON.player, sub: 'Жесты, таймер, вибрация' },
+    { id: 'player', title: 'Плеер', icon: ICON.player, sub: 'Свайпы управления' },
     { id: 'ai', title: 'RH AI', icon: ICON.ai, sub: 'AutoMix и Smart Mix' },
     { id: 'storage', title: 'Хранилище и кеш', icon: ICON.storage, sub: 'Данные приложения' },
     { id: 'notifications', title: 'Уведомления', icon: ICON.bell, sub: 'Экран блокировки и медиа' },
