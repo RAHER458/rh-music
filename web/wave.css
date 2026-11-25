@@ -57,3 +57,7 @@
   .wave-pad { width: 160px; }
   .wave-title { font-size: 30px; }
 }
+.wave-feedback { display: flex; gap: 6px; margin-top: 2px; }
+.wave-feedback button { flex: 1; padding: 7px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); color: var(--muted); font-size: 10.5px; }
+.wave-feedback button:first-child { color: #bfe7d2; }
+.wave-feedback button:active { background: rgba(124,140,255,.2); }

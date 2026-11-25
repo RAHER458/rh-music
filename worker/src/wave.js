@@ -10,6 +10,7 @@
 import { json } from './http.js';
 import { searchTracksFor } from './zvuk.js';
 import { readHomeSnapshot } from './store.js';
+import { searchSoundCloud } from './soundcloud.js';
 
 const GENRE_QUERIES = {
   classic: { label: 'Классика', query: 'классическая музыка' },
@@ -120,6 +121,7 @@ export async function handleWave(request, env) {
   const popularity = [0, 1, 2].includes(Number(body.popularity)) ? Number(body.popularity) : 1;
   const mood = body.mood && typeof body.mood === 'object' ? body.mood : {};
   const exclude = Array.isArray(body.exclude) ? body.exclude.slice(0, 200) : [];
+  const excludeArtists = Array.isArray(body.excludeArtists) ? body.excludeArtists.map((x) => String(x).toLowerCase()).slice(0, 40) : [];
   const page = Math.max(0, Math.min(20, Number(body.page) || 0));
   const limit = Math.max(5, Math.min(30, Number(body.limit) || 20));
 
@@ -137,15 +139,25 @@ export async function handleWave(request, env) {
     }));
     for (const items of pages) collected.push(...items);
   } catch (error) {
-    // Каталог может быть временно недоступен (401/таймаут). Волна не должна
-    // падать: отдаём реальные треки из последнего снимка главной.
-    const snapshot = await readHomeSnapshot(env, 'home:v1').catch(() => null);
-    const fallback = cachedTracks(snapshot && snapshot.payload).filter((track) => matchesLanguage(track, language));
-    collected.push(...fallback);
+    // Каталог Zvuk может быть временно недоступен (401/таймаут). Волна не
+    // должна падать: сначала пробуем живой SoundCloud по тем же запросам,
+    // затем последний снимок главной. Так поток остаётся играбельным.
+    for (const query of selected.map((genre) => GENRE_QUERIES[genre].query)) {
+      try {
+        const page = await searchSoundCloud(env, query, { limit: Math.min(15, limit) });
+        if (page.items.length) collected.push(...page.items);
+      } catch { /* пробуем следующий запрос */ }
+    }
+    if (!collected.length) {
+      const snapshot = await readHomeSnapshot(env, 'home:v1').catch(() => null);
+      const fallback = cachedTracks(snapshot && snapshot.payload).filter((track) => matchesLanguage(track, language));
+      collected.push(...fallback);
+    }
   }
 
   const ranked = dedupe(collected, exclude)
     .filter((track) => matchesLanguage(track, language))
+    .filter((track) => !excludeArtists.some((artist) => String(track.artist || '').toLowerCase().includes(artist)))
     .map((track) => ({ track, score: scoreTrack(track, { genres, language, popularity, mood }) }))
     .sort((a, b) => b.score - a.score)
     .map(({ track }) => {

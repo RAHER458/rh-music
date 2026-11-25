@@ -15,7 +15,7 @@
 
   let settings = { ...DEFAULTS, ...(read() || {}) };
   settings.mood = { ...DEFAULTS.mood, ...(settings.mood || {}) };
-  let state = { active: false, loading: false, error: '', fetched: 0, exclude: [], page: 0, request: 0 };
+  let state = { active: false, loading: false, error: '', fetched: 0, exclude: [], page: 0, request: 0, skipArtists: readFeedback(), lastTrack: null, lastTime: 0 };
   let slot = null;
   let root = null;
 
@@ -24,6 +24,12 @@
   }
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch { /* ignore */ }
+  }
+  function readFeedback() {
+    try { const raw = JSON.parse(localStorage.getItem('rh_wave_feedback_v1') || '[]'); return Array.isArray(raw) ? raw.slice(-40) : []; } catch { return []; }
+  }
+  function saveFeedback() {
+    try { localStorage.setItem('rh_wave_feedback_v1', JSON.stringify(state.skipArtists.slice(-40))); } catch { /* ignore */ }
   }
   function esc(value) {
     return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -63,6 +69,7 @@
             <button class="wave-reset" type="button" data-wave-reset>Сбросить</button>
           </div>
           ${state.error ? `<p class="wave-error">${esc(state.error)}</p>` : ''}
+          ${state.active ? `<div class="wave-feedback"><button type="button" data-wave-like>Нравится</button><button type="button" data-wave-skip>Не сейчас</button></div>` : ''}
           <p class="wave-hint">${state.active ? 'Следующие треки подгружаются автоматически.' : 'Поток использует реальный каталог и играет в основном плеере.'}</p>
         </div>
       </div>
@@ -136,6 +143,7 @@
         popularity: settings.popularity,
         mood: settings.mood,
         exclude: exclude.slice(-200),
+        excludeArtists: state.skipArtists.slice(-40),
         page: state.page,
         limit: 20,
       }),
@@ -179,12 +187,36 @@
     if (lang) { settings.language = lang.dataset.waveLang; save(); refresh(); return; }
     const pop = event.target.closest('[data-wave-pop]');
     if (pop) { settings.popularity = Number(pop.dataset.wavePop); save(); refresh(); return; }
+    if (event.target.closest('[data-wave-like]')) { window.RH_WAVE_BRIDGE && window.RH_WAVE_BRIDGE.likeCurrent(); return; }
+    if (event.target.closest('[data-wave-skip]')) {
+      const info = window.RH_WAVE_BRIDGE && window.RH_WAVE_BRIDGE.getState();
+      if (info && info.currentArtist) { state.skipArtists = [...new Set([...state.skipArtists, info.currentArtist])]; saveFeedback(); }
+      window.RH_WAVE_BRIDGE && window.RH_WAVE_BRIDGE.next();
+      return;
+    }
     if (event.target.closest('[data-wave-start]')) { start(); return; }
     if (event.target.closest('[data-wave-reset]')) {
       settings = { ...DEFAULTS, mood: { ...DEFAULTS.mood } }; save(); state.active = false; state.error = ''; refresh(); return;
     }
   });
 
-  setInterval(() => { if (state.active) more(); }, 4000);
+  setInterval(() => {
+    if (!state.active) return;
+    more();
+    const bridge = window.RH_WAVE_BRIDGE;
+    const info = bridge && bridge.getState();
+    if (!info || !info.currentId) return;
+    if (state.lastTrack && state.lastTrack !== info.currentId) {
+      const ratio = state.lastDuration > 0 ? state.lastTime / state.lastDuration : 0;
+      if (ratio > 0 && ratio < 0.25 && state.lastArtist) {
+        state.skipArtists = [...new Set([...state.skipArtists, state.lastArtist])];
+        saveFeedback();
+      }
+    }
+    state.lastTrack = info.currentId;
+    state.lastTime = info.currentTime || 0;
+    state.lastDuration = info.duration || 0;
+    state.lastArtist = info.currentArtist || '';
+  }, 4000);
   window.RH_WAVE = { mount, refresh, start, settings, state };
 })();

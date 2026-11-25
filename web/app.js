@@ -4082,9 +4082,15 @@ window.RH_WAVE_BRIDGE = {
       index: S.index,
       queue: (S.queue || []).map((item) => ({ id: item.id, title: item.title, artist: item.artist })),
       playing: !audio.paused,
+      currentTime: audio.currentTime || 0,
+      duration: Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (S.current ? Number(S.current.duration) || 0 : 0),
+      currentArtist: S.current ? S.current.artist : '',
+      currentTitle: S.current ? S.current.title : '',
     };
   },
   toast: (message, kind) => toast(message, kind || 'info'),
+  likeCurrent: () => { const button = document.getElementById('npLike'); if (button) button.click(); },
+  next: () => nextTrack(false),
 };
 
 /* ───────────────────────────── роутер ───────────────────────────── */
