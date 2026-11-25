@@ -192,6 +192,79 @@ export async function soundCloudPlayResponse(env, rawId) {
   return new Response(body, { status: 200, headers });
 }
 
+
+/**
+ * Экспериментальный fallback: собирает HLS init + сегменты в один MP4
+ * и отдаёт его same-origin. Нужен для iPhone/Safari, когда нативный HLS
+ * не открывает fMP4-поток, а браузерный fetch к CDN блокируется CORS.
+ */
+export async function soundCloudAudioResponse(env, rawId) {
+  const resolved = await soundCloudStreamUrl(env, rawId);
+  const headers = { 'User-Agent': UA, Referer: 'https://soundcloud.com/' };
+  const get = async (url) => {
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new ApiError(502, 'SC_HTTP', 'Источник временно недоступен.');
+    return res;
+  };
+  if (resolved.protocol === 'progressive') {
+    const upstream = await get(resolved.url);
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        'Content-Type': resolved.mime || 'audio/mpeg',
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  }
+  const playlistResponse = await get(resolved.url);
+  const playlist = await playlistResponse.text();
+  if (!/^#EXTM3U/m.test(playlist.trim())) {
+    return new Response(playlist, { status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl; charset=utf-8', 'Cache-Control': 'no-store' } });
+  }
+  const lines = playlist.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const variant = lines.find((line) => line && !line.startsWith('#'));
+  if (lines.some((line) => line.startsWith('#EXT-X-STREAM-INF')) && variant) {
+    const nested = await get(new URL(variant, resolved.url).href);
+    return soundCloudAudioFromPlaylist(env, await nested.text(), new URL(variant, resolved.url).href);
+  }
+  return soundCloudAudioFromPlaylist(env, playlist, resolved.url);
+}
+
+async function soundCloudAudioFromPlaylist(env, playlist, baseUrl) {
+  const headers = { 'User-Agent': UA, Referer: 'https://soundcloud.com/' };
+  const lines = playlist.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const mapLine = lines.find((line) => line.startsWith('#EXT-X-MAP:'));
+  const mapMatch = mapLine && mapLine.match(/URI="([^"]+)"/);
+  const initUrl = mapMatch ? new URL(mapMatch[1], baseUrl).href : null;
+  const segmentUrls = lines.filter((line) => line && !line.startsWith('#')).map((line) => new URL(line, baseUrl).href);
+  if (!segmentUrls.length || segmentUrls.length > 240) throw new ApiError(502, 'SC_HLS', 'Поток недоступен.');
+  const parts = [];
+  const read = async (url) => {
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new ApiError(502, 'SC_HTTP', 'Сегмент потока недоступен.');
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  if (initUrl) parts.push(await read(initUrl));
+  for (const url of segmentUrls) parts.push(await read(url));
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  if (total > 24 * 1024 * 1024) throw new ApiError(413, 'SC_TOO_LARGE', 'Поток слишком большой.');
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) { merged.set(part, offset); offset += part.length; }
+  return new Response(merged, {
+    status: 200,
+    headers: {
+      'Content-Type': 'audio/mp4',
+      'Content-Length': String(total),
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
 /* ── Курсор поиска: объединяет страницы Zvuk и SoundCloud ───────────── */
 
 export function encodeSearchCursor(zvuk, sc) {

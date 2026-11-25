@@ -3624,7 +3624,9 @@ async function playSoundCloudFallback(track) {
   try {
     // Safari иногда не открывает fMP4-HLS напрямую. Собираем init + сегменты
     // в один MP4-blob и отдаём его тому же <audio>.
-    const bytes = await fetchAudioBytes(track);
+    const response = await fetch(API + '/api/sc/audio/' + encodeURIComponent(soundCloudMediaId(track)), { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('sc_audio_' + response.status);
+    const bytes = await response.arrayBuffer();
     if (!bytes || !bytes.byteLength) throw new Error('empty_stream');
     if (activeScBlobUrl) { try { URL.revokeObjectURL(activeScBlobUrl); } catch { /* ignore */ } }
     activeScBlobUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mp4' }));

@@ -17,7 +17,7 @@ import {
   MAX_LIMIT, DEFAULT_LIMIT, CDN_IMAGE_HOST,
 } from './zvuk.js';
 import {
-  searchSoundCloud, getSoundCloudTrack, soundCloudStreamUrl, soundCloudPlayResponse,
+  searchSoundCloud, getSoundCloudTrack, soundCloudStreamUrl, soundCloudPlayResponse, soundCloudAudioResponse,
   encodeSearchCursor, decodeSearchCursor, mergeTrackLists, soundCloudId,
 } from './soundcloud.js';
 import {
@@ -182,6 +182,10 @@ async function handleSoundCloudStream(env, id) {
 
 async function handleSoundCloudPlay(env, id) {
   return soundCloudPlayResponse(env, id);
+}
+
+async function handleSoundCloudAudio(env, id) {
+  return soundCloudAudioResponse(env, id);
 }
 
 async function handleTrack(env, id) {
@@ -518,6 +522,7 @@ async function route(request, env) {
   if ((m = path.match(/^\/api\/sc\/track\/(?:sc:)?(\d+)$/)) && method === 'GET') return handleSoundCloudTrack(env, m[1]);
   if ((m = path.match(/^\/api\/sc\/stream\/(?:sc:)?(\d+)$/)) && method === 'GET') return handleSoundCloudStream(env, m[1]);
   if ((m = path.match(/^\/api\/sc\/play\/(?:sc:)?(\d+)$/)) && (method === 'GET' || method === 'HEAD')) return handleSoundCloudPlay(env, m[1]);
+  if ((m = path.match(/^\/api\/sc\/audio\/(?:sc:)?(\d+)$/)) && method === 'GET') return handleSoundCloudAudio(env, m[1]);
   if (path === '/api/sc/search' && method === 'GET') {
     const q = parseQuery(url);
     const limit = parseLimit(url);
