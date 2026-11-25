@@ -196,25 +196,26 @@ async function handleTrack(env, id) {
   return json({ ok: true, track: normalizeTrack(found, 400) });
 }
 
-async function streamFor(env, id, quality) {
+async function streamFor(env, id) {
   const data = await gql(env, Q.stream, 'getStream', { ids: [id] });
   const items = data.mediaContents || [];
   const item = items.find((x) => x && x.__typename === 'Track' && x.stream)
     || items.find((x) => x && x.stream);
   if (!item || !item.stream) throw new ApiError(404, 'STREAM_NOT_FOUND', 'Поток недоступен для этой композиции.');
   const stream = item.stream;
-  const url = quality === 'high' ? (stream.high || stream.mid) : (stream.mid || stream.high);
-  if (!url) throw new ApiError(404, 'STREAM_NOT_FOUND', 'Каталог не выдал адрес потока.');
-  return { url, quality, expiresAt: stream.expire || null, expireDelta: stream.expireDelta || null };
+  // Строго MID = 128 kbps. high/flac не запрашиваются и не отдаются.
+  const url = stream.mid;
+  if (!url) throw new ApiError(404, 'STREAM_NOT_FOUND', 'Каталог не выдал MID-поток.');
+  return { url, quality: 'mid', expiresAt: stream.expire || null, expireDelta: stream.expireDelta || null };
 }
 
 async function handleStreamInfo(env, id, url) {
-  const info = await streamFor(env, id, parseQuality(url));
+  const info = await streamFor(env, id);
   return json({ ok: true, id, quality: info.quality, expiresAt: info.expiresAt, expireDelta: info.expireDelta, url: info.url });
 }
 
 async function handleStreamProxy(request, env, id, url) {
-  const info = await streamFor(env, id, parseQuality(url));
+  const info = await streamFor(env, id);
 
   const headers = new Headers();
   const range = request.headers.get('Range');
@@ -337,7 +338,7 @@ async function handleImage(request, url) {
 }
 
 async function handleDiagStream(env, id, url) {
-  const info = await streamFor(env, id, parseQuality(url));
+  const info = await streamFor(env, id);
   const started = Date.now();
   let head;
   try {

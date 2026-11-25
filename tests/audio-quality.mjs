@@ -1,0 +1,15 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const here = dirname(fileURLToPath(import.meta.url));
+const app = readFileSync(join(here, '../web/app.js'), 'utf8');
+const worker = readFileSync(join(here, '../worker/src/index.js'), 'utf8');
+let passed = 0; const failures = [];
+const check = (name, ok) => { if (ok) passed++; else { failures.push(name); console.error('  ✗', name); } };
+console.log('RH—MUSIC · audio quality tests\n');
+check('клиент всегда просит quality=mid', /quality=mid/.test(app) && !/quality=high/.test(app));
+check('парсер качества игнорирует high и возвращает mid', /return 'mid'/.test(worker) && !/quality === 'high'/.test(worker));
+check('из каталога берётся только stream.mid', /const url = stream\.mid/.test(worker) && !/stream\.high|stream\.flac/.test(worker));
+check('при отсутствии MID поток не подменяется high', /Каталог не выдал MID-поток/.test(worker));
+console.log(`\n${passed} passed, ${failures.length} failed`);
+if (failures.length) process.exit(1);
