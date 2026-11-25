@@ -174,3 +174,22 @@
   html[data-ui="mobile"] .sheet-item { border-radius: 10px; }
   html[data-ui="mobile"] .drag-handle::before { width: 42px; height: 4px; background: rgba(255,255,255,.22); }
 }
+
+/* ── Бегущая строка названия в мини-плеере ───────────────────────── */
+@media (max-width: 1023px) {
+  html[data-ui="mobile"] .np-title { overflow: hidden; white-space: nowrap; text-overflow: clip; }
+  html[data-ui="mobile"] .np-title-run { display: inline-flex; max-width: none; }
+  html[data-ui="mobile"] .np-title-line { display: inline-block; padding-right: 34px; }
+  html[data-ui="mobile"] .np-title.is-scrolling .np-title-run {
+    animation: np-title-marquee 12s linear infinite;
+    will-change: transform;
+  }
+  @keyframes np-title-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html[data-ui="mobile"] .np-title.is-scrolling .np-title-run { animation: none; }
+    html[data-ui="mobile"] .np-title { text-overflow: ellipsis; }
+  }
+}

@@ -3289,8 +3289,33 @@ function npReducedMotion() {
   return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
+let npTitleMeasureToken = 0;
+
+function applyNpTitle(track) {
+  const el = $('npTitle');
+  if (!el) return;
+  const title = track ? (track.title || 'Без названия') : 'Ничего не играет';
+  el.classList.remove('is-scrolling');
+  el.innerHTML = `<span class="np-title-run"><span class="np-title-line">${esc(title)}</span></span>`;
+  const token = ++npTitleMeasureToken;
+  const measure = () => {
+    if (token !== npTitleMeasureToken) return;
+    const run = el.querySelector('.np-title-run');
+    const line = el.querySelector('.np-title-line');
+    if (!run || !line || el.clientWidth <= 0) return;
+    const available = el.clientWidth;
+    if (line.offsetWidth <= available + 1 || npReducedMotion()) return;
+    run.innerHTML = `<span class="np-title-line">${esc(title)}</span><span class="np-title-line" aria-hidden="true">${esc(title)}</span>`;
+    run.style.animationDuration = Math.max(8, Math.min(24, line.offsetWidth / 34)).toFixed(1) + 's';
+    el.classList.add('is-scrolling');
+  };
+  requestAnimationFrame(measure);
+  // Ширина панели могла ещё не пересчитаться после смены трека/плеера.
+  setTimeout(measure, 120);
+}
+
 function applyNpText(track) {
-  $('npTitle').textContent = track ? track.title : 'Ничего не играет';
+  applyNpTitle(track);
   $('npArtist').innerHTML = track && track.artistId
     ? `<a href="#/artist/${esc(track.artistId)}" data-link>${esc(track.artist || 'Неизвестный исполнитель')}</a>`
     : esc(track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек');
@@ -4774,7 +4799,13 @@ function syncLayoutHeight() {
 }
 
 window.addEventListener('hashchange', route);
-window.addEventListener('resize', syncLayoutHeight);
+window.addEventListener('resize', () => {
+  syncLayoutHeight();
+  if (S.current) applyNpTitle(S.current);
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && S.current) applyNpTitle(S.current);
+});
 
 if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(player);
 
