@@ -14,10 +14,10 @@ check('settings.js и settings.css подключены', /settings\.js/.test(ht
 check('девять категорий настроек без звука', (settings.match(/id: '(general|appearance|player|ai|storage|notifications|privacy|account|about)'/g) || []).length === 9 && !/id: 'sound'/.test(settings));
 check('настройки сохраняются в account-ключе, гость — нет', /rh_settings_v1/.test(settings) && /KEY_PREFIX\}:u\$\{user\.id\}/.test(settings) && /if \(!storageKey\) return;/.test(settings));
 check('применяются тема, акцент, карточки и эффекты', /dataset\.theme/.test(settings) && /dataset\.accent/.test(settings) && /dataset\.cardSize/.test(settings) && /dataset\.reduceMotion/.test(settings));
-check('подключены реальные API: AutoMix и Smart Mix', /RH_AI_AUTOMIX/.test(settings) && /RH_SMARTMIX/.test(settings));
+check('в настройках остался только Smart Mix', /RH_SMARTMIX/.test(settings) && !/RH_AI_AUTOMIX/.test(settings) && !/AutoMix/.test(settings));
 check('работают свайпы, без таймера сна и вибрации', /bindSwipe/.test(settings) && !/applySleepTimer/.test(settings) && !/sleepTimer/.test(settings) && !/vibrate/.test(settings));
 check('гейты app: история, персонализация, Media Session, запуск', /saveHistory/.test(app) && /personalization/.test(app) && /mediaSession/.test(app) && /openHomeOnLaunch/.test(app));
-check('RH AI переименован, нет Push, Ограничений и Production-подписи', /title: 'RH AI'/.test(settings) && !/Push-уведомления/.test(settings) && !/Ограничения/.test(settings) && !/Production API и данные аккаунта/.test(settings));
+check('AutoMix убран, нет Push, Ограничений и Production-подписи', !/AutoMix/.test(settings) && /title: 'Smart Mix'/.test(settings) && !/Push-уведомления/.test(settings) && !/Ограничения/.test(settings) && !/Production API и данные аккаунта/.test(settings));
 check('стиль группированных настроек и switch', /\.st-card/.test(css) && /\.st-switch/.test(css) && /\.st-nav-row/.test(css));
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

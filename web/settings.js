@@ -19,7 +19,6 @@
     cardSize: 'standard',
     swipeCover: true,
     swipeMini: true,
-    automix: false,
     smartmix: false,
     mediaSession: true,
     saveHistory: true,
@@ -97,7 +96,7 @@
     { id: 'general', title: 'Общие', icon: ICON.general, sub: 'Запуск, восстановление, язык' },
     { id: 'appearance', title: 'Внешний вид', icon: ICON.appearance, sub: 'Тема, акцент, карточки' },
     { id: 'player', title: 'Плеер', icon: ICON.player, sub: 'Свайпы управления' },
-    { id: 'ai', title: 'RH AI', icon: ICON.ai, sub: 'AutoMix и Smart Mix' },
+    { id: 'ai', title: 'Smart Mix', icon: ICON.ai, sub: 'Плавные переходы по биту' },
     { id: 'storage', title: 'Хранилище и кеш', icon: ICON.storage, sub: 'Данные приложения' },
     { id: 'notifications', title: 'Уведомления', icon: ICON.bell, sub: 'Экран блокировки и медиа' },
     { id: 'privacy', title: 'Конфиденциальность', icon: ICON.privacy, sub: 'История и персонализация' },
@@ -160,14 +159,9 @@
   }
 
   function aiScreen() {
-    const ai = window.RH_AI_AUTOMIX;
-    const aiState = ai && ai.getState ? ai.getState() : { phase: 'OFF', active: false };
     const smart = window.RH_SMARTMIX;
     const smartEnabled = smart && smart.getSettings ? !!smart.getSettings().enabled : false;
-    return group('RH AI AutoMix', [
-      row({ title: 'AutoMix RH AI', sub: aiState.active ? ('Статус: ' + aiState.phase) : 'Автоматические переходы', control: toggleSetting('automix', aiState.active) }),
-      row({ title: 'Статус', control: valueText(aiState.phase || 'OFF'), disabled: true }),
-    ]) + group('RH Smart Mix', [
+    return group('RH Smart Mix', [
       row({ title: 'Smart Mix', sub: 'Плавные переходы по биту', control: toggleSetting('smartmix', smartEnabled) }),
       row({ title: 'Длина перехода', sub: 'Доступно в текущем движке Smart Mix', control: valueText(smart && smart.getSettings ? (smart.getSettings().bars + ' такта') : '8 такта'), disabled: true }),
     ]);
@@ -342,12 +336,6 @@
   }
 
   function handleToggle(key) {
-    if (key === 'automix') {
-      if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
-      set(key, window.RH_AI_AUTOMIX ? window.RH_AI_AUTOMIX.getState().active : false);
-      setTimeout(refresh, 350);
-      return;
-    }
     if (key === 'smartmix') {
       if (window.RH_SMARTMIX && window.RH_SMARTMIX.setSettings) {
         const next = !window.RH_SMARTMIX.getSettings().enabled;
