@@ -7,7 +7,7 @@ const css = readFileSync(join(here, '../web/styles.css'), 'utf8');
 let passed = 0; const failures = [];
 const check = (name, ok) => { if (ok) passed++; else { failures.push(name); console.error('  ✗', name); } };
 console.log('RH—MUSIC · home redesign tests\n');
-check('главная показывает не больше четырёх подборок', /const wanted = \[/.test(app) && /chosen\.length >= 4/.test(app));
+check('главная показывает не больше пяти подборок', /const wanted = \[/.test(app) && /chosen\.length >= 5/.test(app));
 check('главная использует компактные карточки треков', /function trackCard/.test(app) && /function trackCards/.test(app) && /\.slice\(0, 10\)/.test(app));
 check('главная не рендерит все секции подряд', !/sections\.filter\(\(block\) => block\.type !== 'banner'\)\.map\(\(block\) => \{/.test(app));
 check('рекомендации ограничены тремя полками', /const chosen = sections\.slice\(0, 3\)/.test(app));

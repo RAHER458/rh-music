@@ -162,7 +162,7 @@ check('переключение трека не раскрывает панел�
 const appWithoutVendor = app.replace(/AppleWebKit/g, '');
 check('во фронтенде нет VK ID', !/vk[_-]?id|VK ID|id\.vk\.com/i.test(appWithoutVendor));
 check('во фронтенде нет Apple ID', !/apple[_-]?(id|signin)|Sign in with Apple/i.test(appWithoutVendor));
-check('в разметке нет VK/Apple', !/vk|apple/i.test(html.replace(/apple-mobile-web-app|apple-touch|AppleWebKit/gi, '')));
+check('в разметке нет VK/Apple', !/vk|apple/i.test(html.replace(/apple[-\s]?(mobile|touch|webkit)[^"'\s>]*/gi, '')));
 check('в стилях нет VK/Apple-провайдеров', !/btn-provider|\.provider-text/.test(css));
 check('слот Google Identity Services присутствует', /id="googleSlot"/.test(app));
 check('официальная кнопка Google рендерится через GIS',
