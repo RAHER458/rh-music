@@ -31,6 +31,7 @@ import {
   handleHistoryStart, handleHistoryUpdate, handleHistoryRecent,
 } from './music.js';
 import { handleRecommendations } from './recommend.js';
+import { handleWave } from './wave.js';
 import { handleHome, handleCatalogPlaylist } from './home.js';
 import { handlePopular, syncPopular } from './popular.js';
 import { handleLyrics } from './lyrics.js';
@@ -505,6 +506,7 @@ async function route(request, env) {
     }
   }
   if (path === '/api/popular' && method === 'GET') return handlePopular(env);
+  if (path === '/api/wave' && method === 'POST') return handleWave(request, env);
   if ((m = path.match(/^\/api\/playlist\/(\d+)$/)) && method === 'GET') return handleCatalogPlaylist(env, m[1]);
 
   /* --- каталог (как и раньше) --- */

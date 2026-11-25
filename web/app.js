@@ -564,9 +564,11 @@ async function renderShowcase() {
       </div>
       <button class="btn btn-ghost home-search" type="button" data-action="focus-search">${ICONS.search || ''} Найти музыку</button>
     </div>
+    <div id="waveSlot"></div>
     ${heroBlock}
     ${blocks.join('')}
   `;
+  if (window.RH_WAVE) window.RH_WAVE.mount();
 }
 
 /* ───────────────────────────── персональные рекомендации ───────────────────────────── */
@@ -4042,6 +4044,48 @@ function openDrawer(open = true) {
   document.body.classList.toggle('is-locked', open || S.npOpen || S.sheetOpen);
   renderQueue();
 }
+
+/* ───────────────────────────── «Моя волна» ───────────────────────────── */
+
+window.RH_WAVE_BRIDGE = {
+  play(items, settings) {
+    const clean = [];
+    const seen = new Set();
+    for (const item of items || []) {
+      if (!item || !item.id || !item.title || !item.artist) continue;
+      const id = String(item.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      clean.push(item);
+    }
+    if (!clean.length) throw new Error('Волна не вернула треки.');
+    S.queue = clean;
+    S.index = 0;
+    S.playerHidden = false;
+    if (window.RH_WAVE) { window.RH_WAVE.settings = { ...window.RH_WAVE.settings, ...(settings || {}) }; }
+    playIndex(0, { source: 'wave', reveal: false });
+  },
+  append(items) {
+    let added = 0;
+    for (const item of items || []) {
+      if (!item || !item.id || !item.title || !item.artist) continue;
+      if (S.queue.some((row) => String(row.id) === String(item.id))) continue;
+      S.queue.push(item);
+      added += 1;
+    }
+    if (added) renderQueue();
+    return added;
+  },
+  getState() {
+    return {
+      currentId: S.current ? String(S.current.id) : null,
+      index: S.index,
+      queue: (S.queue || []).map((item) => ({ id: item.id, title: item.title, artist: item.artist })),
+      playing: !audio.paused,
+    };
+  },
+  toast: (message, kind) => toast(message, kind || 'info'),
+};
 
 /* ───────────────────────────── роутер ───────────────────────────── */
 
