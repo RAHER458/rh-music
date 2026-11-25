@@ -3291,6 +3291,18 @@ function npReducedMotion() {
 
 let npTitleMeasureToken = 0;
 
+function marqueeTextWidth(el, title) {
+  try {
+    const cs = getComputedStyle(el);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    return Math.ceil(ctx.measureText(title).width) + 34;
+  } catch {
+    return el.offsetWidth;
+  }
+}
+
 function applyMarquee(el, title, kind) {
   if (!el) return;
   const runClass = kind + '-run';
@@ -3301,9 +3313,10 @@ function applyMarquee(el, title, kind) {
     const run = el.querySelector('.' + runClass);
     const line = el.querySelector('.' + lineClass);
     if (!run || !line || el.clientWidth <= 0) return;
-    if (line.offsetWidth <= el.clientWidth + 1 || npReducedMotion()) return;
+    const width = marqueeTextWidth(line, title);
+    if (width <= el.clientWidth + 1 || npReducedMotion()) return;
     run.innerHTML = `<span class="${lineClass}">${esc(title)}</span><span class="${lineClass}" aria-hidden="true">${esc(title)}</span>`;
-    run.style.animationDuration = Math.max(8, Math.min(24, line.offsetWidth / 34)).toFixed(1) + 's';
+    run.style.animationDuration = Math.max(8, Math.min(24, width / 34)).toFixed(1) + 's';
     el.classList.add('is-scrolling');
   };
   requestAnimationFrame(measure);
