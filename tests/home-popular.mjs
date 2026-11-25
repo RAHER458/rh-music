@@ -10,7 +10,7 @@ const check = (name, ok) => { if (ok) passed++; else { failures.push(name); cons
 console.log('RH—MUSIC · popular home tests\n');
 check('главная запрашивает /api/popular', /api\('\/api\/popular'\)/.test(app));
 check('популярное выводится ниже волны', app.indexOf('id="waveSlot"') < app.indexOf('${popularBlock}'));
-check('популярное использует реальные карточки Zvuk', /playlistCard/.test(app) && /albumCard/.test(app) && /artistCard/.test(app) && /Популярное на Zvuk/.test(app));
+check('популярное использует реальные карточки Zvuk', /playlistCard/.test(app) && /albumCard/.test(app) && /artistCard/.test(app) && /Популярное/.test(app));
 check('ежедневный cron обновляет popular', /crons = \["0 4 \* \* \*"\]/.test(readFileSync(join(here, '../worker/wrangler.toml'), 'utf8')) && /syncPopular\(env\)/.test(worker));
 check('cron обновляет и главную', /syncHome/.test(home) && /syncHome\(env\)/.test(worker));
 check('Zvuk-поток остаётся MID', /const url = stream\.mid/.test(worker));

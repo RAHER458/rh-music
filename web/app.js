@@ -567,7 +567,7 @@ async function renderShowcase() {
     else if (sectionData.type === 'albums') html = compactCarousel(items, albumCard);
     else if (sectionData.type === 'artists') html = compactCarousel(items, artistCard);
     else html = trackCards(items, 'home_popular');
-    return section('Популярное на Zvuk', html, { sub: sectionData.title || 'Обновляется ежедневно' });
+    return section('Популярное', html, { sub: sectionData.title || 'Обновляется ежедневно' });
   })();
 
   page.innerHTML = `
