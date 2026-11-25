@@ -3962,6 +3962,10 @@ function openNowPlaying(open = true) {
   S.npOpen = open;
   nowPlaying.classList.toggle('is-open', open);
   nowPlaying.setAttribute('aria-hidden', open ? 'false' : 'true');
+  if (open && S.current) {
+    // Ширина заголовка появляется только после раскрытия оверлея.
+    requestAnimationFrame(() => { applyNpTitle(S.current); applyNpSong(S.current); });
+  }
   if (open) { scrim.hidden = false; requestAnimationFrame(() => scrim.classList.add('is-open')); }
   else if (!S.drawerOpen && !S.sheetOpen) hideScrim();
   document.body.classList.toggle('is-locked', open || S.drawerOpen || S.sheetOpen);
