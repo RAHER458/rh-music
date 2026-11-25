@@ -105,10 +105,9 @@ function rankTranscoding(item) {
   const mime = (item.format && item.format.mime_type) || '';
   if (/encrypted/i.test(protocol) || /encrypted/i.test(item.url || '')) return 99;
   if (item.snipped) return 99;
+  // Только progressive MP3 = 128 kbps. HLS AAC 160 kbps не используем.
   if (protocol === 'progressive' && /audio\/mpeg/.test(mime)) return 0;
   if (protocol === 'progressive') return 1;
-  if (protocol === 'hls' && /mp4a/.test(mime)) return 2;
-  if (protocol === 'hls') return 3;
   return 9;
 }
 
@@ -169,6 +168,9 @@ export async function soundCloudPlayResponse(env, rawId) {
   if (resolved.protocol === 'progressive') {
     return Response.redirect(resolved.url, 302);
   }
+  // Строго 128 kbps: HLS AAC 160 не отдаём.
+  throw new ApiError(404, 'SC_128_ONLY', 'Для этой композиции нет потока 128 kbps.');
+  /* istanbul ignore next */
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   let upstream;
@@ -218,6 +220,8 @@ export async function soundCloudAudioResponse(env, rawId) {
       },
     });
   }
+  throw new ApiError(404, 'SC_128_ONLY', 'Для этой композиции нет потока 128 kbps.');
+  /* istanbul ignore next */
   const playlistResponse = await get(resolved.url);
   const playlist = await playlistResponse.text();
   if (!/^#EXTM3U/m.test(playlist.trim())) {
