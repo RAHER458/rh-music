@@ -55,8 +55,13 @@
       <div class="wave-body">
         <div class="wave-mood">
           <div class="wave-pad" id="wavePad" style="--wx:${pct(settings.mood.fun) * 100}%; --wy:${(1 - pct(settings.mood.energy)) * 100}%">
-            <span class="wave-pad-label tl">ЭНЕРГИЧНОЕ</span><span class="wave-pad-label tr">ВЕСЕЛОЕ</span><span class="wave-pad-label bl">ГРУСТНОЕ</span><span class="wave-pad-label br">СПОКОЙНОЕ</span>
             <span class="wave-pad-thumb"></span>
+          </div>
+          <div class="wave-legend">
+            <button type="button" data-wave-mood="energy">Энергичное</button>
+            <button type="button" data-wave-mood="fun">Весёлое</button>
+            <button type="button" data-wave-mood="sad">Грустное</button>
+            <button type="button" data-wave-mood="calm">Спокойное</button>
           </div>
           <div class="wave-mood-text"><span>Настроение</span><b>${esc(moodLabel())}</b></div>
         </div>
@@ -193,6 +198,12 @@
       if (info && info.currentArtist) { state.skipArtists = [...new Set([...state.skipArtists, info.currentArtist])]; saveFeedback(); }
       window.RH_WAVE_BRIDGE && window.RH_WAVE_BRIDGE.next();
       return;
+    }
+    const moodPreset = event.target.closest('[data-wave-mood]');
+    if (moodPreset) {
+      const presets = { energy: { energy: 0.84, fun: 0.58 }, fun: { energy: 0.6, fun: 0.84 }, sad: { energy: 0.56, fun: 0.16 }, calm: { energy: 0.16, fun: 0.56 } };
+      settings.mood = { ...(presets[moodPreset.dataset.waveMood] || DEFAULTS.mood) };
+      save(); refresh(); return;
     }
     if (event.target.closest('[data-wave-start]')) { start(); return; }
     if (event.target.closest('[data-wave-reset]')) {
