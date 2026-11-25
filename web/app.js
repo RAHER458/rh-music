@@ -2046,6 +2046,7 @@ function streamUrlWithCacheBust(track) {
 
 /* ── HLS: Safari играет нативно, Chrome — через hls.js ─────────────── */
 let activeHls = null;
+let activeScBlobUrl = null;
 
 function destroyActiveHls() {
   if (!activeHls) return;
@@ -2063,6 +2064,7 @@ function nativeHlsPlayback() {
  */
 function applyAudioSource(track, { autoplay = false, onError = null } = {}) {
   destroyActiveHls();
+  if (activeScBlobUrl) { try { URL.revokeObjectURL(activeScBlobUrl); } catch { /* ignore */ } activeScBlobUrl = null; }
   if (!track) return;
   try {
     if (isSoundCloudTrack(track)) audio.dataset.beatSrc = streamUrl(track);
@@ -3557,6 +3559,7 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   const track = S.queue[index];
   S.current = track;
   S.retried = false;
+  S.scFallbackTried = false;
   // Раскрываем нижний плеер только при осознанном выборе трека,
   // а не при возобновлении из компактного блока или Media Session.
   if (reveal) S.playerHidden = false;
@@ -3612,8 +3615,41 @@ function playIndex(index, { autoplay = true, source = 'player', reveal = true } 
   refreshAiAutoMixUI();
 }
 
+async function playSoundCloudFallback(track) {
+  if (!track || !isSoundCloudTrack(track)) return false;
+  if (S.scFallbackTried) return false;
+  S.scFallbackTried = true;
+  S.loading = true;
+  updateTransport();
+  try {
+    // Safari иногда не открывает fMP4-HLS напрямую. Собираем init + сегменты
+    // в один MP4-blob и отдаём его тому же <audio>.
+    const bytes = await fetchAudioBytes(track);
+    if (!bytes || !bytes.byteLength) throw new Error('empty_stream');
+    if (activeScBlobUrl) { try { URL.revokeObjectURL(activeScBlobUrl); } catch { /* ignore */ } }
+    activeScBlobUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mp4' }));
+    audio.src = activeScBlobUrl;
+    audio.load();
+    await audio.play();
+    S.loading = false;
+    S.playing = true;
+    updateTransport();
+    return true;
+  } catch (error) {
+    S.loading = false;
+    updateTransport();
+    return false;
+  }
+}
+
 function handleAudioFailure(detail) {
   if (!S.current) return;
+  if (isSoundCloudTrack(S.current) && !S.scFallbackTried) {
+    playSoundCloudFallback(S.current).then((ok) => {
+      if (!ok) toast('Не удалось воспроизвести трек. Попробуйте другой.');
+    });
+    return;
+  }
   if (!S.retried) {
     // Повтор через тот же прокси с обходом кэша: подписанная ссылка запрашивается заново.
     S.retried = true;
