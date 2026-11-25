@@ -1,0 +1,18 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const here = dirname(fileURLToPath(import.meta.url));
+const app = readFileSync(join(here, '../web/app.js'), 'utf8');
+const worker = readFileSync(join(here, '../worker/src/index.js'), 'utf8');
+const home = readFileSync(join(here, '../worker/src/home.js'), 'utf8');
+let passed = 0; const failures = [];
+const check = (name, ok) => { if (ok) passed++; else { failures.push(name); console.error('  ✗', name); } };
+console.log('RH—MUSIC · popular home tests\n');
+check('главная запрашивает /api/popular', /api\('\/api\/popular'\)/.test(app));
+check('популярное выводится ниже волны', app.indexOf('id="waveSlot"') < app.indexOf('${popularBlock}'));
+check('популярное использует реальные карточки Zvuk', /playlistCard/.test(app) && /albumCard/.test(app) && /artistCard/.test(app) && /Популярное на Zvuk/.test(app));
+check('ежедневный cron обновляет popular', /crons = \["0 4 \* \* \*"\]/.test(readFileSync(join(here, '../worker/wrangler.toml'), 'utf8')) && /syncPopular\(env\)/.test(worker));
+check('cron обновляет и главную', /syncHome/.test(home) && /syncHome\(env\)/.test(worker));
+check('Zvuk-поток остаётся MID', /const url = stream\.mid/.test(worker));
+console.log(`\n${passed} passed, ${failures.length} failed`);
+if (failures.length) process.exit(1);
