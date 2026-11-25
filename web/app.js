@@ -3291,27 +3291,31 @@ function npReducedMotion() {
 
 let npTitleMeasureToken = 0;
 
-function applyNpTitle(track) {
-  const el = $('npTitle');
+function applyMarquee(el, title, kind) {
   if (!el) return;
-  const title = track ? (track.title || 'Без названия') : 'Ничего не играет';
+  const runClass = kind + '-run';
+  const lineClass = kind + '-line';
   el.classList.remove('is-scrolling');
-  el.innerHTML = `<span class="np-title-run"><span class="np-title-line">${esc(title)}</span></span>`;
-  const token = ++npTitleMeasureToken;
+  el.innerHTML = `<span class="${runClass}"><span class="${lineClass}">${esc(title)}</span></span>`;
   const measure = () => {
-    if (token !== npTitleMeasureToken) return;
-    const run = el.querySelector('.np-title-run');
-    const line = el.querySelector('.np-title-line');
+    const run = el.querySelector('.' + runClass);
+    const line = el.querySelector('.' + lineClass);
     if (!run || !line || el.clientWidth <= 0) return;
-    const available = el.clientWidth;
-    if (line.offsetWidth <= available + 1 || npReducedMotion()) return;
-    run.innerHTML = `<span class="np-title-line">${esc(title)}</span><span class="np-title-line" aria-hidden="true">${esc(title)}</span>`;
+    if (line.offsetWidth <= el.clientWidth + 1 || npReducedMotion()) return;
+    run.innerHTML = `<span class="${lineClass}">${esc(title)}</span><span class="${lineClass}" aria-hidden="true">${esc(title)}</span>`;
     run.style.animationDuration = Math.max(8, Math.min(24, line.offsetWidth / 34)).toFixed(1) + 's';
     el.classList.add('is-scrolling');
   };
   requestAnimationFrame(measure);
-  // Ширина панели могла ещё не пересчитаться после смены трека/плеера.
   setTimeout(measure, 120);
+}
+
+function applyNpTitle(track) {
+  applyMarquee($('npTitle'), track ? (track.title || 'Без названия') : 'Ничего не играет', 'np-title');
+}
+
+function applyNpSong(track) {
+  applyMarquee($('npSong'), track ? (track.title || 'Без названия') : 'Ничего не играет', 'np-song');
 }
 
 function applyNpText(track) {
@@ -3319,7 +3323,7 @@ function applyNpText(track) {
   $('npArtist').innerHTML = track && track.artistId
     ? `<a href="#/artist/${esc(track.artistId)}" data-link>${esc(track.artist || 'Неизвестный исполнитель')}</a>`
     : esc(track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек');
-  $('npSong').textContent = track ? track.title : 'Ничего не играет';
+  applyNpSong(track);
   $('npSinger').textContent = track ? (track.artist || 'Неизвестный исполнитель') : 'Выберите трек';
 }
 
@@ -4801,10 +4805,10 @@ function syncLayoutHeight() {
 window.addEventListener('hashchange', route);
 window.addEventListener('resize', () => {
   syncLayoutHeight();
-  if (S.current) applyNpTitle(S.current);
+  if (S.current) { applyNpTitle(S.current); applyNpSong(S.current); }
 });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && S.current) applyNpTitle(S.current);
+  if (!document.hidden && S.current) { applyNpTitle(S.current); applyNpSong(S.current); }
 });
 
 if ('ResizeObserver' in window) new ResizeObserver(syncLayoutHeight).observe(player);
