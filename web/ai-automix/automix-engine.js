@@ -1650,6 +1650,95 @@ function buildDrumProfile(features, grid, duration, fps) {
     return { kick: round(kick / n, 3), snare: round(snare / n, 3), hat: round(hat / n, 3), pattern, confidence: round(grid.confidence, 3) };
 }
 
+function buildSegmentTimeline(features, sections, sampleRate, duration) {
+    const fps = sampleRate / 512;
+    const chromaFrames = features.chroma || [];
+    const avg = (arr, start, end) => {
+        let sum = 0; let count = 0;
+        for (let i = start; i < end; i += 1) { sum += arr[i] || 0; count += 1; }
+        return count ? sum / count : 0;
+    };
+    return sections.map((section) => {
+        const start = Math.max(0, Math.floor(section.start * fps));
+        const end = Math.min(features.rms.length, Math.max(start + 1, Math.ceil(section.end * fps)));
+        const chroma = new Float32Array(12);
+        for (let i = start; i < end; i += 1) {
+            const frame = chromaFrames[i];
+            if (!frame) continue;
+            for (let k = 0; k < 12; k += 1) chroma[k] += frame[k] || 0;
+        }
+        const key = detectKey(chroma);
+        const low = avg(features.low, start, end);
+        const mid = avg(features.mid, start, end);
+        const high = avg(features.high, start, end);
+        const flatness = avg(features.flatness, start, end);
+        const transient = clamp01(avg(features.flux, start, end) * 8);
+        const vocalLikelihood = clamp01((mid * 1.4 + (1 - flatness) * 0.35) - low * 0.35);
+        return {
+            start: Number(section.start.toFixed(3)),
+            end: Number(section.end.toFixed(3)),
+            kind: section.kind,
+            energy: section.energy,
+            confidence: section.confidence ?? null,
+            bands: { low: Number(low.toFixed(4)), mid: Number(mid.toFixed(4)), high: Number(high.toFixed(4)) },
+            spectral: { centroid: Number(avg(features.centroid, start, end).toFixed(1)), flatness: Number(flatness.toFixed(4)) },
+            transientDensity: Number(transient.toFixed(4)),
+            vocalLikelihood: Number(vocalLikelihood.toFixed(4)),
+            key: key.key,
+            camelot: key.camelot,
+            keyConfidence: key.confidence,
+        };
+    });
+}
+function segmentAt(analysis, time) {
+    const timeline = analysis?.timeline;
+    if (!timeline || !timeline.length) return null;
+    return timeline.find((segment) => time >= segment.start && time < segment.end) ?? timeline[timeline.length - 1];
+}
+function segmentCompatibility(out, incoming, startAt, inStart, tempoRatio, strategy) {
+    const outSegment = segmentAt(out, startAt);
+    const inSegment = segmentAt(incoming, inStart);
+    if (!outSegment || !inSegment) {
+        return { score: 0.5, hardFailures: [], penalties: [], bassOverlap: 0, vocalOverlap: 0, energyDelta: 0, spectralDelta: 0, reason: 'timeline unavailable' };
+    }
+    const bpmGap = Math.abs(Math.log2(Math.max(0.5, Math.min(2, tempoRatio || 1))));
+    const bassOverlap = Math.min(outSegment.bands.low, inSegment.bands.low);
+    const vocalOverlap = Math.min(outSegment.vocalLikelihood, inSegment.vocalLikelihood);
+    const energyDelta = Math.abs((outSegment.energy ?? 0.5) - (inSegment.energy ?? 0.5));
+    const spectralDelta = Math.abs((outSegment.spectral.centroid || 0) - (inSegment.spectral.centroid || 0)) / 8000;
+    const harmonic = harmonicCompatibility(out, incoming, tempoRatio);
+    const hardFailures = [];
+    const penalties = [];
+    const vocalAllowed = strategy === 'vocal-safe' || strategy === 'vocal-handoff';
+    const bassAllowed = ['bass-swap', 'frequency-swap', 'filter-sweep', 'echo-out', 'rhythmic-cut', 'intelligent-hard-cut'].includes(strategy);
+    if (vocalOverlap > 0.55 && !vocalAllowed) hardFailures.push('vocal collision без vocal-safe/handoff');
+    if (bpmGap > 0.12 && !['ambient-fade', 'atmospheric', 'cinematic', 'tempo-ramp', 'intelligent-hard-cut'].includes(strategy)) hardFailures.push('BPM gap без tempo-safe стратегии');
+    if (bassOverlap > 0.36 && !bassAllowed) penalties.push('bass overlap без bass-swap/filter');
+    if (vocalOverlap > 0.35 && !vocalAllowed) penalties.push('vocal overlap');
+    if (energyDelta > 0.45) penalties.push('резкий energy delta');
+    let score = 0.5;
+    score += harmonic.score * 0.24;
+    score += (1 - Math.min(1, energyDelta * 1.2)) * 0.28;
+    score += (1 - Math.min(1, spectralDelta)) * 0.14;
+    score += Math.min(1, 1 - bassOverlap * 0.55) * 0.16;
+    score += Math.min(1, 1 - vocalOverlap * 0.7) * 0.18;
+    score -= penalties.length * 0.06;
+    if (outSegment.kind && inSegment.kind && outSegment.kind === inSegment.kind) score += 0.03;
+    return {
+        score: round(clamp(score, 0, 1), 4),
+        hardFailures,
+        penalties,
+        bassOverlap: round(bassOverlap, 4),
+        vocalOverlap: round(vocalOverlap, 4),
+        energyDelta: round(energyDelta, 4),
+        spectralDelta: round(spectralDelta, 4),
+        harmonic,
+        outSegment,
+        inSegment,
+        reason: `${outSegment.kind} → ${inSegment.kind}`,
+    };
+}
+
 function analyzeAudioBuffer(buffer, options = {}) {
     const targetRate = options.targetSampleRate || 22050;
     const maxDuration = options.maxDurationSec || 600;
@@ -1679,6 +1768,7 @@ function analyzeAudioBuffer(buffer, options = {}) {
         ? [...new Set([round(tempo.bpm / 2, 2), round(tempo.bpm, 2), round(tempo.bpm * 2, 2)])].filter((value) => value >= 50 && value <= 220)
         : [];
     const sections = buildSections(features, grid, duration);
+    const timeline = buildSegmentTimeline(features, sections, sampleRate, duration);
     const cues = buildCues(sections, grid, duration);
     const chroma = new Float32Array(12);
     for (const frame of features.chroma)
@@ -1733,6 +1823,7 @@ function analyzeAudioBuffer(buffer, options = {}) {
         camelot: key.camelot,
         keyConfidence: key.confidence,
         sections,
+        timeline,
         cues,
         loudness: {
             rms: round(rmsValue, 4),
@@ -1977,12 +2068,14 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
             const earlyPenalty = startAt < context.position + 6 ? 0.05 : 0;
             const pulseCandidate = (out.pulsegrid?.candidates ?? []).some((candidate) => Math.abs(candidate.at - startAt) < 0.6);
             const pulseBonus = pulseCandidate ? 0.06 : 0;
-            const score = Math.max(0, Math.min(1,
-                outScore * 0.2 + inScore * 0.18 + pairBonus + phrase
+            const segmentCompat = segmentCompatibility(out, incoming, startAt, inStart, bpmRatio(out.bpm, incoming.bpm), strategy);
+            if (segmentCompat.hardFailures.length) continue;
+            const rawScore = outScore * 0.2 + inScore * 0.18 + pairBonus + phrase
                 + energyScore * 0.1 + remainingFit
                 + harmonic.score * 0.2 - harmonic.conflict * 0.08
                 - bassConflict * 0.03 + pulseBonus
-                - vocalPenalty + progressBonus - earlyPenalty));
+                - vocalPenalty + progressBonus - earlyPenalty;
+            const score = Math.max(0, Math.min(1, rawScore * 0.72 + segmentCompat.score * 0.28));
             const outConfidence = sectionConfidenceAt(out, startAt);
             const inConfidence = sectionConfidenceAt(incoming, inStart);
             const confidence = outConfidence == null || inConfidence == null ? 0 : Math.min(outConfidence, inConfidence);
@@ -1992,6 +2085,7 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
                 vocalCollision > 0.25 ? `vocal overlap ${vocalCollision.toFixed(2)}` : 'vocal overlap low',
                 phrase ? 'phrase-aligned' : 'internal phrase',
                 pulseCandidate ? 'PulseGrid energy-fall' : 'PulseGrid no-match',
+                `segments ${segmentCompat.reason} · compat ${segmentCompat.score}${segmentCompat.penalties.length ? ' · ' + segmentCompat.penalties.join(', ') : ''}`,
             ];
             windows.push({
                 strategy,
@@ -2644,6 +2738,7 @@ function planTransition(outgoing, incoming, context, options = {}) {
         gain: buildGain(selected.strategy),
         score: selected.score,
         minAllowedStart: round(timing.minStartAt, 3),
+        compatibility: (() => { const compat = segmentCompatibility(outgoing, incoming, startAt, window.inStart, bpmRatio(outgoing.bpm, incoming.bpm), selected.strategy); return { score: compat.score, bassOverlap: compat.bassOverlap, vocalOverlap: compat.vocalOverlap, energyDelta: compat.energyDelta, spectralDelta: compat.spectralDelta, penalties: compat.penalties, reason: compat.reason }; })(),
         minProgressRatio: timing.minProgressRatio,
         outSection: sectionAt(outgoing, startAt),
         inSection: sectionAt(incoming, window.inStart),
@@ -3842,5 +3937,5 @@ class AudioEngine {
     }
 }
 
-export { AudioEngine, AutoMixCore, Deck, LoopExecutor, MusicalMemory, SessionIntelligence, adviseTransition, analyzeAudioBuffer, createAutoMixCore, createReverbGraph, generateImpulseData, planTransition, strategyCandidates, trackEnergy };
+export { AudioEngine, AutoMixCore, Deck, LoopExecutor, MusicalMemory, SessionIntelligence, adviseTransition, analyzeAudioBuffer, buildSegmentTimeline, createAutoMixCore, createReverbGraph, generateImpulseData, planTransition, segmentAt, segmentCompatibility, strategyCandidates, trackEnergy };
 //# sourceMappingURL=automix-engine.js.map

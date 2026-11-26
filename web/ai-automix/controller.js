@@ -700,6 +700,7 @@
       phrases: analysis.phrases?.length ?? 0,
       sections: sections.slice(0, 14).map((section) => ({ kind: section.kind, start: section.start, end: section.end, energy: section.energy })),
       sectionCount: sections.length,
+      timelineSegments: analysis.timeline?.length ?? 0,
       drums: analysis.drums,
       provenance: analysis.provenance,
       pulsegrid: analysis.pulsegrid ? {
@@ -765,6 +766,7 @@
         gain: state.pending.plan.gain,
         effects: state.pending.plan.effects,
         mixIntensity: state.pending.plan.mixIntensity,
+        compatibility: state.pending.plan.compatibility,
         score: state.pending.plan.score,
         reasons: state.pending.plan.reasons,
         warnings: state.pending.plan.warnings,
