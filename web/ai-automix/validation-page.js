@@ -84,3 +84,5 @@ $('export').addEventListener('click', () => {
 $('clear').addEventListener('click', () => { try { localStorage.removeItem('rh_beat_validation_v1'); } catch {} window.__RH_VALIDATION_RESULT = null; render([]); setStatus('Очищено.'); });
 const stored = loadStoredValidation();
 if (stored?.results?.length) { render(stored.results); setStatus(`Загружены сохранённые результаты: ${stored.results.length} треков.`); }
+
+window.RH_VALIDATION_RUN = run;
