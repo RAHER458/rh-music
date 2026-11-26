@@ -247,3 +247,49 @@ export async function beatThisAvailable() {
 export function beatThisModelInfo() {
   return { MODEL_VERSION, MAX_FRAMES, FRAME_RATE, source: 'nilsbc/beat-this-onnx' };
 }
+
+
+let sharedWorker = null;
+let workerSeq = 0;
+const workerPending = new Map();
+
+function ensureWorker() {
+  if (sharedWorker) return sharedWorker;
+  sharedWorker = new Worker(new URL('beat-this-worker.js', import.meta.url), { type: 'module' });
+  sharedWorker.onmessage = (event) => {
+    const job = workerPending.get(event.data.id);
+    if (!job) return;
+    workerPending.delete(event.data.id);
+    if (event.data.error) job.reject(new Error(event.data.error));
+    else job.resolve(event.data.result);
+  };
+  sharedWorker.onerror = (event) => {
+    for (const [id, job] of workerPending) { workerPending.delete(id); job.reject(new Error(event.message || 'Beat This worker error')); }
+  };
+  return sharedWorker;
+}
+
+/** Run inference in a Web Worker so playback/UI are not blocked. */
+export function analyzeBeatThisInWorker(buffer, options = {}) {
+  const worker = ensureWorker();
+  const channels = [];
+  for (let c = 0; c < buffer.numberOfChannels; c += 1) channels.push(new Float32Array(buffer.getChannelData(c)));
+  const id = `bt-${++workerSeq}`;
+  return new Promise((resolve, reject) => {
+    workerPending.set(id, { resolve, reject });
+    try {
+      worker.postMessage({
+        id,
+        channels,
+        sampleRate: buffer.sampleRate,
+        length: buffer.length,
+        numberOfChannels: buffer.numberOfChannels,
+        duration: buffer.duration,
+        trackId: options.trackId,
+      }, channels.map((channel) => channel.buffer));
+    } catch (error) {
+      workerPending.delete(id);
+      reject(error);
+    }
+  });
+}
