@@ -2797,6 +2797,13 @@ function aiAnalysisRows(analysis, label) {
   const keyConf = analysis.keyConfidence == null ? null : (analysis.keyConfidence * 100).toFixed(0) + '%';
   const grid = analysis.grid ? `${analysis.grid.beats} beats · ${analysis.grid.downbeats} downbeats · phrase ${analysis.grid.phraseBars ?? '—'}` : 'нет';
   const pg = analysis.pulsegrid;
+  const bt = analysis.beatThis;
+  const beatRows = bt ? [
+    ['Beat This', `${bt.bpm} · conf ${(bt.bpmConfidence * 100).toFixed(0)}%`],
+    ['Beat/DB', `${bt.beatCount} beats · ${bt.downbeatCount} downbeats · ${bt.latencyMs}ms`],
+    ['BT stability', `${(bt.stability * 100).toFixed(0)}% · phase ${bt.phaseError == null ? '—' : bt.phaseError.toFixed(3)}s`],
+    ['BT grid', bt.appliedToGrid ? 'применён к beat grid' : 'сохранён Neural grid'],
+  ] : [['Beat This', 'анализ ещё не готов']];
   const pulseRows = pg ? [
     ['PulseGrid BPM', `${pg.bpm} · conf ${(pg.bpmConfidence * 100).toFixed(0)}%`],
     ['PulseGrid key', `${pg.key || '—'} · ${pg.camelot || '—'} · conf ${(pg.keyConfidence * 100).toFixed(0)}%`],
@@ -2814,6 +2821,7 @@ function aiAnalysisRows(analysis, label) {
     ['Energy', analysis.energy == null ? null : analysis.energy.toFixed(2)],
     ['Bands', bands], ['Vocal', vocal], ['Sections', sections],
     ...pulseRows,
+    ...beatRows,
     ['Warnings', (analysis.warnings || []).slice(0, 2).join('; ') || 'нет'],
   ];
 }

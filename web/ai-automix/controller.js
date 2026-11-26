@@ -140,7 +140,19 @@
     const context = state.core.analyzeTrack({
       id: String(track.id), title: track.title, artist: track.artist, analysis, source: 'rh-music stream',
     });
-    const entry = { track, buffer, analysis, context };
+    const entry = { track, buffer, analysis, context, beatThis: null, beatThisPromise: null, beatThisApplied: false };
+    if (state.beatThisModule && state.beatConsensus) {
+      entry.beatThisPromise = state.beatThisModule.analyzeBeatThisInWorker(buffer, { trackId: String(track.id) })
+        .then((result) => {
+          entry.beatThis = result;
+          entry.analysis = state.beatConsensus.mergeBeatThis(entry.analysis, result);
+          entry.beatThisApplied = true;
+          log('Beat This: BPM ' + result.bpm + ' · beats ' + result.beatCount + ' · downbeats ' + result.downbeatCount + ' · ' + result.latencyMs + 'ms');
+          emit();
+          return result;
+        })
+        .catch((error) => { log('Beat This не сработал: ' + (error && error.message ? error.message : String(error))); return null; });
+    }
     state.cache.set(String(track.id), entry);
     return entry;
   }
@@ -165,6 +177,19 @@
       } catch (error) {
         state.pulsegridBridge = null;
         log('PulseGrid bridge недоступен: ' + (error && error.message ? error.message : String(error)));
+      }
+      try {
+        const [beatModule, consensusModule] = await Promise.all([
+          import(new URL('beat-this-onnx.js?v=1', MODULE_BASE).href),
+          import(new URL('beat-this-consensus.js?v=1', MODULE_BASE).href),
+        ]);
+        state.beatThisModule = beatModule;
+        state.beatConsensus = consensusModule;
+        log('Beat This ONNX подключён · WASM CPU');
+      } catch (error) {
+        state.beatThisModule = null;
+        state.beatConsensus = null;
+        log('Beat This ONNX недоступен: ' + (error && error.message ? error.message : String(error)));
       }
       state.core.setEnergyMode('Adaptive');
       setPhase('LOADING', 3);
@@ -703,6 +728,7 @@
       timelineSegments: analysis.timeline?.length ?? 0,
       drums: analysis.drums,
       provenance: analysis.provenance,
+      beatThis: analysis.beatThis ? { ...analysis.beatThis } : null,
       pulsegrid: analysis.pulsegrid ? {
         bpm: analysis.pulsegrid.bpm,
         bpmConfidence: analysis.pulsegrid.bpmConfidence,
