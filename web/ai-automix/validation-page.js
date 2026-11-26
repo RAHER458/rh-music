@@ -86,3 +86,4 @@ const stored = loadStoredValidation();
 if (stored?.results?.length) { render(stored.results); setStatus(`Загружены сохранённые результаты: ${stored.results.length} треков.`); }
 
 window.RH_VALIDATION_RUN = run;
+window.RH_VALIDATION_RUN_IDS = (ids, seconds) => runValidation({ ids, seconds: seconds || 60 }).then((result) => { window.__RH_VALIDATION_RESULT = result; render(result.results); setStatus('Готово: ' + result.results.length + ' треков'); return result; });
