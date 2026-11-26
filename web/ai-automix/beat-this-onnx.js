@@ -152,7 +152,7 @@ async function runBeatWindow(ort, melData, channels, frames) {
     for (let c = 0; c < channels; c += 1) buffer[t * channels + c] = melData[t * channels + c] || 0;
   }
   const dims = meta?.dims || [1, targetFrames, channels];
-  const shape = [1, targetFrames, dims[2] && dims[2] > 0 ? dims[2] : channels];
+  const shape = [1, targetFrames, 128];
   const tensor = new ort.Tensor('float32', buffer, shape);
   const results = await beatSession.run({ [inputName]: tensor });
   const beatName = beatSession.outputNames.find((name) => /beat/i.test(name) && !/down/i.test(name)) || beatSession.outputNames[0];
