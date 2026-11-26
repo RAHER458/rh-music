@@ -2836,29 +2836,6 @@ function renderAiDiagnostics(info) {
     ['Warnings', (plan.warnings || []).slice(0, 2).join('; ') || 'нет'],
   ] : [['Plan', 'нет рассчитанного перехода']];
   aiDiagRows($('aiDiagT'), rows);
-  const learning = info && info.learning;
-  const last = info && info.lastTransition;
-  const learnRows = learning ? [
-    ['Status', learning.transitions ? 'обучение активно' : 'накапливает данные'],
-    ['Version', learning.version + ' · model ' + learning.modelVersion],
-    ['Transitions', String(learning.transitions)],
-    ['Success / fail', `${learning.successful} / ${learning.failed}`],
-    ['Avg quality', learning.averageQuality == null ? null : (learning.averageQuality * 100).toFixed(0) + '%'],
-    ['Recent quality', learning.recentQuality == null ? null : (learning.recentQuality * 100).toFixed(0) + '%'],
-    ['Timing', learning.timingQuality == null ? null : (learning.timingQuality * 100).toFixed(0) + '%'],
-    ['Beatmatching', learning.beatQuality == null ? null : (learning.beatQuality * 100).toFixed(0) + '%'],
-    ['Harmonic', learning.harmonicQuality == null ? null : (learning.harmonicQuality * 100).toFixed(0) + '%'],
-    ['Energy', learning.energyQuality == null ? null : (learning.energyQuality * 100).toFixed(0) + '%'],
-    ['Audio', learning.audioQuality == null ? null : (learning.audioQuality * 100).toFixed(0) + '%'],
-    ['Early errors', String(learning.earlyErrors)],
-    ['Late errors', String(learning.lateErrors)],
-    ['Learning conf', (learning.learningConfidence * 100).toFixed(0) + '%'],
-    ['Rollbacks', String(learning.rollbacks)],
-    ['Last update', learning.updatedAt ? new Date(learning.updatedAt).toLocaleTimeString() : '—'],
-    ['This transition', last ? `${(last.quality * 100).toFixed(0)}% · ${last.strategy}${last.userFeedback ? ' · ' + last.userFeedback : ''}` : 'ещё не исполнялся'],
-    ['Strategy perf', Object.entries(learning.strategyPerformance || {}).slice(0, 3).map(([name, value]) => `${name}:${(value.mean * 100).toFixed(0)}%(${value.count})`).join(' · ') || null],
-  ] : [['Learning', 'модуль не загружен']];
-  aiDiagRows($('aiDiagLearn'), learnRows);
 }
 function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
   if (!track) return;
@@ -2906,38 +2883,6 @@ function initAiAutoMix() {
       aiDiagPanel.hidden = !open;
       aiDiagToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       aiDiagToggle.classList.toggle('is-on', open);
-      renderAiDiagnostics(window.RH_AI_AUTOMIX.getState());
-    });
-  }
-  const aiLearnExport = $('aiLearnExport');
-  if (aiLearnExport && !aiLearnExport.dataset.bound) {
-    aiLearnExport.dataset.bound = '1';
-    aiLearnExport.addEventListener('click', () => {
-      const data = window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.exportLearning();
-      if (!data) return;
-      const blob = new Blob([data], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url; link.download = 'rh-ai-dj-learning.json'; link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    });
-  }
-  const aiLearnReset = $('aiLearnReset');
-  if (aiLearnReset && !aiLearnReset.dataset.bound) {
-    aiLearnReset.dataset.bound = '1';
-    aiLearnReset.addEventListener('click', () => {
-      if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.resetLearning();
-      renderAiDiagnostics(window.RH_AI_AUTOMIX.getState());
-    });
-  }
-  const aiFeedback = $('aiFeedback');
-  if (aiFeedback && !aiFeedback.dataset.bound) {
-    aiFeedback.dataset.bound = '1';
-    aiFeedback.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-feedback]');
-      if (!button || !window.RH_AI_AUTOMIX) return;
-      const record = window.RH_AI_AUTOMIX.feedback(button.dataset.feedback);
-      if (record) button.classList.add('is-sent');
       renderAiDiagnostics(window.RH_AI_AUTOMIX.getState());
     });
   }

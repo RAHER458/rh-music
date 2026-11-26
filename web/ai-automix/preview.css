@@ -39,11 +39,3 @@
 .ai-diag dd{margin:0;color:#dfe6ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ai-diag .ai-diag-wide{grid-column:1/-1}
 @media(max-width:760px){.ai-diag-cols{grid-template-columns:1fr}.ai-diag{max-height:54vh;bottom:calc(72px + env(safe-area-inset-bottom,0px))}}
-
-.ai-feedback{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
-.ai-feedback button{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:7px;padding:3px 6px;font-size:12px;line-height:1;color:#dfe6ff}
-.ai-feedback button:hover{border-color:rgba(124,140,255,.5);background:rgba(124,140,255,.14)}
-
-.ai-learn-actions{display:flex;gap:4px;margin-top:8px}
-.ai-learn-actions button{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:7px;padding:3px 7px;font-size:10px;color:#aeb8d6}
-.ai-feedback button.is-sent{border-color:#7CFFCB;color:#7CFFCB}
