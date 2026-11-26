@@ -278,6 +278,10 @@
       <span class="ai-next-timer" id="aiNextTimer">—</span>
     </div>
 
+    <button class="ctrl ghost" id="aiDiagToggle" type="button" aria-label="Диагностика Neural AI" aria-expanded="false">
+      <svg viewBox="0 0 24 24"><path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 7a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm0 7a1 1 0 0 1 1-1h5a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm14-1.5v-2a1 1 0 1 0-2 0v2a1 1 0 1 0 2 0Zm0-6v-2a1 1 0 1 0-2 0v2a1 1 0 1 0 2 0Z"/></svg>
+    </button>
+
     <button class="ctrl ghost ai-automix-toggle" id="aiAutomixBtn" type="button" data-action="ai-automix-toggle" aria-label="Neural AI AutoMix" aria-pressed="false">
       <svg viewBox="0 0 24 24"><path d="M12 2.6a1 1 0 0 1 .95.68l1.9 5.6 5.6 1.9a1 1 0 0 1 0 1.9l-5.6 1.9-1.9 5.6a1 1 0 0 1-1.9 0l-1.9-5.6-5.6-1.9a1 1 0 0 1 0-1.9l5.6-1.9 1.9-5.6A1 1 0 0 1 12 2.6Z"/></svg>
     </button>
@@ -306,6 +310,15 @@
     </button>
   </div>
 </footer>
+
+<aside class="ai-diag" id="aiDiagPanel" hidden aria-label="Диагностика Neural AI">
+  <div class="ai-diag-head"><b>NEURAL AI · DIAGNOSTICS</b><button type="button" id="aiDiagClose" aria-label="Закрыть">×</button></div>
+  <div class="ai-diag-cols">
+    <section><h4>Track A</h4><dl id="aiDiagA"></dl></section>
+    <section><h4>Track B</h4><dl id="aiDiagB"></dl></section>
+    <section><h4>Transition</h4><dl id="aiDiagT"></dl></section>
+  </div>
+</aside>
 
 <!-- ─────────── Нижняя навигация (телефон) ─────────── -->
 <nav class="tabbar" id="tabbar" aria-label="Навигация" data-ui-only="mobile">

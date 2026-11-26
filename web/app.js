@@ -2723,6 +2723,7 @@ function refreshAiAutoMixUI() {
   document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
   applyAiMixTimeline(info);
   renderAiNextWidget(info);
+  renderAiDiagnostics(info);
   const button = $('aiAutomixBtn');
   if (button) button.title = label;
   if (info && info.ownsPlayback) updateTransport();
@@ -2785,6 +2786,52 @@ function aiSeekToTransition() {
   refreshAiAutoMixUI();
 }
 
+function aiDiagRows(host, rows) {
+  if (!host) return;
+  host.innerHTML = rows.map(([key, value]) => `<dt>${key}</dt><dd title="${String(value == null ? '' : value).replace(/"/g, '&quot;')}">${value == null || value === '' ? '—' : value}</dd>`).join('');
+}
+function aiAnalysisRows(analysis, label) {
+  if (!analysis) return [[label, 'нет данных']];
+  const bpm = analysis.bpm == null ? null : Number(analysis.bpm).toFixed(1);
+  const conf = analysis.bpmConfidence == null ? null : (analysis.bpmConfidence * 100).toFixed(0) + '%';
+  const keyConf = analysis.keyConfidence == null ? null : (analysis.keyConfidence * 100).toFixed(0) + '%';
+  const grid = analysis.grid ? `${analysis.grid.beats} beats · ${analysis.grid.downbeats} downbeats · phrase ${analysis.grid.phraseBars ?? '—'}` : 'нет';
+  const bands = analysis.bands ? `L${(analysis.bands.low * 100).toFixed(0)} M${(analysis.bands.mid * 100).toFixed(0)} H${(analysis.bands.high * 100).toFixed(0)}` : null;
+  const sections = analysis.sections && analysis.sections.length
+    ? analysis.sections.slice(0, 5).map((section) => `${section.kind}@${Math.round(section.start)}s`).join(' · ')
+    : 'нет';
+  const vocal = analysis.vocal ? `risk ${(analysis.vocal.risk * 100).toFixed(0)}% · ${analysis.vocal.regions?.length ?? 0} regions` : (analysis.vocalRisk != null ? `risk ${(analysis.vocalRisk * 100).toFixed(0)}%` : null);
+  return [
+    ['BPM', bpm], ['BPM conf', conf], ['Grid', grid], ['Key', analysis.key], ['Camelot', analysis.camelot], ['Key conf', keyConf],
+    ['Meter', analysis.meter ? `${analysis.meter.beatsPerBar}/4 (${(analysis.meter.confidence * 100).toFixed(0)}%)` : 'нет'],
+    ['Energy', analysis.energy == null ? null : analysis.energy.toFixed(2)],
+    ['Bands', bands], ['Vocal', vocal], ['Sections', sections],
+    ['Warnings', (analysis.warnings || []).slice(0, 2).join('; ') || 'нет'],
+  ];
+}
+function renderAiDiagnostics(info) {
+  const panel = $('aiDiagPanel');
+  if (!panel || panel.hidden) return;
+  const plan = info && info.planSummary;
+  aiDiagRows($('aiDiagA'), aiAnalysisRows(info && info.analysisA, 'A'));
+  aiDiagRows($('aiDiagB'), aiAnalysisRows(info && info.analysisB, 'B'));
+  const rows = plan ? [
+    ['Strategy', plan.strategy],
+    ['Start A', Number(plan.startAt).toFixed(2) + ' s'],
+    ['Entry B', Number(plan.inStart).toFixed(2) + ' s'],
+    ['Duration', `${Number(plan.durationSec).toFixed(1)} s / ${plan.durationBeats} beats`],
+    ['Target BPM', Number(plan.bpmTarget).toFixed(1)],
+    ['Rate A/B', `${Number(plan.rateOut).toFixed(3)} / ${Number(plan.rateIn).toFixed(3)}`],
+    ['Score', Number(plan.score).toFixed(3)],
+    ['Window', plan.window ? `${plan.window.score?.toFixed?.(2) ?? plan.window.score} · ${plan.window.uncertainty}` : null],
+    ['Evidence', plan.window && Array.isArray(plan.window.evidence) ? plan.window.evidence.join(', ') : null],
+    ['Deck B', info.deckBReady ? 'готов' : 'нет данных'],
+    ['Sync', info.mix ? `${Number(info.mix.progress * 100).toFixed(0)}%` : 'ожидание'],
+    ['Reason', (plan.reasons || []).slice(0, 3).join(' · ')],
+    ['Warnings', (plan.warnings || []).slice(0, 2).join('; ') || 'нет'],
+  ] : [['Plan', 'нет рассчитанного перехода']];
+  aiDiagRows($('aiDiagT'), rows);
+}
 function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
   if (!track) return;
   if (isSoundCloudTrack(track)) {
@@ -2822,7 +2869,24 @@ function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
 
 function initAiAutoMix() {
   if (!window.RH_AI_AUTOMIX) return;
-  const aiNextWidget = $('aiNextWidget');
+  const aiDiagToggle = $('aiDiagToggle');
+  const aiDiagPanel = $('aiDiagPanel');
+  if (aiDiagToggle && aiDiagPanel && !aiDiagToggle.dataset.bound) {
+    aiDiagToggle.dataset.bound = '1';
+    aiDiagToggle.addEventListener('click', () => {
+      const open = aiDiagPanel.hidden;
+      aiDiagPanel.hidden = !open;
+      aiDiagToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      aiDiagToggle.classList.toggle('is-on', open);
+      renderAiDiagnostics(window.RH_AI_AUTOMIX.getState());
+    });
+  }
+  const aiDiagClose = $('aiDiagClose');
+  if (aiDiagClose && !aiDiagClose.dataset.bound) {
+    aiDiagClose.dataset.bound = '1';
+    aiDiagClose.addEventListener('click', () => { if (aiDiagPanel) aiDiagPanel.hidden = true; if (aiDiagToggle) { aiDiagToggle.setAttribute('aria-expanded', 'false'); aiDiagToggle.classList.remove('is-on'); } });
+  }
+    const aiNextWidget = $('aiNextWidget');
   if (aiNextWidget && !aiNextWidget.dataset.bound) {
     aiNextWidget.dataset.bound = '1';
     aiNextWidget.addEventListener('click', aiSeekToTransition);

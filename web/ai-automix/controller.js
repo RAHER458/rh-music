@@ -658,6 +658,33 @@
     emit();
   }
 
+  function summarizeAnalysis(analysis) {
+    if (!analysis) return null;
+    const sections = Array.isArray(analysis.sections) ? analysis.sections : [];
+    return {
+      bpm: analysis.bpm,
+      bpmConfidence: analysis.bpmConfidence,
+      tempoStability: analysis.tempoStability,
+      tempoAlternatives: analysis.tempoAlternatives,
+      key: analysis.key,
+      camelot: analysis.camelot,
+      keyConfidence: analysis.keyConfidence,
+      meter: analysis.meter,
+      energy: analysis.intensity,
+      loudness: analysis.loudness,
+      bands: analysis.bands,
+      spectrum: analysis.spectrum,
+      vocalRisk: analysis.vocalRisk,
+      vocal: analysis.vocal,
+      grid: analysis.grid ? { bpm: analysis.grid.bpm, confidence: analysis.grid.confidence, beats: analysis.grid.beats?.length ?? 0, downbeats: analysis.grid.downbeats?.length ?? 0, barBars: analysis.grid.barBars, phraseBars: analysis.grid.phraseBars } : null,
+      phrases: analysis.phrases?.length ?? 0,
+      sections: sections.slice(0, 14).map((section) => ({ kind: section.kind, start: section.start, end: section.end, energy: section.energy })),
+      sectionCount: sections.length,
+      drums: analysis.drums,
+      warnings: analysis.warnings,
+    };
+  }
+
   function getState() {
     return {
       phase: state.phase,
@@ -681,6 +708,24 @@
       deckA: state.deckA ? { time: state.deckA.currentTime, duration: state.deckA.duration, paused: state.deckA.paused } : null,
       deckB: state.deckB ? { time: state.deckB.currentTime, duration: state.deckB.duration, paused: state.deckB.paused } : null,
       meter: state.engine && typeof state.engine.metrics === 'function' ? state.engine.metrics() : null,
+      analysisA: summarizeAnalysis(state.currentEntry ? state.currentEntry.analysis : null),
+      analysisB: summarizeAnalysis(state.pending ? state.pending.entry.analysis : null),
+      planSummary: state.pending ? {
+        strategy: state.pending.plan.strategy,
+        startAt: state.pending.plan.startAt,
+        outEnd: state.pending.plan.outEnd,
+        inStart: state.pending.plan.inStart,
+        durationSec: state.pending.plan.durationSec,
+        durationBeats: state.pending.plan.durationBeats,
+        bpmTarget: state.pending.plan.bpmTarget,
+        rateOut: state.pending.plan.rateOut,
+        rateIn: state.pending.plan.rateIn,
+        score: state.pending.plan.score,
+        reasons: state.pending.plan.reasons,
+        warnings: state.pending.plan.warnings,
+        window: state.pending.plan.window,
+      } : null,
+      deckBReady: !!(state.pending && state.deckB && state.deckB.buffer),
     };
   }
 

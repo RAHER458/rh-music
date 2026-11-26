@@ -1894,10 +1894,9 @@ function sectionConfidenceAt(analysis, time) {
  */
 function selectTransitionWindow(out, incoming, context, strategy, durationSec, timing = {}) {
     const duration = Math.max(0.6, durationSec);
-    const minStart = Math.max(0, context.position + 0.15, out.duration * 0.55, timing.minStartAt ?? 0);
+    const minStart = Math.max(0, context.position + 0.15, out.duration * 0.12, timing.minStartAt ?? 0);
     const maxStart = Math.max(minStart, out.duration - 0.5);
     const outCandidates = new Set();
-    outCandidates.add(Math.min(maxStart, out.cues.mixOut));
     outCandidates.add(Math.min(maxStart, context.position + 2));
     for (const section of out.sections) {
         if (section.start >= minStart && section.start <= maxStart)
@@ -1906,12 +1905,27 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
         if (late >= minStart && late <= maxStart)
             outCandidates.add(late);
     }
+    // Add phrase/downbeat candidates across the whole usable range so the
+    // planner can find a musical window before the outro as well.
+    const phraseStep = Math.max(4, out.grid?.phraseBars ? out.grid.phraseBars * 4 : 16);
+    const downbeats = out.grid?.downbeats ?? [];
+    for (let i = 0; i < downbeats.length; i += phraseStep) {
+        const value = downbeats[i];
+        if (value >= minStart && value <= maxStart) outCandidates.add(value);
+    }
+    for (const phrase of out.phrases ?? []) {
+        if (phrase >= minStart && phrase <= maxStart) outCandidates.add(phrase);
+    }
     const inCandidates = new Set();
     inCandidates.add(incoming.cues.intro);
     inCandidates.add(incoming.cues.mixIn);
     for (const section of incoming.sections) {
-        if (section.start <= Math.min(incoming.duration * 0.25, 45))
+        if (section.start <= Math.min(incoming.duration * 0.5, 90))
             inCandidates.add(section.start);
+    }
+    for (let i = 0; i < (incoming.grid?.downbeats ?? []).length; i += Math.max(4, incoming.grid?.phraseBars ? incoming.grid.phraseBars * 4 : 16)) {
+        const value = incoming.grid.downbeats[i];
+        if (value <= Math.min(incoming.duration * 0.5, 90)) inCandidates.add(value);
     }
     const windows = [];
     for (const rawStart of outCandidates) {
@@ -1942,12 +1956,22 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
             const phrase = phraseAligned(out, startAt) ? 0.1 : 0;
             const energyDelta = Math.abs((out.sections.find((s) => s.start <= startAt && s.end > startAt)?.energy ?? 0.5) - (incoming.sections.find((s) => s.start <= inStart && s.end > inStart)?.energy ?? 0.5));
             const energyScore = Math.max(0, 1 - energyDelta);
+            const harmonic = harmonicCompatibility(out, incoming, bpmRatio(out.bpm, incoming.bpm));
+            const bassConflict = Math.min(out.bands?.low ?? 0.3, incoming.bands?.low ?? 0.3);
             const vocalPenalty = strategy === 'vocal-safe' || strategy === 'vocal-handoff' ? vocalCollision * 0.08 : Math.max(0, vocalCollision - 0.2) * 0.35;
             const remainingFit = outEnd <= out.duration ? 0.08 : 0;
             const tail = Math.max(0, out.duration - startAt);
             const preferredTail = timing.preferredTailSec ?? Math.max(30, out.duration * 0.15);
-            const lateBonus = tail <= preferredTail ? 0.1 : 0;
-            const score = Math.max(0, Math.min(1, outScore * 0.3 + inScore * 0.28 + pairBonus + phrase + energyScore * 0.12 + remainingFit + lateBonus - vocalPenalty));
+            // A transition may end anywhere, but the planner must not drift to
+            // the outro by default: the final 12% gets a small structural penalty.
+            const latePenalty = startAt > out.duration - Math.max(20, out.duration * 0.12) ? 0.12 : 0;
+            const earlyPenalty = startAt < context.position + 6 ? 0.05 : 0;
+            const score = Math.max(0, Math.min(1,
+                outScore * 0.2 + inScore * 0.18 + pairBonus + phrase
+                + energyScore * 0.1 + remainingFit
+                + harmonic.score * 0.2 - harmonic.conflict * 0.08
+                - bassConflict * 0.03
+                - vocalPenalty - latePenalty - earlyPenalty));
             const outConfidence = sectionConfidenceAt(out, startAt);
             const inConfidence = sectionConfidenceAt(incoming, inStart);
             const confidence = outConfidence == null || inConfidence == null ? 0 : Math.min(outConfidence, inConfidence);
@@ -1966,7 +1990,7 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
                 score: Number(score.toFixed(4)),
                 reasons,
                 uncertainty: confidence > 0.65 ? 'low' : confidence > 0.35 ? 'medium' : 'high',
-                evidence: ['section', 'beatgrid', 'vocal', 'energy', 'cue'],
+                evidence: ['section', 'beatgrid', 'vocal', 'energy', 'camelot', 'cue'],
             });
         }
     }
@@ -2167,12 +2191,14 @@ function nearestDownbeat(analysis, time, direction = 'nearest') {
 }
 function timingPolicy(outgoing, context, durationSec, strategy) {
     const latestSafe = Math.max(context.position + 0.15, outgoing.duration - durationSec - 0.5);
-    // These styles may legitimately start before the outro only when their
-    // structural section exists; they still cannot start in the first third.
-    const structuralEarly = strategy === 'breakdown-to-drop' || strategy === 'build-up';
+    // Musical floor: the planner may use any structural section after the
+    // current position. It must not turn "near the end" into the default.
+    const structuralEarly = strategy === 'breakdown-to-drop' || strategy === 'build-up'
+        || strategy === 'ambient-fade' || strategy === 'cinematic'
+        || strategy === 'atmospheric' || strategy === 'reverb-transition';
     const floor = structuralEarly
-        ? Math.max(context.position + 0.15, outgoing.duration * 0.4)
-        : Math.max(context.position + 0.15, outgoing.duration * 0.72, outgoing.duration - Math.max(45, outgoing.duration * 0.22));
+        ? Math.max(context.position + 0.15, outgoing.duration * 0.12)
+        : Math.max(context.position + 0.15, outgoing.duration * 0.18);
     return {
         minStartAt: Math.min(floor, latestSafe),
         preferredTailSec: Math.max(30, outgoing.duration * 0.15),
@@ -2554,7 +2580,7 @@ function planTransition(outgoing, incoming, context, options = {}) {
         const usagePenalty = clamp(options.sessionStrategyPenalty?.[candidate.strategy] ?? 0, 0, 0.2);
         return {
             ...candidate,
-            score: clamp01(advisoryScore * 0.82 + structural * 0.18 - usagePenalty),
+            score: clamp01(advisoryScore * 0.55 + structural * 0.45 - usagePenalty),
             reasons: [...candidate.reasons, ...(advisory == null ? [] : [`advisory ${advisory.toFixed(2)}`]), `window ${structural.toFixed(2)}`],
         };
     }).sort((left, right) => right.score - left.score || left.strategy.localeCompare(right.strategy));
