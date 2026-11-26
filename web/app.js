@@ -2796,6 +2796,13 @@ function aiAnalysisRows(analysis, label) {
   const conf = analysis.bpmConfidence == null ? null : (analysis.bpmConfidence * 100).toFixed(0) + '%';
   const keyConf = analysis.keyConfidence == null ? null : (analysis.keyConfidence * 100).toFixed(0) + '%';
   const grid = analysis.grid ? `${analysis.grid.beats} beats · ${analysis.grid.downbeats} downbeats · phrase ${analysis.grid.phraseBars ?? '—'}` : 'нет';
+  const pg = analysis.pulsegrid;
+  const pulseRows = pg ? [
+    ['PulseGrid BPM', `${pg.bpm} · conf ${(pg.bpmConfidence * 100).toFixed(0)}%`],
+    ['PulseGrid key', `${pg.key || '—'} · ${pg.camelot || '—'} · conf ${(pg.keyConfidence * 100).toFixed(0)}%`],
+    ['PulseGrid cues', `out ${pg.mixOut == null ? '—' : Number(pg.mixOut).toFixed(1)}s · in ${pg.mixIn == null ? '—' : Number(pg.mixIn).toFixed(1)}s`],
+    ['Sources', analysis.provenance ? `bpm ${analysis.provenance.pulsegrid?.bpm || 'neural'} · key ${analysis.provenance.pulsegrid?.key || 'neural'}` : null],
+  ] : [['PulseGrid', 'нет данных']];
   const bands = analysis.bands ? `L${(analysis.bands.low * 100).toFixed(0)} M${(analysis.bands.mid * 100).toFixed(0)} H${(analysis.bands.high * 100).toFixed(0)}` : null;
   const sections = analysis.sections && analysis.sections.length
     ? analysis.sections.slice(0, 5).map((section) => `${section.kind}@${Math.round(section.start)}s`).join(' · ')
@@ -2806,6 +2813,7 @@ function aiAnalysisRows(analysis, label) {
     ['Meter', analysis.meter ? `${analysis.meter.beatsPerBar}/4 (${(analysis.meter.confidence * 100).toFixed(0)}%)` : 'нет'],
     ['Energy', analysis.energy == null ? null : analysis.energy.toFixed(2)],
     ['Bands', bands], ['Vocal', vocal], ['Sections', sections],
+    ...pulseRows,
     ['Warnings', (analysis.warnings || []).slice(0, 2).join('; ') || 'нет'],
   ];
 }

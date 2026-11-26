@@ -123,9 +123,20 @@
     }
     if (!data || data.byteLength < 1024) throw new Error('stream too short');
     const buffer = await state.ctx.decodeAudioData(data.slice(0));
-    const analysis = state.lib.analyzeAudioBuffer(adapter(buffer), {
+    let analysis = state.lib.analyzeAudioBuffer(adapter(buffer), {
       id: String(track.id), title: track.title, artist: track.artist,
     });
+    if (state.pulsegridBridge) {
+      try {
+        const pulse = await state.pulsegridBridge.analyzeWithPulseGrid(buffer);
+        if (pulse) {
+          analysis = state.pulsegridBridge.mergePulseGridAnalysis(analysis, pulse);
+          log('PulseGrid: BPM ' + pulse.bpm + ' · key ' + (pulse.key || '—') + ' · ' + (pulse.camelot || '—') + ' · conf ' + pulse.bpmConfidence);
+        }
+      } catch (error) {
+        log('PulseGrid анализ не удался: ' + (error && error.message ? error.message : String(error)));
+      }
+    }
     const context = state.core.analyzeTrack({
       id: String(track.id), title: track.title, artist: track.artist, analysis, source: 'rh-music stream',
     });
@@ -148,6 +159,13 @@
       state.core = state.lib.createAutoMixCore({ sessionId: 'rh-music' });
       state.core.initialize();
       setPhase('LOADING', 2);
+      try {
+        state.pulsegridBridge = await import(new URL('pulsegrid-bridge.js?v=1', MODULE_BASE).href);
+        log('PulseGrid bridge подключён');
+      } catch (error) {
+        state.pulsegridBridge = null;
+        log('PulseGrid bridge недоступен: ' + (error && error.message ? error.message : String(error)));
+      }
       state.core.setEnergyMode('Adaptive');
       setPhase('LOADING', 3);
       setPhase('LOADING', 4);
@@ -681,6 +699,18 @@
       sections: sections.slice(0, 14).map((section) => ({ kind: section.kind, start: section.start, end: section.end, energy: section.energy })),
       sectionCount: sections.length,
       drums: analysis.drums,
+      provenance: analysis.provenance,
+      pulsegrid: analysis.pulsegrid ? {
+        bpm: analysis.pulsegrid.bpm,
+        bpmConfidence: analysis.pulsegrid.bpmConfidence,
+        key: analysis.pulsegrid.key,
+        camelot: analysis.pulsegrid.camelot,
+        keyConfidence: analysis.pulsegrid.keyConfidence,
+        energy: analysis.pulsegrid.energy,
+        mixOut: analysis.pulsegrid.mixOut,
+        mixIn: analysis.pulsegrid.mixIn,
+        candidates: (analysis.pulsegrid.candidates || []).slice(0, 6),
+      } : null,
       warnings: analysis.warnings,
     };
   }

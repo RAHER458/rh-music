@@ -1916,6 +1916,12 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
     for (const phrase of out.phrases ?? []) {
         if (phrase >= minStart && phrase <= maxStart) outCandidates.add(phrase);
     }
+    // PulseGrid independently proposes energy-fall exit points; both analyzers
+    // now feed the same candidate pool.
+    if (out.pulsegrid?.mixOut != null && out.pulsegrid.mixOut >= minStart && out.pulsegrid.mixOut <= maxStart) outCandidates.add(out.pulsegrid.mixOut);
+    for (const candidate of out.pulsegrid?.candidates ?? []) {
+        if (candidate && candidate.kind === 'energy-fall' && candidate.at >= minStart && candidate.at <= maxStart) outCandidates.add(candidate.at);
+    }
     const inCandidates = new Set();
     inCandidates.add(incoming.cues.intro);
     inCandidates.add(incoming.cues.mixIn);
@@ -1969,11 +1975,13 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
                 : progress > 0.85 ? -0.2
                     : progress < 0.25 ? -0.08 : 0;
             const earlyPenalty = startAt < context.position + 6 ? 0.05 : 0;
+            const pulseCandidate = (out.pulsegrid?.candidates ?? []).some((candidate) => Math.abs(candidate.at - startAt) < 0.6);
+            const pulseBonus = pulseCandidate ? 0.06 : 0;
             const score = Math.max(0, Math.min(1,
                 outScore * 0.2 + inScore * 0.18 + pairBonus + phrase
                 + energyScore * 0.1 + remainingFit
                 + harmonic.score * 0.2 - harmonic.conflict * 0.08
-                - bassConflict * 0.03
+                - bassConflict * 0.03 + pulseBonus
                 - vocalPenalty + progressBonus - earlyPenalty));
             const outConfidence = sectionConfidenceAt(out, startAt);
             const inConfidence = sectionConfidenceAt(incoming, inStart);
@@ -1983,6 +1991,7 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
                 `energy Δ${energyDelta.toFixed(2)}`,
                 vocalCollision > 0.25 ? `vocal overlap ${vocalCollision.toFixed(2)}` : 'vocal overlap low',
                 phrase ? 'phrase-aligned' : 'internal phrase',
+                pulseCandidate ? 'PulseGrid energy-fall' : 'PulseGrid no-match',
             ];
             windows.push({
                 strategy,
