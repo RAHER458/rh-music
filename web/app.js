@@ -2909,6 +2909,27 @@ function initAiAutoMix() {
       renderAiDiagnostics(window.RH_AI_AUTOMIX.getState());
     });
   }
+  const aiLearnExport = $('aiLearnExport');
+  if (aiLearnExport && !aiLearnExport.dataset.bound) {
+    aiLearnExport.dataset.bound = '1';
+    aiLearnExport.addEventListener('click', () => {
+      const data = window.RH_AI_AUTOMIX && window.RH_AI_AUTOMIX.exportLearning();
+      if (!data) return;
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url; link.download = 'rh-ai-dj-learning.json'; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    });
+  }
+  const aiLearnReset = $('aiLearnReset');
+  if (aiLearnReset && !aiLearnReset.dataset.bound) {
+    aiLearnReset.dataset.bound = '1';
+    aiLearnReset.addEventListener('click', () => {
+      if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.resetLearning();
+      renderAiDiagnostics(window.RH_AI_AUTOMIX.getState());
+    });
+  }
   const aiFeedback = $('aiFeedback');
   if (aiFeedback && !aiFeedback.dataset.bound) {
     aiFeedback.dataset.bound = '1';
