@@ -1894,7 +1894,7 @@ function sectionConfidenceAt(analysis, time) {
  */
 function selectTransitionWindow(out, incoming, context, strategy, durationSec, timing = {}) {
     const duration = Math.max(0.6, durationSec);
-    const minStart = Math.max(0, context.position + 0.15, timing.minStartAt ?? out.duration * 0.25);
+    const minStart = Math.max(0, context.position + 0.15, timing.minStartAt ?? out.duration * 0.4);
     const maxStart = Math.max(minStart, out.duration - 0.5);
     const outCandidates = new Set();
     outCandidates.add(Math.min(maxStart, context.position + 2));
@@ -1971,8 +1971,8 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
             // Prefer the musically useful middle of the track, but still allow
             // a deliberate outro→intro when it is genuinely the best window.
             const progress = startAt / Math.max(1, out.duration);
-            const progressBonus = progress >= 0.3 && progress <= 0.8 ? 0.12
-                : progress > 0.85 ? -0.2
+            const progressBonus = progress >= 0.4 && progress <= 0.82 ? 0.12
+                : progress > 0.88 ? -0.22
                     : progress < 0.25 ? -0.08 : 0;
             const earlyPenalty = startAt < context.position + 6 ? 0.05 : 0;
             const pulseCandidate = (out.pulsegrid?.candidates ?? []).some((candidate) => Math.abs(candidate.at - startAt) < 0.6);
@@ -2205,7 +2205,7 @@ function timingPolicy(outgoing, context, durationSec, strategy, options = {}) {
     const latestSafe = Math.max(context.position + 0.15, outgoing.duration - durationSec - 0.5);
     // Protection against starting right after the intro. This is a floor, not
     // the planner: the actual point is still chosen from musical structure.
-    const minProgressRatio = clamp(options.minProgressRatio ?? 0.25, 0.08, 0.6);
+    const minProgressRatio = clamp(options.minProgressRatio ?? 0.4, 0.08, 0.6);
     const floor = Math.max(context.position + 0.15, outgoing.duration * minProgressRatio);
     return {
         minStartAt: Math.min(floor, latestSafe),
