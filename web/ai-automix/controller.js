@@ -622,6 +622,25 @@
     return true;
   }
 
+  function seekToTransitionLead(leadSeconds = 5) {
+    const pending = state.pending;
+    if (!pending || !pending.plan) return false;
+    const startAt = Number(pending.plan.startAt);
+    if (!Number.isFinite(startAt)) return false;
+    const target = Math.max(0, startAt - Math.max(0, Number(leadSeconds) || 5));
+    if (state.ownsPlayback && state.deckA) {
+      const wasPaused = !!state.paused || !!state.deckA.paused;
+      const safeTarget = Math.max(0, Math.min(target, Math.max(0, state.deckA.duration - 0.05)));
+      state.deckA.seek(safeTarget);
+      if (wasPaused) state.deckA.pause();
+      // План и подготовленный Deck B сохраняются: перемотка не должна
+      // запускать повторный анализ или сбрасывать точку перехода.
+      emit();
+      return true;
+    }
+    return false;
+  }
+
   function pause() {
     state.paused = true;
     try { state.deckA && state.deckA.pause(); state.deckB && state.deckB.pause(); } catch (_) {}
@@ -678,6 +697,7 @@
     pause,
     resume,
     seek,
+    seekToTransitionLead,
     invalidatePlan,
     getState,
     getDiagnostics,

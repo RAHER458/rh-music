@@ -2722,11 +2722,67 @@ function refreshAiAutoMixUI() {
   document.body.dataset.aiRingDone = document.body.dataset.aiRingDone || '';
   document.body.style.setProperty('--ai-ring-color', phase === 'MIXING' ? '#9B6BFF' : phase === 'PREPARING' || phase === 'ANALYZING' ? '#6C8CFF' : phase === 'DEGRADED' ? '#FFB35C' : '#7CFFCB');
   applyAiMixTimeline(info);
+  renderAiNextWidget(info);
   const button = $('aiAutomixBtn');
   if (button) button.title = label;
   if (info && info.ownsPlayback) updateTransport();
   const diagKey = phase + ':' + (mix ? mix.progress + ':' + mix.strategy : '-') + ':' + (info && info.preparing ? 'prep' : '');
   if (diagKey !== aiDiagState.last) { aiDiagState.last = diagKey; aiDiag('ai_state'); }
+}
+
+function renderAiNextWidget(info) {
+  const widget = $('aiNextWidget');
+  if (!widget) return;
+  const next = info && info.nextTrack;
+  if (!info || !info.active || !next) { widget.hidden = true; return; }
+  widget.hidden = false;
+  const title = $('aiNextTitle'); const artist = $('aiNextArtist');
+  const cover = $('aiNextCover'); const status = $('aiNextStatus'); const timer = $('aiNextTimer');
+  if (title) title.textContent = next.title || '—';
+  if (artist) artist.textContent = next.artist || '';
+  if (cover) {
+    if (next.cover) { cover.src = pic(next.cover, 160); cover.hidden = false; }
+    else { cover.removeAttribute('src'); cover.hidden = true; }
+  }
+  const owned = !!info.ownsPlayback;
+  const position = owned && info.deckA ? Number(info.deckA.time) || 0 : (audio.currentTime || 0);
+  const paused = owned && info.deckA ? !!info.deckA.paused : !!audio.paused;
+  const startAt = info.mix ? Number(info.mix.startAt) : NaN;
+  let label = 'Анализ структуры';
+  let timerText = '—';
+  if (info.phase === 'ANALYZING') label = 'Анализ трека';
+  else if (info.phase === 'PREPARING' || info.preparing) label = 'Подготовка перехода';
+  else if (info.phase === 'MIXING') { label = 'Выполнение перехода'; timerText = 'MIX'; }
+  else if (Number.isFinite(startAt)) {
+    label = paused ? 'Пауза' : 'Переход подготовлен';
+    const remain = Math.max(0, startAt - position);
+    timerText = 'Переход через ' + fmt(remain);
+  } else if (info.phase === 'DEGRADED') label = 'Ошибка обработки';
+  if (status) status.textContent = label;
+  if (timer) timer.textContent = timerText;
+  widget.classList.toggle('is-paused', paused);
+  widget.classList.toggle('is-mixing', info.phase === 'MIXING');
+  widget.setAttribute('aria-label', 'Neural AI: ' + (next.title || 'следующий трек') + '. ' + label + ' ' + timerText);
+}
+
+function aiSeekToTransition() {
+  const ai = window.RH_AI_AUTOMIX;
+  if (!ai) return;
+  const info = ai.getState();
+  if (!info || !info.mix || !Number.isFinite(Number(info.mix.startAt))) return;
+  const target = Math.max(0, Number(info.mix.startAt) - 5);
+  if (typeof ai.seekToTransitionLead === 'function' && ai.seekToTransitionLead(5)) {
+    refreshAiAutoMixUI();
+    return;
+  }
+  const wasPaused = audio.paused;
+  try {
+    const limit = Number.isFinite(audio.duration) && audio.duration > 0 ? Math.max(0, audio.duration - 0.5) : target;
+    audio.currentTime = Math.min(target, limit);
+  } catch (_) {}
+  if (wasPaused) { try { audio.pause(); } catch (_) {} }
+  syncSeek(audio.currentTime || 0, audio.duration || 0);
+  refreshAiAutoMixUI();
 }
 
 function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
@@ -2766,6 +2822,14 @@ function adoptAiTrack(track, strategy, label = 'AutoMix RH AI', options = {}) {
 
 function initAiAutoMix() {
   if (!window.RH_AI_AUTOMIX) return;
+  const aiNextWidget = $('aiNextWidget');
+  if (aiNextWidget && !aiNextWidget.dataset.bound) {
+    aiNextWidget.dataset.bound = '1';
+    aiNextWidget.addEventListener('click', aiSeekToTransition);
+    aiNextWidget.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); aiSeekToTransition(); }
+    });
+  }
   if (window.RH_LYRICS) {
     window.RH_LYRICS.setPositionProvider(() => {
       const ai = window.RH_AI_AUTOMIX;
