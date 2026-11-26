@@ -24,7 +24,7 @@ function memoryCache() {
 async function loadOrt() {
   if (!ortPromise) {
     ortPromise = (async () => {
-      const ort = await import(new URL('ort.wasm.min.mjs', ORT_BASE).href);
+      const ort = await import(new URL('ort.wasm.min.js', ORT_BASE).href);
       const env = ort.env || ort.default?.env;
       if (env) {
         env.wasm.wasmPaths = ORT_BASE.href;
