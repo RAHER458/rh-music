@@ -74,7 +74,7 @@ function inputShape(metadata, defaultShape) {
 
 function audioTensor(ort, samples, metadata) {
   const dims = metadata?.dims || [];
-  const shape = dims.length >= 3 ? [1, 1, samples.length] : dims.length === 2 ? [1, samples.length] : [samples.length];
+  const shape = dims.length >= 3 ? [1, 1, samples.length] : [1, samples.length];
   return new ort.Tensor('float32', samples, shape);
 }
 
