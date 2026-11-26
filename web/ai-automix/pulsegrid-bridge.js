@@ -4,7 +4,7 @@
    PulseGrid remains the source of its own values, Neural AI remains the
    planner/executor, and both sets of cues are offered to the planner. */
 
-const WORKER_URL = 'ai-mix-beta/pulsegrid-analysis-worker.js';
+const WORKER_URL = '/ai-mix-beta/pulsegrid-analysis-worker.js';
 let worker = null;
 let seq = 0;
 const pending = new Map();
