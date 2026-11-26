@@ -2853,8 +2853,19 @@ class AutoMixCore {
         }
         const chosen = sessionPlan.chosen;
         const advice = adviseTransition(active, chosen.context);
+        const external = options.advisory;
+        const mergedAdvice = external
+            ? {
+                ...advice,
+                ...external,
+                strategyScores: { ...advice.strategyScores, ...(external.strategyScores || {}) },
+                recommended: external.recommended || advice.recommended,
+                note: [advice.recommended ? `advisor: ${advice.recommended}` : '', external.note || ''].filter(Boolean).join(' · '),
+            }
+            : advice;
         const plan = planTransition(activeAnalysis, chosen.analysis, context, {
-            advisory: { strategyScores: advice.strategyScores, weight: 0.35, note: `advisor: ${advice.recommended}` },
+            advisory: { strategyScores: mergedAdvice.strategyScores, weight: external?.weight ?? 0.35, note: mergedAdvice.note },
+            minProgressRatio: options.minProgressRatio,
         });
         this.decisions += 1;
         this.strategyUsage[plan.strategy] = (this.strategyUsage[plan.strategy] || 0) + 1;

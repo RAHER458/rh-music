@@ -52,6 +52,9 @@
     fallbackPool: [],
     fallbackActive: false,
     playedIds: new Set(),
+    learning: null,
+    transitionMetrics: null,
+    lastTransition: null,
   };
 
   function emit() {
@@ -148,6 +151,14 @@
       state.core = state.lib.createAutoMixCore({ sessionId: 'rh-music' });
       state.core.initialize();
       setPhase('LOADING', 2);
+      try {
+        const learningModule = await import(new URL('adaptive-learning.js?v=1', MODULE_BASE).href);
+        state.learning = learningModule.createAdaptiveLearning({});
+        log('Adaptive Learning Engine активен · опыт ' + state.learning.summary().transitions);
+      } catch (error) {
+        state.learning = null;
+        log('Adaptive Learning Engine недоступен: ' + (error && error.message ? error.message : String(error)));
+      }
       state.core.setEnergyMode('Adaptive');
       setPhase('LOADING', 3);
       setPhase('LOADING', 4);
@@ -385,10 +396,15 @@
         paused: hostState.paused,
         remainingSec: Math.max(0, hostState.duration - hostState.currentTime),
       };
+      const learningAdvice = state.learning ? state.learning.advise({ analysisA: state.currentEntry.analysis, analysisB: entry.analysis, playback }) : null;
+      if (learningAdvice) log('Adaptive advice: ' + learningAdvice.note + ' · min ' + learningAdvice.suggestedMinProgress);
       const decision = state.core.decide(String(state.activeTrack.id), [{
         id: String(candidate.track.id), title: candidate.track.title, artist: candidate.track.artist,
         index: candidate.index, analysis: entry.analysis, context: entry.context,
-      }], history, playback, {});
+      }], history, playback, {
+        advisory: learningAdvice ? { strategyScores: learningAdvice.strategyScores, weight: 0.3, note: learningAdvice.note, recommended: learningAdvice.recommended } : undefined,
+        minProgressRatio: learningAdvice ? learningAdvice.suggestedMinProgress : undefined,
+      });
       if (epoch !== state.planEpoch) return;
       if (!decision.chosen || !decision.plan) { setPhase('DEGRADED'); log('AI не нашёл переход: ' + decision.reason); return; }
       let plan = decision.plan;
@@ -412,7 +428,7 @@
         plan = normalized.plan;
         if (normalized.clamped) log('Tempo shift ограничен безопасным диапазоном');
       }
-      state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan, fallback: !!candidate.fallback };
+      state.pending = { track: candidate.track, entry, analysis: entry.analysis, plan, fallback: !!candidate.fallback, learningAdvice, playback };
       state.deckB.loadBuffer(entry.buffer);
       state.deckB.cancelAutomation();
       log('AI выбрал: ' + decision.chosen.title + ' · ' + decision.plan.strategy);
@@ -511,6 +527,7 @@
       const started = Date.now();
       let pausedMs = 0;
       let last = started;
+      state.transitionMetrics = { peak: 0, rms: 0, clipping: false, samples: 0 };
       const timer = setInterval(() => {
         if (seq !== state.transitionSeq || state.phase === 'OFF' || !state.engine) {
           clearInterval(timer);
@@ -518,6 +535,16 @@
           return;
         }
         const now = Date.now();
+        try {
+          const meter = state.engine && typeof state.engine.metrics === 'function' ? state.engine.metrics() : null;
+          if (meter) {
+            state.transitionMetrics = state.transitionMetrics || { peak: 0, rms: 0, clipping: false, samples: 0 };
+            state.transitionMetrics.peak = Math.max(state.transitionMetrics.peak, Number(meter.peak) || 0);
+            state.transitionMetrics.rms = Math.max(state.transitionMetrics.rms, Number(meter.rms) || 0);
+            state.transitionMetrics.clipping = state.transitionMetrics.clipping || !!meter.clipping;
+            state.transitionMetrics.samples += 1;
+          }
+        } catch (_) {}
         if (state.paused) pausedMs += now - last;
         last = now;
         const wallLimit = (Number(durationSec) + 10) * 1000 + pausedMs;
@@ -564,6 +591,24 @@
       if (state.host && typeof state.host.onAdopt === 'function') state.host.onAdopt(pending.track, pending.plan.strategy);
       state.activeIndex = state.host.getState().index;
       log('Переход завершён: ' + pending.track.title);
+      if (state.learning && pending.plan) {
+        try {
+          const record = state.learning.observe({
+            id: 'transition-' + Date.now(),
+            plan: pending.plan,
+            analysisA: state.currentEntry ? state.currentEntry.analysis : null,
+            analysisB: pending.analysis,
+            playback: pending.playback || hostState,
+            metrics: state.transitionMetrics,
+            features: undefined,
+          });
+          state.lastTransition = record;
+          log('Adaptive quality: ' + record.quality + ' · ' + (record.success ? 'ok' : 'weak'));
+        } catch (error) {
+          log('Adaptive outcome не сохранён: ' + (error && error.message ? error.message : String(error)));
+        }
+      }
+      state.transitionMetrics = null;
       setPhase('ACTIVE');
       await planNext();
     } catch (error) {
@@ -734,6 +779,13 @@
         window: state.pending.plan.window,
       } : null,
       deckBReady: !!(state.pending && state.deckB && state.deckB.buffer),
+      learning: state.learning ? state.learning.summary() : null,
+      lastTransition: state.lastTransition ? {
+        id: state.lastTransition.id, quality: state.lastTransition.quality,
+        success: state.lastTransition.success, strategy: state.lastTransition.strategy,
+        auto: state.lastTransition.auto, userFeedback: state.lastTransition.userFeedback,
+        features: state.lastTransition.features,
+      } : null,
     };
   }
 
@@ -754,6 +806,11 @@
     invalidatePlan,
     getState,
     getDiagnostics,
+    feedback(type) { return state.learning ? state.learning.feedback(type) : null; },
+    learningSummary() { return state.learning ? state.learning.summary() : null; },
+    exportLearning() { return state.learning ? state.learning.exportData() : null; },
+    resetLearning() { return state.learning ? state.learning.reset() : null; },
+    rollbackLearning() { return state.learning ? state.learning.rollback() : false; },
     isActive() { return state.phase !== 'OFF' && state.phase !== 'ERROR'; },
     ownsPlayback() { return state.ownsPlayback; },
     releaseToStandard,
