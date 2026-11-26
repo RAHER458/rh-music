@@ -1,0 +1,246 @@
+{
+  "createdAt": "2026-11-27",
+  "note": "Provisional Zvuk corpus for exploratory validation; no independent reference annotations.",
+  "tracks": [
+    {
+      "id": "142806026",
+      "title": "House Music",
+      "artist": "Boris Brejcha, Arctic Lake",
+      "duration": 393,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "159557217",
+      "title": "House Music",
+      "artist": "Deep House Music",
+      "duration": 120,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "124367594",
+      "title": "HOUSE MUSIC",
+      "artist": "Swisher",
+      "duration": 138,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "113477586",
+      "title": "House Music",
+      "artist": "Addyist",
+      "duration": 205,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "152873719",
+      "title": "House Music",
+      "artist": "L, F, D, M",
+      "duration": 352,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "168974478",
+      "title": "House Music",
+      "artist": "罗华旺",
+      "duration": 103,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "155908100",
+      "title": "House Music",
+      "artist": "Krema",
+      "duration": 353,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "176882699",
+      "title": "House Music",
+      "artist": "Cupertino",
+      "duration": 217,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "86886305",
+      "title": "House Music",
+      "artist": "AudioBytes",
+      "duration": 363,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "154838273",
+      "title": "House Music",
+      "artist": "Casella",
+      "duration": 279,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "159772414",
+      "title": "House Music",
+      "artist": "House Beats",
+      "duration": 120,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "115419773",
+      "title": "House Music",
+      "artist": "Mitch",
+      "duration": 259,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "139887878",
+      "title": "House Music",
+      "artist": "Groovyie",
+      "duration": 169,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "177303640",
+      "title": "House Music",
+      "artist": "Seldom",
+      "duration": 375,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "183869633",
+      "title": "house music",
+      "artist": "deejayholera",
+      "duration": 104,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "160436525",
+      "title": "House music",
+      "artist": "ISMUKA",
+      "duration": 384,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "49024017",
+      "title": "House Music",
+      "artist": "NoizX",
+      "duration": 380,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "164694303",
+      "title": "House Music",
+      "artist": "Fizzikx",
+      "duration": 348,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "120837186",
+      "title": "House Music",
+      "artist": "GABDEZ",
+      "duration": 188,
+      "query": "house music",
+      "source": "zvuk"
+    },
+    {
+      "id": "86433431",
+      "title": "Deep House",
+      "artist": "Руки вверх!",
+      "duration": 201,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "81435974",
+      "title": "Deep House",
+      "artist": "Deep House",
+      "duration": 232,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "149218960",
+      "title": "Deep House",
+      "artist": "Villosoul",
+      "duration": 416,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "159474964",
+      "title": "Deep House",
+      "artist": "Deep House Music",
+      "duration": 120,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "136477116",
+      "title": "Deep House",
+      "artist": "MehiloveSound",
+      "duration": 133,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "159758596",
+      "title": "Deep House",
+      "artist": "Deep House Lounge",
+      "duration": 120,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "182937339",
+      "title": "To The Sun (Deep House)",
+      "artist": "fluffysnaff",
+      "duration": 220,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "182127595",
+      "title": "Deep house",
+      "artist": "sivento",
+      "duration": 242,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "159455086",
+      "title": "Deep House",
+      "artist": "Deep Chill House",
+      "duration": 120,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "141020380",
+      "title": "Deep House",
+      "artist": "AnDerington",
+      "duration": 192,
+      "query": "deep house",
+      "source": "zvuk"
+    },
+    {
+      "id": "142465668",
+      "title": "Deep House",
+      "artist": "Rasster",
+      "duration": 163,
+      "query": "deep house",
+      "source": "zvuk"
+    }
+  ]
+}

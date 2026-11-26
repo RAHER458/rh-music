@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RH Neural AI · Beat Intelligence Validation</title>
+<link rel="stylesheet" href="validation.css">
+</head>
+<body>
+<main>
+  <p class="kicker">RH NEURAL AI · VALIDATION</p>
+  <h1>Beat Intelligence Validation</h1>
+  <p class="sub">Отдельный инструмент. Запускает Neural AI, PulseGrid и Beat This независимо на реальном аудио и считает метрики. Не влияет на основной плеер и Production.</p>
+  <div class="actions">
+    <button id="run60" type="button">Run corpus · 60s</button>
+    <button id="runFull" type="button">Run first 5 · full track</button>
+    <button id="export" type="button">Export JSON</button>
+    <button id="clear" type="button">Clear</button>
+  </div>
+  <p id="status">Готово. Нажми Run corpus.</p>
+  <div id="summary"></div>
+  <div id="table"></div>
+</main>
+<script type="module" src="validation-page.js"></script>
+</body>
+</html>
