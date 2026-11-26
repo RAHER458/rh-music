@@ -114,16 +114,16 @@ function median(values) {
 }
 
 function logmelToModelLayout(array, shape, timeLength) {
-  // logmel output is expected as [1,128,T] or [1,T,128]; normalise to [1,128,T].
+  // Beat This expects [frames, 128] mel frames; normalise any [1,128,T]/[1,T,128].
   const dims = shape || [];
   const total = array.length;
   if (dims.length === 3) {
     const [, d1, d2] = dims;
-    if (d1 === 128) return { data: array, channels: 128, frames: Math.min(d2, timeLength) };
-    if (d2 === 128) {
-      const frames = d1;
+    if (d2 === 128) return { data: array, channels: 128, frames: Math.min(d1, timeLength) };
+    if (d1 === 128) {
+      const frames = d2;
       const out = new Float32Array(total);
-      for (let t = 0; t < frames; t += 1) for (let c = 0; c < 128; c += 1) out[c * frames + t] = array[t * 128 + c];
+      for (let c = 0; c < 128; c += 1) for (let t = 0; t < frames; t += 1) out[t * 128 + c] = array[c * frames + t];
       return { data: out, channels: 128, frames };
     }
   }
@@ -146,13 +146,13 @@ async function runBeatWindow(ort, melData, channels, frames) {
   const inputName = beatSession.inputNames[0];
   const meta = beatSession.inputMetadata?.[inputName];
   const targetFrames = MAX_FRAMES;
-  const buffer = new Float32Array(channels * targetFrames);
+  const buffer = new Float32Array(targetFrames * channels);
   const copyFrames = Math.min(frames, targetFrames);
-  for (let c = 0; c < channels; c += 1) {
-    for (let t = 0; t < copyFrames; t += 1) buffer[c * targetFrames + t] = melData[c * frames + t] || 0;
+  for (let t = 0; t < copyFrames; t += 1) {
+    for (let c = 0; c < channels; c += 1) buffer[t * channels + c] = melData[t * channels + c] || 0;
   }
-  const dims = meta?.dims || [1, channels, targetFrames];
-  const shape = dims.length === 3 ? [1, dims[1] && dims[1] > 0 ? dims[1] : channels, targetFrames] : [1, channels, targetFrames];
+  const dims = meta?.dims || [1, targetFrames, channels];
+  const shape = [1, targetFrames, dims[2] && dims[2] > 0 ? dims[2] : channels];
   const tensor = new ort.Tensor('float32', buffer, shape);
   const results = await beatSession.run({ [inputName]: tensor });
   const beatName = beatSession.outputNames.find((name) => /beat/i.test(name) && !/down/i.test(name)) || beatSession.outputNames[0];
@@ -194,8 +194,8 @@ export async function analyzeBeatThis(buffer, options = {}) {
   for (let start = 0; start < logmel.frames; start += hop) {
     const count = Math.min(MAX_FRAMES, logmel.frames - start);
     const windowData = new Float32Array(logmel.channels * count);
-    for (let c = 0; c < logmel.channels; c += 1) {
-      for (let t = 0; t < count; t += 1) windowData[c * count + t] = logmel.data[c * logmel.frames + start + t] || 0;
+    for (let t = 0; t < count; t += 1) {
+      for (let c = 0; c < logmel.channels; c += 1) windowData[t * logmel.channels + c] = logmel.data[(start + t) * logmel.channels + c] || 0;
     }
     const result = await runBeatWindow(ort, windowData, logmel.channels, count);
     const beatPeaks = pickPeaks(result.beat, { threshold: 0.5, minGapFrames: 8 });
