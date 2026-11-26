@@ -2817,8 +2817,13 @@ function renderAiDiagnostics(info) {
   aiDiagRows($('aiDiagB'), aiAnalysisRows(info && info.analysisB, 'B'));
   const rows = plan ? [
     ['Strategy', plan.strategy],
+    ['Min allowed', plan.minAllowedStart == null ? null : Number(plan.minAllowedStart).toFixed(2) + ' s (' + Math.round((plan.minProgressRatio || 0) * 100) + '%)'],
     ['Start A', Number(plan.startAt).toFixed(2) + ' s'],
+    ['End A', Number(plan.outEnd).toFixed(2) + ' s'],
     ['Entry B', Number(plan.inStart).toFixed(2) + ' s'],
+    ['Sections', plan.outSection && plan.inSection ? plan.outSection + ' → ' + plan.inSection : null],
+    ['Phrase/Bar', (plan.phraseAligned ? 'phrase aligned' : 'internal phrase') + (plan.barAligned === false ? ' · bar off' : '')],
+    ['Early rejected', plan.rejectedEarlyCandidates == null ? null : String(plan.rejectedEarlyCandidates)],
     ['Duration', `${Number(plan.durationSec).toFixed(1)} s / ${plan.durationBeats} beats`],
     ['Target BPM', Number(plan.bpmTarget).toFixed(1)],
     ['Rate A/B', `${Number(plan.rateOut).toFixed(3)} / ${Number(plan.rateIn).toFixed(3)}`],

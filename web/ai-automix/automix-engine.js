@@ -1894,7 +1894,7 @@ function sectionConfidenceAt(analysis, time) {
  */
 function selectTransitionWindow(out, incoming, context, strategy, durationSec, timing = {}) {
     const duration = Math.max(0.6, durationSec);
-    const minStart = Math.max(0, context.position + 0.15, out.duration * 0.12, timing.minStartAt ?? 0);
+    const minStart = Math.max(0, context.position + 0.15, timing.minStartAt ?? out.duration * 0.25);
     const maxStart = Math.max(minStart, out.duration - 0.5);
     const outCandidates = new Set();
     outCandidates.add(Math.min(maxStart, context.position + 2));
@@ -1962,16 +1962,19 @@ function selectTransitionWindow(out, incoming, context, strategy, durationSec, t
             const remainingFit = outEnd <= out.duration ? 0.08 : 0;
             const tail = Math.max(0, out.duration - startAt);
             const preferredTail = timing.preferredTailSec ?? Math.max(30, out.duration * 0.15);
-            // A transition may end anywhere, but the planner must not drift to
-            // the outro by default: the final 12% gets a small structural penalty.
-            const latePenalty = startAt > out.duration - Math.max(20, out.duration * 0.12) ? 0.12 : 0;
+            // Prefer the musically useful middle of the track, but still allow
+            // a deliberate outro→intro when it is genuinely the best window.
+            const progress = startAt / Math.max(1, out.duration);
+            const progressBonus = progress >= 0.3 && progress <= 0.8 ? 0.12
+                : progress > 0.85 ? -0.2
+                    : progress < 0.25 ? -0.08 : 0;
             const earlyPenalty = startAt < context.position + 6 ? 0.05 : 0;
             const score = Math.max(0, Math.min(1,
                 outScore * 0.2 + inScore * 0.18 + pairBonus + phrase
                 + energyScore * 0.1 + remainingFit
                 + harmonic.score * 0.2 - harmonic.conflict * 0.08
                 - bassConflict * 0.03
-                - vocalPenalty - latePenalty - earlyPenalty));
+                - vocalPenalty + progressBonus - earlyPenalty));
             const outConfidence = sectionConfidenceAt(out, startAt);
             const inConfidence = sectionConfidenceAt(incoming, inStart);
             const confidence = outConfidence == null || inConfidence == null ? 0 : Math.min(outConfidence, inConfidence);
@@ -2189,18 +2192,15 @@ function nearestDownbeat(analysis, time, direction = 'nearest') {
     }
     return bestD <= 2.5 ? best : clamp(time, 0, analysis.duration);
 }
-function timingPolicy(outgoing, context, durationSec, strategy) {
+function timingPolicy(outgoing, context, durationSec, strategy, options = {}) {
     const latestSafe = Math.max(context.position + 0.15, outgoing.duration - durationSec - 0.5);
-    // Musical floor: the planner may use any structural section after the
-    // current position. It must not turn "near the end" into the default.
-    const structuralEarly = strategy === 'breakdown-to-drop' || strategy === 'build-up'
-        || strategy === 'ambient-fade' || strategy === 'cinematic'
-        || strategy === 'atmospheric' || strategy === 'reverb-transition';
-    const floor = structuralEarly
-        ? Math.max(context.position + 0.15, outgoing.duration * 0.12)
-        : Math.max(context.position + 0.15, outgoing.duration * 0.18);
+    // Protection against starting right after the intro. This is a floor, not
+    // the planner: the actual point is still chosen from musical structure.
+    const minProgressRatio = clamp(options.minProgressRatio ?? 0.25, 0.08, 0.6);
+    const floor = Math.max(context.position + 0.15, outgoing.duration * minProgressRatio);
     return {
         minStartAt: Math.min(floor, latestSafe),
+        minProgressRatio,
         preferredTailSec: Math.max(30, outgoing.duration * 0.15),
     };
 }
@@ -2576,11 +2576,13 @@ function planTransition(outgoing, incoming, context, options = {}) {
         const advisory = options.advisory?.strategyScores[candidate.strategy];
         const advisoryScore = advisory == null ? candidate.score : clamp01(candidate.score * (1 - weight) + advisory * weight);
         const duration = durationBeats(candidate.strategy, options.minDurationBeats ?? 4, options.maxDurationBeats ?? 32) * (60 / outBpmForWindow);
-        const structural = selectTransitionWindow(outgoing, incoming, context, candidate.strategy, duration, timingPolicy(outgoing, context, duration, candidate.strategy)).score;
+        const structuralWindow = selectTransitionWindow(outgoing, incoming, context, candidate.strategy, duration, timingPolicy(outgoing, context, duration, candidate.strategy, options));
+        const structural = structuralWindow.score;
         const usagePenalty = clamp(options.sessionStrategyPenalty?.[candidate.strategy] ?? 0, 0, 0.2);
         return {
             ...candidate,
             score: clamp01(advisoryScore * 0.55 + structural * 0.45 - usagePenalty),
+            structuralWindow,
             reasons: [...candidate.reasons, ...(advisory == null ? [] : [`advisory ${advisory.toFixed(2)}`]), `window ${structural.toFixed(2)}`],
         };
     }).sort((left, right) => right.score - left.score || left.strategy.localeCompare(right.strategy));
@@ -2605,7 +2607,7 @@ function planTransition(outgoing, incoming, context, options = {}) {
         durationSec = Math.max(0.6, incoming.duration - inStart - 0.2);
         beats = Math.max(1, Math.floor((durationSec / (60 / Math.max(40, bpm.target))) * 2) / 2);
     }
-    const timing = timingPolicy(outgoing, context, durationSec, selected.strategy);
+    const timing = timingPolicy(outgoing, context, durationSec, selected.strategy, options);
     const window = selectTransitionWindow(outgoing, incoming, context, selected.strategy, durationSec, timing);
     startAt = window.startAt;
     const outEnd = clamp(window.outEnd, startAt + 0.2, outgoing.duration);
@@ -2632,7 +2634,20 @@ function planTransition(outgoing, incoming, context, options = {}) {
         filter: buildFilter(selected.strategy),
         gain: buildGain(selected.strategy),
         score: selected.score,
-        reasons: [...selected.reasons, `Окно ${window.reasons.join(', ')}`, `timing floor ${timing.minStartAt.toFixed(1)}s`, `Длительность ${beats} beats / ${durationSec.toFixed(1)} s`, `rate ${bpm.rateIn.toFixed(3)}`, ...(options.advisory?.note ? [options.advisory.note] : [])],
+        minAllowedStart: round(timing.minStartAt, 3),
+        minProgressRatio: timing.minProgressRatio,
+        outSection: sectionAt(outgoing, startAt),
+        inSection: sectionAt(incoming, window.inStart),
+        phraseAligned: phraseAligned(outgoing, startAt),
+        barAligned: (() => { const grid = outgoing.grid; if (!grid?.downbeats?.length) return null; const nearest = nearestDownbeat(outgoing, startAt); return nearest == null ? null : Math.abs(nearest - startAt) <= 0.09; })(),
+        candidates: candidates.slice(0, 6).map((candidate) => ({
+            strategy: candidate.strategy,
+            score: round(candidate.score, 3),
+            startAt: candidate.structuralWindow ? round(candidate.structuralWindow.startAt, 2) : null,
+            reasons: candidate.reasons.slice(-2),
+        })),
+        rejectedEarlyCandidates: candidates.filter((candidate) => candidate.structuralWindow && candidate.structuralWindow.startAt < timing.minStartAt - 0.05).length,
+        reasons: [...selected.reasons, `Окно ${window.reasons.join(', ')}`, `Минимальная позиция ${timing.minStartAt.toFixed(1)}s (${(timing.minProgressRatio * 100).toFixed(0)}%)`, `Длительность ${beats} beats / ${durationSec.toFixed(1)} s`, `rate ${bpm.rateIn.toFixed(3)}`, ...(options.advisory?.note ? [options.advisory.note] : [])],
         warnings: [...selected.warnings, ...outgoing.warnings.slice(0, 1), ...incoming.warnings.slice(0, 1), ...(window.uncertainty === 'high' ? ['Структурное окно неопределённо; используется beatgrid/cue fallback'] : []), ...(selected.strategy === 'loop-assisted' && !loop ? ['Loop недоступен: нет надёжного beatgrid; используется безопасный fallback'] : [])],
         window: { score: window.score, uncertainty: window.uncertainty, evidence: window.evidence, reasons: window.reasons },
         loop: loop ? { start: round(loop.start, 3), end: round(loop.end, 3), lengthBeats: loop.lengthBeats, confidence: loop.confidence } : undefined,
