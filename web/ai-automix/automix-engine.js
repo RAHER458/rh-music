@@ -1716,12 +1716,15 @@ function segmentCompatibility(out, incoming, startAt, inStart, tempoRatio, strat
     if (bassOverlap > 0.36 && !bassAllowed) penalties.push('bass overlap без bass-swap/filter');
     if (vocalOverlap > 0.35 && !vocalAllowed) penalties.push('vocal overlap');
     if (energyDelta > 0.45) penalties.push('резкий energy delta');
-    let score = 0.5;
-    score += harmonic.score * 0.24;
-    score += (1 - Math.min(1, energyDelta * 1.2)) * 0.28;
-    score += (1 - Math.min(1, spectralDelta)) * 0.14;
-    score += Math.min(1, 1 - bassOverlap * 0.55) * 0.16;
-    score += Math.min(1, 1 - vocalOverlap * 0.7) * 0.18;
+    const components = [
+        { weight: 0.24, value: harmonic.score },
+        { weight: 0.28, value: 1 - Math.min(1, energyDelta * 1.2) },
+        { weight: 0.14, value: 1 - Math.min(1, spectralDelta) },
+        { weight: 0.16, value: Math.max(0, 1 - bassOverlap * 0.55) },
+        { weight: 0.18, value: Math.max(0, 1 - vocalOverlap * 0.7) },
+    ];
+    const weightSum = components.reduce((sum, entry) => sum + entry.weight, 0);
+    let score = components.reduce((sum, entry) => sum + entry.value * entry.weight, 0) / weightSum;
     score -= penalties.length * 0.06;
     if (outSegment.kind && inSegment.kind && outSegment.kind === inSegment.kind) score += 0.03;
     return {
