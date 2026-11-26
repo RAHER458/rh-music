@@ -406,7 +406,9 @@
       const decision = state.core.decide(String(state.activeTrack.id), [{
         id: String(candidate.track.id), title: candidate.track.title, artist: candidate.track.artist,
         index: candidate.index, analysis: entry.analysis, context: entry.context,
-      }], history, playback, {});
+      }], history, playback, {
+        mixIntensity: state.host && typeof state.host.getMixIntensity === 'function' ? state.host.getMixIntensity() : 0.65,
+      });
       if (epoch !== state.planEpoch) return;
       if (!decision.chosen || !decision.plan) { setPhase('DEGRADED'); log('AI не нашёл переход: ' + decision.reason); return; }
       let plan = decision.plan;
@@ -762,6 +764,7 @@
         filter: state.pending.plan.filter,
         gain: state.pending.plan.gain,
         effects: state.pending.plan.effects,
+        mixIntensity: state.pending.plan.mixIntensity,
         score: state.pending.plan.score,
         reasons: state.pending.plan.reasons,
         warnings: state.pending.plan.warnings,

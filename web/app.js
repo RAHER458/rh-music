@@ -2844,6 +2844,7 @@ function renderAiDiagnostics(info) {
     ['EQ mid out/in', plan.eq && plan.eq.out && plan.eq.in ? `${plan.eq.out.mid?.[0]?.value ?? 0} / ${plan.eq.in.mid?.[0]?.value ?? 0} dB` : null],
     ['Filter out/in', plan.filter && plan.filter.out && plan.filter.in ? `${plan.filter.out[0]?.value ?? 0} / ${plan.filter.in[0]?.value ?? 0}` : null],
     ['Effects', plan.effects ? `echo ${Number(plan.effects.echo || 0).toFixed(2)} · reverb ${Number(plan.effects.reverb || 0).toFixed(2)}` : null],
+    ['Intensity', plan.mixIntensity == null ? null : Math.round(plan.mixIntensity * 100) + '%'],
     ['Reason', (plan.reasons || []).slice(0, 3).join(' · ')],
     ['Warnings', (plan.warnings || []).slice(0, 2).join('; ') || 'нет'],
   ] : [['Plan', 'нет рассчитанного перехода']];

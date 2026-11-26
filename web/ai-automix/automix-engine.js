@@ -2661,6 +2661,21 @@ function planTransition(outgoing, incoming, context, options = {}) {
         window: { score: window.score, uncertainty: window.uncertainty, evidence: window.evidence, reasons: window.reasons },
         loop: loop ? { start: round(loop.start, 3), end: round(loop.end, 3), lengthBeats: loop.lengthBeats, confidence: loop.confidence } : undefined,
     };
+    // A softer musical intensity keeps the same strategy and timing while
+    // reducing EQ/filter/effect depth. The fader curves are not scaled, so the
+    // mix still completes; only the tone/effects treatment is gentler.
+    const mixIntensity = clamp(options.mixIntensity ?? 0.7, 0.25, 1);
+    if (mixIntensity !== 1) {
+        for (const side of ['out', 'in']) {
+            for (const band of ['low', 'mid', 'high']) {
+                plan.eq[side][band] = plan.eq[side][band].map((point) => ({ ...point, value: round(point.value * mixIntensity, 3) }));
+            }
+            plan.filter[side] = plan.filter[side].map((point) => ({ ...point, value: round(point.value * mixIntensity, 3) }));
+        }
+        plan.effects.echo = round(plan.effects.echo * mixIntensity, 3);
+        plan.effects.reverb = round(plan.effects.reverb * mixIntensity, 3);
+    }
+    plan.mixIntensity = mixIntensity;
     validatePlan(plan, outgoing, incoming, context);
     return plan;
 }
@@ -2864,6 +2879,7 @@ class AutoMixCore {
         const advice = adviseTransition(active, chosen.context);
         const plan = planTransition(activeAnalysis, chosen.analysis, context, {
             advisory: { strategyScores: advice.strategyScores, weight: 0.35, note: `advisor: ${advice.recommended}` },
+            mixIntensity: options.mixIntensity,
         });
         this.decisions += 1;
         this.strategyUsage[plan.strategy] = (this.strategyUsage[plan.strategy] || 0) + 1;
