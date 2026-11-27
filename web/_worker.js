@@ -26,7 +26,7 @@ const SECURITY_HEADERS = {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "script-src 'self' https://accounts.google.com",
+    "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://cdn-image.zvuk.com https://*.zvuk.com https://*.sndcdn.com https://*.googleusercontent.com",
     "media-src 'self' blob: https://*.soundcloud.cloud",
