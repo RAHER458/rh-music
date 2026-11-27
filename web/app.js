@@ -4398,6 +4398,14 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'ai-automix-toggle') {
     if (isSoundCloudTrack(S.current)) return;
+    if (!S.current && Array.isArray(S.queue) && S.queue.length) {
+      const first = S.queue[0];
+      if (first && !isSoundCloudTrack(first)) {
+        try { setQueue(S.queue, 0); playIndex(0); } catch (_) {}
+        setTimeout(() => { if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle(); refreshAiAutoMixUI(); }, 700);
+        return;
+      }
+    }
     if (window.RH_AI_AUTOMIX) window.RH_AI_AUTOMIX.toggle();
     refreshAiAutoMixUI();
     return;

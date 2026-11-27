@@ -39,3 +39,8 @@
 .ai-diag dd{margin:0;color:#dfe6ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ai-diag .ai-diag-wide{grid-column:1/-1}
 @media(max-width:760px){.ai-diag-cols{grid-template-columns:1fr}.ai-diag{max-height:54vh;bottom:calc(72px + env(safe-area-inset-bottom,0px))}}
+
+.ai-automix-toggle{display:inline-flex;align-items:center;gap:6px}
+.ai-mix-label{font-size:10px;font-weight:800;letter-spacing:.08em;color:#7CFFCB}
+.ai-automix-toggle.is-on .ai-mix-label{color:#fff}
+@media(max-width:520px){.ai-mix-label{font-size:9px}}
