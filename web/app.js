@@ -1921,6 +1921,7 @@ function openTrackMenu(track) {
       <button class="sheet-item" type="button" data-action="sheet-toggle-save" data-id="${esc(track.id)}">
         ${saved ? ICONS.heartFilled : ICONS.heart} ${saved ? 'Убрать из моей музыки' : 'Сохранить в мою музыку'}
       </button>
+      <button class="sheet-item" type="button" data-action="sheet-add-queue" data-id="${esc(track.id)}">${ICONS.plus} Добавить в очередь</button>
       <button class="sheet-item" type="button" data-action="sheet-add-playlist" data-id="${esc(track.id)}">${ICONS.list} Добавить в плейлист</button>
       ${track.artistId ? `<a class="sheet-item" href="#/artist/${esc(track.artistId)}" data-link data-close-sheet>${ICONS.user} Перейти к исполнителю</a>` : ''}
       ${track.albumId ? `<a class="sheet-item" href="#/album/${esc(track.albumId)}" data-link data-close-sheet>${ICONS.note} Открыть альбом</a>` : ''}
@@ -4528,6 +4529,18 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  if (action === 'sheet-add-queue') {
+    const track = S.sheetTrack;
+    if (track) {
+      const currentIndex = S.current ? S.queue.findIndex((item) => String(item.id) === String(S.current.id)) : -1;
+      if (currentIndex >= 0) S.queue.splice(currentIndex + 1, 0, track);
+      else S.queue.push(track);
+      renderQueue();
+      toast('Добавлено в очередь: ' + track.title, 'info');
+    }
+    sheetClose();
+    return;
+  }
   if (action === 'sheet-add-playlist') {
     const track = S.sheetTrack;
     if (track) openPlaylistPicker(track);
