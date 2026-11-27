@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07080d">
+<title>RH Neural AI · Reference Annotation</title>
+<link rel="stylesheet" href="annotation.css">
+</head>
+<body>
+<main>
+  <p class="kicker">RH NEURAL AI · REFERENCE ANNOTATION</p>
+  <h1>Ручная разметка ритма</h1>
+  <p class="sub">Размечай Beat и Downbeat по слуху. Результаты Neural AI, PulseGrid и Beat This здесь не показываются и не используются как подсказка.</p>
+
+  <section class="toolbar">
+    <label class="file">Аудио<input id="file" type="file" accept="audio/*"></label>
+    <label>Track ID<input id="trackId" type="text" placeholder="track_001"></label>
+    <label>Annotator<input id="annotator" type="text" value="annotator_1"></label>
+  </section>
+
+  <section class="wave-wrap">
+    <canvas id="wave" width="1200" height="220"></canvas>
+    <div class="playhead" id="playhead"></div>
+  </section>
+
+  <section class="transport">
+    <button id="play" type="button">▶ Play</button>
+    <button id="back1" type="button">−1s</button>
+    <button id="fwd1" type="button">+1s</button>
+    <button id="back5" type="button">−5s</button>
+    <button id="fwd5" type="button">+5s</button>
+    <button id="prev" type="button">◀ Beat</button>
+    <button id="next" type="button">Beat ▶</button>
+  </section>
+
+  <section class="taps">
+    <button id="tapBeat" class="tap" type="button">TAP BEAT</button>
+    <button id="tapDown" class="tap down" type="button">TAP DOWNBEAT</button>
+    <button id="undo" type="button">Undo</button>
+    <button id="delete" type="button">Delete nearest</button>
+  </section>
+
+  <section class="view">
+    <button id="zoomIn" type="button">Zoom +</button>
+    <button id="zoomOut" type="button">Zoom −</button>
+    <button id="panLeft" type="button">←</button>
+    <button id="panRight" type="button">→</button>
+    <button id="loopA" type="button">Loop A</button>
+    <button id="loopB" type="button">Loop B</button>
+    <button id="loopClear" type="button">Loop off</button>
+  </section>
+
+  <section class="save">
+    <button id="save" type="button">Save</button>
+    <button id="export" type="button">Export JSON</button>
+    <label class="file">Import<input id="import" type="file" accept="application/json"></label>
+    <button id="clear" type="button">Clear</button>
+  </section>
+
+  <p id="status">Загрузи аудиофайл и начни разметку.</p>
+  <p class="hint">Space — play/pause · B — beat · D — downbeat · ←/→ — ±1s · Shift+←/→ — ±5s · Z — undo · Delete — удалить ближайший</p>
+</main>
+<audio id="audio" preload="auto" playsinline></audio>
+<script type="module" src="annotation.js"></script>
+</body>
+</html>

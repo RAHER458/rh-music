@@ -117,3 +117,45 @@ function percentile(values, p) {
 }
 
 function round(value, digits = 4) { return Number(Number(value).toFixed(digits)); }
+
+
+export function beatMetricsAtTolerances(reference, estimated) {
+  const out = {};
+  for (const tolerance of [0.05, 0.07, 0.1]) out[`t${Math.round(tolerance * 1000)}`] = matchEvents(reference, estimated, tolerance);
+  return out;
+}
+
+export function evaluateAgainstReference(reference, source) {
+  const result = { status: 'unavailable' };
+  if (!reference || !source) return result;
+  const referenceBeats = reference.beats || [];
+  const sourceBeats = source.beats || [];
+  const referenceDownbeats = reference.downbeats || [];
+  const sourceDownbeats = source.downbeats || [];
+  const referenceBpm = reference.bpm_estimate ?? reference.bpm ?? null;
+  const sourceBpm = source.bpm ?? null;
+  return {
+    status: referenceBeats.length ? 'measured' : 'reference-empty',
+    tempo: referenceBpm && sourceBpm ? tempoMetrics(referenceBpm, sourceBpm) : { status: 'unavailable' },
+    beat: beatMetricsAtTolerances(referenceBeats, sourceBeats),
+    downbeat: referenceDownbeats.length && sourceDownbeats.length ? downbeatMetrics(referenceDownbeats, sourceDownbeats, 0.07) : { status: 'unavailable' },
+    phase: phaseMetrics(referenceBeats, sourceBeats, referenceBpm || sourceBpm || 120),
+    stability: stabilityMetrics(sourceBeats),
+  };
+}
+
+export function confidenceCalibration(rows) {
+  // rows: [{ confidence, correct }]
+  const bins = [0, 0.2, 0.4, 0.6, 0.8, 1.0001];
+  const out = [];
+  for (let i = 0; i < bins.length - 1; i += 1) {
+    const slice = rows.filter((row) => row.confidence >= bins[i] && row.confidence < bins[i + 1]);
+    out.push({
+      bin: `${bins[i].toFixed(1)}–${bins[i + 1].toFixed(1)}`,
+      count: slice.length,
+      accuracy: slice.length ? round(slice.filter((row) => row.correct).length / slice.length, 4) : null,
+      meanConfidence: slice.length ? round(slice.reduce((sum, row) => sum + row.confidence, 0) / slice.length, 4) : null,
+    });
+  }
+  return out;
+}

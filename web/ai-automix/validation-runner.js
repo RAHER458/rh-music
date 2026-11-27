@@ -7,7 +7,7 @@ import { analyzeAudioBuffer } from './automix-engine.js';
 import { analyzeWithPulseGrid, mergePulseGridAnalysis } from './pulsegrid-bridge.js';
 import { analyzeBeatThisInWorker } from './beat-this-onnx.js';
 import {
-  downbeatMetrics, matchEvents, phaseMetrics, stabilityMetrics, summarizeSource, tempoMetrics,
+  downbeatMetrics, evaluateAgainstReference, matchEvents, phaseMetrics, stabilityMetrics, summarizeSource, tempoMetrics,
 } from './validation-metrics.js';
 
 export const VALIDATION_VERSION = 'beat-intelligence-validation-1.0.0';
@@ -106,6 +106,20 @@ export async function analyzeTrack(id, options = {}) {
   if (neuralBeats.length) results.metrics.neuralStability = stabilityMetrics(neuralBeats);
   if (results.raw?.beatThis?.beats?.length && results.raw?.neural?.bpm) {
     results.metrics.phase = phaseMetrics(beatBeats, neuralBeats, results.raw.neural.bpm);
+  }
+  const reference = options.reference && options.reference[id] ? options.reference[id] : (options.reference && options.reference[id] != null ? options.reference[id] : null);
+  if (reference) {
+    const neuralSource = { bpm: results.raw?.neural?.bpm, beats: neuralBeats, downbeats: results.raw?.neural?.grid?.downbeats || [] };
+    const pulseSource = { bpm: results.raw?.pulsegrid?.bpm, beats: pulseBeats, downbeats: [] };
+    const beatSource = { bpm: results.raw?.beatThis?.bpm, beats: beatBeats, downbeats: results.raw?.beatThis?.downbeats || [] };
+    const consensusSource = { bpm: results.raw?.mergedPulse?.bpm ?? results.raw?.neural?.bpm, beats: neuralBeats, downbeats: results.raw?.neural?.grid?.downbeats || [] };
+    results.reference = reference;
+    results.referenceMetrics = {
+      neural: evaluateAgainstReference(reference, neuralSource),
+      pulsegrid: evaluateAgainstReference(reference, pulseSource),
+      beatThis: evaluateAgainstReference(reference, beatSource),
+      consensus: evaluateAgainstReference(reference, consensusSource),
+    };
   }
   results.totals = {
     bpm: {

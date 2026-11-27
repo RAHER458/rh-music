@@ -10,11 +10,13 @@
 <main>
   <p class="kicker">RH NEURAL AI · VALIDATION</p>
   <h1>Beat Intelligence Validation</h1>
+  <p class="sub"><a href="annotation.html">→ Reference Annotation Tool</a></p>
   <p class="sub">Отдельный инструмент. Запускает Neural AI, PulseGrid и Beat This независимо на реальном аудио и считает метрики. Не влияет на основной плеер и Production.</p>
   <div class="actions">
     <button id="run60" type="button">Run corpus · 60s</button>
     <button id="runFull" type="button">Run first 5 · full track</button>
     <button id="export" type="button">Export JSON</button>
+    <label class="file">Reference JSON<input id="referenceFile" type="file" accept="application/json"></label>
     <button id="clear" type="button">Clear</button>
   </div>
   <p id="status">Готово. Нажми Run corpus.</p>
